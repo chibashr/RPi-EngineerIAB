@@ -457,6 +457,14 @@ enabled=${MODULE_SELECTIONS[*]:-}
 EOF
 }
 
+# Run apt-get install allowing debconf prompts; user can respond via terminal
+apt_install_interactive() {
+    local package="$1"
+    # $package may contain multiple names (e.g. "python3 python3-pip"); word-split for apt
+    env -u DEBIAN_FRONTEND apt-get install -y $package < /dev/tty 2>&1 | tee -a "$INSTALL_LOG"
+    return "${PIPESTATUS[0]}"
+}
+
 install_system_dependencies() {
     log_step "Installing system dependencies"
     show_progress "Updating package lists"
@@ -487,8 +495,13 @@ install_required_packages() {
             continue
         fi
         show_progress "Installing $package"
-        apt-get install -y "$package" >> "$INSTALL_LOG" 2>&1
-        progress_done
+        if apt_install_interactive "$package"; then
+            progress_done
+        else
+            progress_fail
+            log_error "Failed to install $package. Check $INSTALL_LOG for details."
+            exit 1
+        fi
     done
     DEPS_INSTALLED="yes"
 }
@@ -838,7 +851,7 @@ install_module() {
                 if dpkg -s "$dep" >/dev/null 2>&1; then
                     continue
                 fi
-                apt-get install -y "$dep" >> "$INSTALL_LOG" 2>&1
+                apt_install_interactive "$dep" || { log_error "Failed to install $dep for module $module_name"; return 1; }
             done <<< "$sys_deps"
         fi
         if [ -n "$py_deps" ]; then
