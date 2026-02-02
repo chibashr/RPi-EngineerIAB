@@ -497,7 +497,7 @@ apt_install_interactive() {
     local package="$1" status=0
     # $package may contain multiple names (e.g. "python3 python3-pip"); word-split for apt
     if [ "${NONINTERACTIVE:-0}" = "1" ] || [ ! -e /dev/tty ]; then
-        DEBIAN_FRONTEND=noninteractive apt-get install -y $package >> "$INSTALL_LOG" 2>&1 || status=$?
+        DEBIAN_FRONTEND=noninteractive apt-get install -y $package 2>&1 | tee -a "$INSTALL_LOG" || status=$?
     else
         env -u DEBIAN_FRONTEND apt-get install -y $package < /dev/tty 2>&1 | tee -a "$INSTALL_LOG"
         status="${PIPESTATUS[0]:-0}"
@@ -507,13 +507,17 @@ apt_install_interactive() {
 
 install_system_dependencies() {
     log_step "Installing system dependencies"
-    show_progress "Updating package lists"
-    apt-get update >> "$INSTALL_LOG" 2>&1
-    progress_done
-
-    show_progress "Upgrading existing packages"
-    apt-get upgrade -y >> "$INSTALL_LOG" 2>&1
-    progress_done
+    echo "Updating package lists..."
+    apt-get update 2>&1 | tee -a "$INSTALL_LOG"
+    echo "Package lists updated."
+    echo
+    echo "Upgrading existing packages (this may take several minutes)..."
+    if DEBIAN_FRONTEND=noninteractive apt-get upgrade -y 2>&1 | tee -a "$INSTALL_LOG"; then
+        echo "Upgrade complete."
+    else
+        log_warn "Upgrade had issues (see $INSTALL_LOG); continuing with installation."
+    fi
+    echo
 }
 
 install_required_packages() {
@@ -534,15 +538,15 @@ install_required_packages() {
             log_info "Package already installed: $package"
             continue
         fi
-        show_progress "Installing $package"
+        echo "Installing $package..."
         if apt_install_interactive "$package"; then
-            progress_done
+            echo "  $package installed."
         else
-            progress_fail
             log_error "Failed to install $package. Check $INSTALL_LOG for details."
             exit 1
         fi
     done
+    echo "All required packages installed."
     DEPS_INSTALLED="yes"
 }
 
@@ -550,17 +554,17 @@ install_python_dependencies() {
     log_step "Installing Python dependencies"
     local venv_path="$INSTALL_DIR/venv"
     if [ ! -d "$venv_path" ]; then
-        show_progress "Creating virtual environment"
-        python3 -m venv "$venv_path" >> "$INSTALL_LOG" 2>&1
-        progress_done
+        echo "Creating virtual environment..."
+        python3 -m venv "$venv_path" 2>&1 | tee -a "$INSTALL_LOG"
+        echo "Virtual environment created."
     else
         log_info "Virtual environment already exists: $venv_path"
     fi
     if [ -f "$INSTALL_DIR/requirements.txt" ]; then
-        show_progress "Installing Python packages"
-        "$venv_path/bin/pip" install --upgrade pip >> "$INSTALL_LOG" 2>&1
-        "$venv_path/bin/pip" install -r "$INSTALL_DIR/requirements.txt" >> "$INSTALL_LOG" 2>&1
-        progress_done
+        echo "Installing Python packages from requirements.txt..."
+        "$venv_path/bin/pip" install --upgrade pip 2>&1 | tee -a "$INSTALL_LOG"
+        "$venv_path/bin/pip" install -r "$INSTALL_DIR/requirements.txt" 2>&1 | tee -a "$INSTALL_LOG"
+        echo "Python packages installed."
     else
         log_warn "requirements.txt not found under $INSTALL_DIR"
     fi
@@ -568,10 +572,12 @@ install_python_dependencies() {
 
 create_directories() {
     log_step "Creating directories"
+    echo "Creating $INSTALL_DIR, $CONFIG_DIR, $DATA_DIR, $LOG_DIR..."
     mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$DATA_DIR" "$LOG_DIR"
     mkdir -p "$INSTALL_DIR/bin" "$INSTALL_DIR/services" "$INSTALL_DIR/web" "$INSTALL_DIR/modules" "$INSTALL_DIR/lib"
     mkdir -p "$CONFIG_DIR/network_profiles" "$CONFIG_DIR/module_config"
     mkdir -p "$DATA_DIR/captures" "$DATA_DIR/serial_logs" "$DATA_DIR/backups" "$DATA_DIR/database"
+    echo "Directories created."
     APP_INSTALLED="yes"
 }
 
@@ -592,8 +598,10 @@ ensure_source_dir() {
     fi
     log_warn "Source directory not found; cloning repository."
     local clone_dir="/tmp/rpi-engineer-src-$(date +%s)"
-    git clone --branch "$BRANCH" "$REPO_URL" "$clone_dir" >> "$INSTALL_LOG" 2>&1
+    echo "Cloning $REPO_URL (branch $BRANCH)..."
+    git clone --branch "$BRANCH" "$REPO_URL" "$clone_dir" 2>&1 | tee -a "$INSTALL_LOG"
     SOURCE_DIR="$clone_dir"
+    echo "Repository cloned to $clone_dir"
 }
 
 copy_path() {
@@ -615,27 +623,37 @@ deploy_files() {
         return 0
     fi
     backup_existing_install
+    echo "Copying services..."
     copy_path "$SOURCE_DIR/services" "$INSTALL_DIR/services"
+    echo "Copying web..."
     copy_path "$SOURCE_DIR/web" "$INSTALL_DIR/web"
+    echo "Copying lib..."
     copy_path "$SOURCE_DIR/lib" "$INSTALL_DIR/lib"
+    echo "Copying modules..."
     copy_path "$SOURCE_DIR/modules" "$INSTALL_DIR/modules"
     if [ -d "$SOURCE_DIR/bin" ]; then
+        echo "Copying bin..."
         copy_path "$SOURCE_DIR/bin" "$INSTALL_DIR/bin"
     fi
     if [ -f "$SOURCE_DIR/requirements.txt" ]; then
         cp "$SOURCE_DIR/requirements.txt" "$INSTALL_DIR/requirements.txt"
     fi
+    echo "Application files deployed."
     APP_INSTALLED="yes"
 }
 
 setup_user_permissions() {
     log_step "Setting up user permissions"
+    echo "Creating service user/group if needed..."
     if ! getent group "$SERVICE_GROUP" >/dev/null 2>&1; then
         groupadd -r "$SERVICE_GROUP"
+        echo "  Created group $SERVICE_GROUP"
     fi
     if ! id "$SERVICE_USER" >/dev/null 2>&1; then
         useradd -r -s /usr/sbin/nologin -d "$INSTALL_DIR" -g "$SERVICE_GROUP" "$SERVICE_USER"
+        echo "  Created user $SERVICE_USER"
     fi
+    echo "Setting ownership and permissions..."
     chown -R "root:$SERVICE_GROUP" "$INSTALL_DIR" "$DATA_DIR" "$LOG_DIR"
     chown -R "root:root" "$CONFIG_DIR"
     find "$INSTALL_DIR" -type d -exec chmod 755 {} \;
@@ -652,6 +670,7 @@ setup_user_permissions() {
     fi
     usermod -a -G dialout "$SERVICE_USER" || true
     usermod -a -G netdev "$SERVICE_USER" || true
+    echo "Permissions configured."
 }
 
 create_master_service() {
@@ -704,6 +723,7 @@ EOF
 
 configure_services() {
     log_step "Configuring systemd services"
+    echo "Creating systemd service units..."
     create_master_service
     create_service_unit "rpi-engineer-api" "RPi Engineer API Gateway" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/api_gateway/main.py" "$SERVICE_USER"
     create_service_unit "rpi-engineer-network" "RPi Engineer Network Manager" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/network_manager/manager.py" "root"
@@ -715,6 +735,7 @@ configure_services() {
     create_service_unit "rpi-engineer-logging" "RPi Engineer Logging Service" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/logging_service/manager.py" "$SERVICE_USER"
     if [ -d /run/systemd/system ]; then
         systemctl daemon-reload
+        echo "Services configured and daemon reloaded."
     else
         log_warn "systemd not detected; skipping daemon-reload."
     fi
@@ -723,6 +744,7 @@ configure_services() {
 
 configure_nginx() {
     log_step "Configuring nginx"
+    echo "Writing nginx configuration..."
     if ! command -v nginx >/dev/null 2>&1; then
         log_warn "nginx not found; skipping nginx configuration."
         return 0
@@ -763,9 +785,11 @@ server {
 EOF
     ln -sf /etc/nginx/sites-available/rpi-engineer /etc/nginx/sites-enabled/rpi-engineer
     rm -f /etc/nginx/sites-enabled/default
-    nginx -t >> "$INSTALL_LOG" 2>&1
+    echo "Testing nginx configuration..."
+    nginx -t 2>&1 | tee -a "$INSTALL_LOG"
     if [ -d /run/systemd/system ]; then
         systemctl restart nginx
+        echo "nginx restarted."
     else
         log_warn "systemd not detected; nginx config written but not restarted."
     fi
@@ -844,6 +868,7 @@ EOF
     systemctl restart hostapd || true
     systemctl restart dnsmasq || true
     create_network_priority_script
+    echo "WiFi hotspot configured (SSID: $HOTSPOT_SSID)."
     HOTSPOT_CONFIGURED="yes"
 }
 
@@ -883,6 +908,7 @@ configure_firewall() {
     ensure_rule FORWARD -i wlan0 -o usb0 -j ACCEPT
     ensure_nat_rule POSTROUTING -o eth0 -j MASQUERADE
     ensure_nat_rule POSTROUTING -o usb0 -j MASQUERADE
+    echo "Firewall rules configured."
 }
 
 install_module() {
@@ -936,8 +962,10 @@ install_modules() {
         return 0
     fi
     for module_name in "${MODULE_SELECTIONS[@]}"; do
+        echo "Installing module: $module_name"
         install_module "$module_name"
     done
+    echo "Modules installed."
     MODULES_INSTALLED="yes"
 }
 
@@ -1073,12 +1101,14 @@ setup_remote_access() {
     if [ "${#REMOTE_ACCESS_TOOLS[@]}" -eq 0 ]; then
         log_info "Remote access skipped."
         write_remote_access_config
+        echo "Remote access: skipped (none selected)."
         return 0
     fi
     if [ -z "$REMOTE_ACCESS_PASSWORD" ]; then
         REMOTE_ACCESS_PASSWORD="$HOTSPOT_PASSWORD"
     fi
     for tool in "${REMOTE_ACCESS_TOOLS[@]}"; do
+        echo "Installing remote access tool: $tool"
         case "$tool" in
             anydesk) install_anydesk ;;
             teamviewer) install_teamviewer ;;
@@ -1087,11 +1117,13 @@ setup_remote_access() {
         esac
     done
     write_remote_access_config
+    echo "Remote access configured."
     REMOTE_CONFIGURED="yes"
 }
 
 generate_configs() {
     log_step "Generating configuration files"
+    echo "Writing system.conf, remote_access.conf..."
     mkdir -p "$CONFIG_DIR"
     cat > "$CONFIG_DIR/system.conf" <<EOF
 [general]
@@ -1118,6 +1150,7 @@ mode=simple
 level=INFO
 retention_days=7
 EOF
+    echo "Configuration files written."
 }
 
 enable_services() {
@@ -1141,9 +1174,11 @@ enable_services() {
         dnsmasq
     )
     for service in "${services[@]}"; do
+        echo "  Enabling $service..."
         systemctl enable "$service" >> "$INSTALL_LOG" 2>&1 || true
         systemctl restart "$service" >> "$INSTALL_LOG" 2>&1 || true
     done
+    echo "Services enabled and started."
 }
 
 create_health_check_script() {
