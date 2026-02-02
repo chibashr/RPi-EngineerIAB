@@ -184,6 +184,36 @@ check_internet() {
     fi
 }
 
+# Check that the dpkg database is readable (avoids install failures from corrupted /var/lib/dpkg/status)
+check_dpkg_status() {
+    if ! command -v dpkg >/dev/null 2>&1; then
+        return 0
+    fi
+    if dpkg --audit >/dev/null 2>&1; then
+        return 0
+    fi
+    log_warn "dpkg database may be corrupted (e.g. /var/lib/dpkg/status has parse errors or unknown characters). Attempting repair..."
+    if DEBIAN_FRONTEND=noninteractive dpkg --configure -a >> "$INSTALL_LOG" 2>&1; then
+        log_info "dpkg --configure -a completed."
+    else
+        log_warn "dpkg --configure -a had issues (see $INSTALL_LOG)."
+    fi
+    if DEBIAN_FRONTEND=noninteractive apt-get install -f -y >> "$INSTALL_LOG" 2>&1; then
+        log_info "apt-get install -f completed."
+    else
+        log_warn "apt-get install -f had issues (see $INSTALL_LOG)."
+    fi
+    if ! dpkg --audit >/dev/null 2>&1; then
+        log_error "dpkg database is still broken. Fix it before re-running this installer:"
+        echo "  1. sudo dpkg --configure -a"
+        echo "  2. sudo apt-get install -f"
+        echo "  3. If errors say 'parsing file .../status near line 0' or 'unknown characters',"
+        echo "     /var/lib/dpkg/status is corrupted. Backup: sudo cp /var/lib/dpkg/status /var/lib/dpkg/status.bak"
+        echo "     Then remove or fix the corrupt lines (often garbage/binary near the top), or restore from backup."
+        exit 1
+    fi
+}
+
 run_preflight_checks() {
     log_step "Running pre-flight checks"
     check_root
@@ -192,6 +222,7 @@ run_preflight_checks() {
     detect_rpi
     check_disk_space
     check_internet
+    check_dpkg_status
     log_info "Pre-flight checks passed."
 }
 
@@ -507,6 +538,16 @@ apt_install_interactive() {
 
 install_system_dependencies() {
     log_step "Installing system dependencies"
+    echo "Ensuring dpkg/apt state is clean..."
+    DEBIAN_FRONTEND=noninteractive dpkg --configure -a >> "$INSTALL_LOG" 2>&1 || true
+    DEBIAN_FRONTEND=noninteractive apt-get install -f -y >> "$INSTALL_LOG" 2>&1 || true
+    if ! dpkg --audit >/dev/null 2>&1; then
+        log_error "dpkg database is broken (e.g. corrupted /var/lib/dpkg/status with unknown characters). Fix it before continuing:"
+        echo "  1. sudo dpkg --configure -a"
+        echo "  2. sudo apt-get install -f"
+        echo "  3. If errors mention 'parsing' or 'near line 0', edit /var/lib/dpkg/status: backup with sudo cp /var/lib/dpkg/status /var/lib/dpkg/status.bak, then remove or fix the corrupt lines (often garbage/binary near the top)."
+        exit 1
+    fi
     echo "Updating package lists..."
     apt-get update 2>&1 | tee -a "$INSTALL_LOG"
     echo "Package lists updated."
