@@ -520,11 +520,49 @@ install_system_dependencies() {
     echo
 }
 
+# Install nginx from nginx.org when distro package fails (e.g. Trixie nginx-common parse)
+install_nginx_from_nginx_org() {
+    local codename
+    codename="$(lsb_release -cs 2>/dev/null || echo "${VERSION_CODENAME:-$OS_CODENAME}")"
+    if [ -z "$codename" ]; then
+        log_warn "Cannot determine distribution codename for nginx.org repo."
+        return 1
+    fi
+    case "$OS_ID" in
+        debian|raspbian|ubuntu)
+            echo "Adding nginx.org repository (codename: $codename)..."
+            curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg 2>> "$INSTALL_LOG" || return 1
+            local repo_dist
+            repo_dist="$([ "$OS_ID" = "ubuntu" ] && echo "ubuntu" || echo "debian")"
+            echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] https://nginx.org/packages/${repo_dist} ${codename} nginx" > /etc/apt/sources.list.d/nginx.list
+            printf 'Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 900\n' > /etc/apt/preferences.d/99nginx
+            apt-get update >> "$INSTALL_LOG" 2>&1 || return 1
+            DEBIAN_FRONTEND=noninteractive apt-get install -y nginx >> "$INSTALL_LOG" 2>&1
+            ;;
+        *)
+            log_warn "nginx.org repo not configured for OS: $OS_ID"
+            return 1
+            ;;
+    esac
+}
+
+# Verify critical dependencies for the web interface (nginx, python3)
+validate_dependencies() {
+    local missing=()
+    command -v nginx >/dev/null 2>&1 || missing+=(nginx)
+    command -v python3 >/dev/null 2>&1 || missing+=(python3)
+    if [ ${#missing[@]} -gt 0 ]; then
+        log_error "Missing required commands: ${missing[*]}. Install them and re-run, or check $INSTALL_LOG."
+        return 1
+    fi
+    log_info "Dependency check passed: nginx, python3 present."
+    return 0
+}
+
 install_required_packages() {
     log_step "Installing required packages"
     local packages=(
         python3 python3-pip python3-venv
-        nginx
         network-manager dnsmasq hostapd iptables bridge-utils vlan
         cu minicom screen
         tcpdump tshark wireshark-common
@@ -546,7 +584,25 @@ install_required_packages() {
             exit 1
         fi
     done
-    echo "All required packages installed."
+    # nginx required for web interface; try distro first, then nginx.org (avoids Trixie parse issues)
+    if ! command -v nginx >/dev/null 2>&1; then
+        echo "Installing nginx..."
+        if apt_install_interactive "nginx"; then
+            echo "  nginx installed (from distribution)."
+        else
+            log_warn "Distribution nginx failed (e.g. nginx-common parse issues on Trixie). Trying nginx.org repository..."
+            if install_nginx_from_nginx_org; then
+                echo "  nginx installed (from nginx.org)."
+            else
+                log_error "nginx is required for the web interface but could not be installed. Try: sudo apt install nginx, or install from https://nginx.org/en/linux_packages.html"
+                exit 1
+            fi
+        fi
+    else
+        log_info "nginx already installed"
+    fi
+    validate_dependencies
+    echo "Required packages installed."
     DEPS_INSTALLED="yes"
 }
 
