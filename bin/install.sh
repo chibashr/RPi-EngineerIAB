@@ -343,26 +343,64 @@ prompt_hostname() {
     log_info "Hostname set to: $TARGET_HOSTNAME"
 }
 
+get_available_modules() {
+    local modules_dir="$1"
+    local mod
+    AVAILABLE_MODULES=()
+    if [ ! -d "$modules_dir" ]; then
+        return 0
+    fi
+    for mod in "$modules_dir"/*/; do
+        [ -d "$mod" ] || continue
+        mod="$(basename "$mod")"
+        if [ -f "$modules_dir/$mod/module.json" ]; then
+            AVAILABLE_MODULES+=("$mod")
+        fi
+    done
+}
+
+get_module_display_name() {
+    local modules_dir="$1"
+    local mod="$2"
+    local json="$modules_dir/$mod/module.json"
+    if [ -f "$json" ] && command -v jq >/dev/null 2>&1; then
+        jq -r '.display_name // .name // empty' "$json" 2>/dev/null || echo "$mod"
+    else
+        echo "$mod"
+    fi
+}
+
 prompt_modules() {
+    local modules_dir="$SOURCE_DIR/modules"
+    get_available_modules "$modules_dir"
+    if [ "${#AVAILABLE_MODULES[@]}" -eq 0 ] && [ -d "$INSTALL_DIR/modules" ]; then
+        modules_dir="$INSTALL_DIR/modules"
+        get_available_modules "$modules_dir"
+    fi
+    if [ "${#AVAILABLE_MODULES[@]}" -eq 0 ]; then
+        log_info "No installable modules found; skipping module selection."
+        MODULE_SELECTIONS=()
+        return 0
+    fi
     log_step "Module selection"
     echo "Select optional modules to install:"
-    echo "  1) LCD/OLED Display Driver"
-    echo "  2) Bandwidth Testing (iperf3)"
-    echo "  3) SNMP Monitoring"
-    echo "  4) VPN Client Support"
-    echo "  5) DNS/DHCP Server"
-    read -r -p "Enter module numbers (comma-separated) or press Enter to skip: " module_choice
+    local i=1
+    local display_name
+    for mod in "${AVAILABLE_MODULES[@]}"; do
+        display_name="$(get_module_display_name "$modules_dir" "$mod")"
+        echo "  $i) $display_name ($mod)"
+        i=$((i + 1))
+    done
+    interactive_read -r -p "Enter module numbers (comma-separated) or press Enter to skip: " module_choice
     MODULE_SELECTIONS=()
     if [ -n "${module_choice:-}" ]; then
+        local selections
         IFS=',' read -r -a selections <<< "$module_choice"
         for selection in "${selections[@]}"; do
-            case "$(echo "$selection" | tr -d ' ')" in
-                1) MODULE_SELECTIONS+=("display_driver") ;;
-                2) MODULE_SELECTIONS+=("iperf3") ;;
-                3) MODULE_SELECTIONS+=("snmp") ;;
-                4) MODULE_SELECTIONS+=("vpn_client") ;;
-                5) MODULE_SELECTIONS+=("dns_dhcp") ;;
-            esac
+            selection="$(echo "$selection" | tr -d ' ')"
+            if [ -n "$selection" ] && [ "$selection" -ge 1 ] 2>/dev/null && [ "$selection" -le "${#AVAILABLE_MODULES[@]}" ] 2>/dev/null; then
+                MODULE_SELECTIONS+=("${AVAILABLE_MODULES[$((selection - 1))]}")
+            fi
         done
     fi
     if [ "${#MODULE_SELECTIONS[@]}" -eq 0 ]; then
@@ -1116,6 +1154,7 @@ main() {
 
     run_preflight_checks
     determine_install_mode
+    ensure_source_dir
     run_wizard
 
     if [ "$INSTALL_MODE" != "reconfigure" ]; then
