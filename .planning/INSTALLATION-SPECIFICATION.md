@@ -1336,6 +1336,16 @@ echo "===================================="
 
 ### Common Issues
 
+#### Issue: Script shows banner then exits without interactive prompts
+
+**Symptoms**: Running `curl ... | sudo bash` shows "This script will install RPi Engineer-in-a-Box" but then immediately aborts or skips to completion without asking questions.
+
+**Cause**: When piping, stdin comes from the pipe (script content) instead of the terminal, so `read` prompts get EOF or garbage.
+
+**Solutions**:
+1. The install script now uses `/dev/tty` for interactive prompts when piped, so `curl ... | sudo bash` should work.
+2. If prompts still fail (e.g. no TTY), use: `curl -fsSL URL -o install.sh && sudo bash install.sh`
+
 #### Issue: Installation fails during package installation
 
 **Symptoms**: apt-get errors during dependency installation

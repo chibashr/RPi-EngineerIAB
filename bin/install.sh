@@ -71,9 +71,18 @@ progress_fail() {
     echo "failed" | tee -a "$INSTALL_LOG"
 }
 
+# Read from terminal when script is piped (e.g. curl | bash) so prompts work
+interactive_read() {
+    if [ -t 0 ]; then
+        read "$@"
+    else
+        read "$@" < /dev/tty
+    fi
+}
+
 debug_pause() {
     if [ "${DEBUG:-0}" = "1" ]; then
-        read -r -p "Press Enter to continue..."
+        interactive_read -r -p "Press Enter to continue..."
     fi
 }
 
@@ -211,7 +220,7 @@ determine_install_mode() {
         echo "  1) Upgrade (update files and services)"
         echo "  2) Reconfigure (wizard and config only)"
         echo "  3) Abort"
-        read -r -p "Enter choice (1-3) [1]: " choice
+        interactive_read -r -p "Enter choice (1-3) [1]: " choice
         case "${choice:-1}" in
             1) INSTALL_MODE="upgrade" ;;
             2) INSTALL_MODE="reconfigure" ;;
@@ -247,7 +256,7 @@ EOF
     echo
     echo "Estimated time: 10-15 minutes"
     echo
-    read -r -p "Do you want to continue? (y/n): " confirm
+    interactive_read -r -p "Do you want to continue? (y/n): " confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         log_error "Installation aborted by user."
         exit 1
@@ -263,7 +272,7 @@ prompt_remote_access() {
     echo "  4) Raspberry Pi Connect (Raspberry Pi OS only)"
     echo "  5) Install multiple (select after)"
     echo "  6) Skip (install manually later)"
-    read -r -p "Enter your choice (1-6) [6]: " choice
+    interactive_read -r -p "Enter your choice (1-6) [6]: " choice
     case "${choice:-6}" in
         1) REMOTE_ACCESS_TOOLS=("anydesk") ;;
         2) REMOTE_ACCESS_TOOLS=("teamviewer") ;;
@@ -275,7 +284,7 @@ prompt_remote_access() {
             echo "  2) TeamViewer"
             echo "  3) TigerVNC"
             echo "  4) Raspberry Pi Connect (Raspberry Pi OS only)"
-            read -r -p "Enter your choices: " multi_choice
+            interactive_read -r -p "Enter your choices: " multi_choice
             IFS=',' read -r -a selections <<< "${multi_choice:-}"
             REMOTE_ACCESS_TOOLS=()
             for selection in "${selections[@]}"; do
@@ -302,14 +311,14 @@ prompt_hotspot_config() {
     local default_ssid
     default_ssid="$(get_default_hotspot_ssid)"
     echo "Default SSID: ${default_ssid}"
-    read -r -p "Press Enter to use default, or type custom SSID: " HOTSPOT_SSID
+    interactive_read -r -p "Press Enter to use default, or type custom SSID: " HOTSPOT_SSID
     if [ -z "$HOTSPOT_SSID" ]; then
         HOTSPOT_SSID="$default_ssid"
     fi
     while true; do
-        read -r -s -p "Enter WiFi hotspot password (8-63 characters): " HOTSPOT_PASSWORD
+        interactive_read -r -s -p "Enter WiFi hotspot password (8-63 characters): " HOTSPOT_PASSWORD
         echo
-        read -r -s -p "Confirm password: " password_confirm
+        interactive_read -r -s -p "Confirm password: " password_confirm
         echo
         if [ "$HOTSPOT_PASSWORD" != "$password_confirm" ]; then
             log_warn "Passwords do not match."
@@ -327,7 +336,7 @@ prompt_hostname() {
     local current_hostname
     current_hostname="$(hostname)"
     echo "Current hostname: $current_hostname"
-    read -r -p "Enter new hostname (or press Enter to keep current): " TARGET_HOSTNAME
+    interactive_read -r -p "Enter new hostname (or press Enter to keep current): " TARGET_HOSTNAME
     if [ -z "$TARGET_HOSTNAME" ]; then
         TARGET_HOSTNAME="$current_hostname"
     fi
@@ -381,7 +390,7 @@ confirm_summary() {
         echo "  Modules: ${MODULE_SELECTIONS[*]}"
     fi
     echo
-    read -r -p "Is this correct? (y/n): " confirm
+    interactive_read -r -p "Is this correct? (y/n): " confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         log_error "Installation aborted by user."
         exit 1
@@ -1083,7 +1092,7 @@ show_installation_summary() {
 }
 
 reboot_system() {
-    read -r -p "Press Enter to reboot now, or Ctrl+C to reboot manually later..."
+    interactive_read -r -p "Press Enter to reboot now, or Ctrl+C to reboot manually later..."
     reboot
 }
 
