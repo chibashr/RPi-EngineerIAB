@@ -1,24 +1,6 @@
 import { applyStoredTheme, initThemeSelector } from "../theme.js";
 import { confirmModeSwitch, ensureAdvancedMode, setMode } from "../mode.js";
 
-const SIDEBAR_STATE_KEY = "rpi-sidebar-collapsed";
-
-function safeGetStorage(key) {
-  try {
-    return localStorage.getItem(key);
-  } catch (error) {
-    return null;
-  }
-}
-
-function safeSetStorage(key, value) {
-  try {
-    localStorage.setItem(key, value);
-  } catch (error) {
-    // Ignore storage failures.
-  }
-}
-
 function setActiveNav() {
   const path = window.location.pathname;
   const page =
@@ -44,28 +26,27 @@ function setActiveNav() {
 
 function setupSidebarControls() {
   const sidebar = document.getElementById("sidebar");
-  const collapseToggle = document.getElementById("collapse-toggle");
   const sidebarToggle = document.getElementById("sidebar-toggle");
 
-  if (!sidebar || !collapseToggle || !sidebarToggle) {
+  if (!sidebar || !sidebarToggle) {
     return;
   }
 
-  const storedState = safeGetStorage(SIDEBAR_STATE_KEY);
-  if (storedState === "true") {
-    sidebar.classList.add("is-collapsed");
-  }
-
-  collapseToggle.addEventListener("click", () => {
-    sidebar.classList.toggle("is-collapsed");
-    safeSetStorage(
-      SIDEBAR_STATE_KEY,
-      sidebar.classList.contains("is-collapsed").toString()
-    );
+  sidebarToggle.addEventListener("click", () => {
+    const isOpen = sidebar.classList.toggle("is-open");
+    sidebarToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
   });
 
-  sidebarToggle.addEventListener("click", () => {
-    sidebar.classList.toggle("is-open");
+  document.addEventListener("click", (e) => {
+    if (
+      sidebar.classList.contains("is-open") &&
+      !sidebar.contains(e.target) &&
+      e.target !== sidebarToggle &&
+      !sidebarToggle.contains(e.target)
+    ) {
+      sidebar.classList.remove("is-open");
+      sidebarToggle.setAttribute("aria-expanded", "false");
+    }
   });
 }
 
