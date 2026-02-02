@@ -72,11 +72,15 @@ progress_fail() {
 }
 
 # Read from terminal when script is piped (e.g. curl | bash) so prompts work
+# When NONINTERACTIVE=1, callers must set defaults before calling; this no-ops
 interactive_read() {
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        return 0
+    fi
     if [ -t 0 ]; then
         read "$@"
     else
-        read "$@" < /dev/tty
+        [ -e /dev/tty ] && read "$@" < /dev/tty || return 0
     fi
 }
 
@@ -216,11 +220,13 @@ get_system_info() {
 determine_install_mode() {
     if [ -d "$INSTALL_DIR" ] || [ -d "$CONFIG_DIR" ]; then
         log_warn "Existing installation detected."
-        echo "Select install mode:"
-        echo "  1) Upgrade (update files and services)"
-        echo "  2) Reconfigure (wizard and config only)"
-        echo "  3) Abort"
-        interactive_read -r -p "Enter choice (1-3) [1]: " choice
+        if [ "${NONINTERACTIVE:-0}" != "1" ]; then
+            echo "Select install mode:"
+            echo "  1) Upgrade (update files and services)"
+            echo "  2) Reconfigure (wizard and config only)"
+            echo "  3) Abort"
+            interactive_read -r -p "Enter choice (1-3) [1]: " choice
+        fi
         case "${choice:-1}" in
             1) INSTALL_MODE="upgrade" ;;
             2) INSTALL_MODE="reconfigure" ;;
@@ -256,23 +262,29 @@ EOF
     echo
     echo "Estimated time: 10-15 minutes"
     echo
-    interactive_read -r -p "Do you want to continue? (y/n): " confirm
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        log_error "Installation aborted by user."
-        exit 1
+    if [ "${NONINTERACTIVE:-0}" != "1" ]; then
+        interactive_read -r -p "Do you want to continue? (y/n): " confirm
+        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+            log_error "Installation aborted by user."
+            exit 1
+        fi
+    else
+        log_info "Non-interactive mode: proceeding."
     fi
 }
 
 prompt_remote_access() {
     log_step "Remote access configuration"
-    echo "Select the remote access tool you want to install:"
-    echo "  1) AnyDesk (Recommended)"
-    echo "  2) TeamViewer"
-    echo "  3) TigerVNC"
-    echo "  4) Raspberry Pi Connect (Raspberry Pi OS only)"
-    echo "  5) Install multiple (select after)"
-    echo "  6) Skip (install manually later)"
-    interactive_read -r -p "Enter your choice (1-6) [6]: " choice
+    if [ "${NONINTERACTIVE:-0}" != "1" ]; then
+        echo "Select the remote access tool you want to install:"
+        echo "  1) AnyDesk (Recommended)"
+        echo "  2) TeamViewer"
+        echo "  3) TigerVNC"
+        echo "  4) Raspberry Pi Connect (Raspberry Pi OS only)"
+        echo "  5) Install multiple (select after)"
+        echo "  6) Skip (install manually later)"
+        interactive_read -r -p "Enter your choice (1-6) [6]: " choice
+    fi
     case "${choice:-6}" in
         1) REMOTE_ACCESS_TOOLS=("anydesk") ;;
         2) REMOTE_ACCESS_TOOLS=("teamviewer") ;;
@@ -310,35 +322,45 @@ prompt_hotspot_config() {
     log_step "WiFi hotspot configuration"
     local default_ssid
     default_ssid="$(get_default_hotspot_ssid)"
-    echo "Default SSID: ${default_ssid}"
-    interactive_read -r -p "Press Enter to use default, or type custom SSID: " HOTSPOT_SSID
-    if [ -z "$HOTSPOT_SSID" ]; then
-        HOTSPOT_SSID="$default_ssid"
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        HOTSPOT_SSID="${default_ssid}"
+        HOTSPOT_PASSWORD="rpi-engineer-default-password"
+        log_info "Non-interactive: using default SSID and password."
+    else
+        echo "Default SSID: ${default_ssid}"
+        interactive_read -r -p "Press Enter to use default, or type custom SSID: " HOTSPOT_SSID
+        if [ -z "$HOTSPOT_SSID" ]; then
+            HOTSPOT_SSID="$default_ssid"
+        fi
+        while true; do
+            interactive_read -r -s -p "Enter WiFi hotspot password (8-63 characters): " HOTSPOT_PASSWORD
+            echo
+            interactive_read -r -s -p "Confirm password: " password_confirm
+            echo
+            if [ "$HOTSPOT_PASSWORD" != "$password_confirm" ]; then
+                log_warn "Passwords do not match."
+                continue
+            fi
+            if [ "${#HOTSPOT_PASSWORD}" -ge 8 ] && [ "${#HOTSPOT_PASSWORD}" -le 63 ]; then
+                break
+            fi
+            log_warn "Hotspot password must be 8-63 characters."
+        done
     fi
-    while true; do
-        interactive_read -r -s -p "Enter WiFi hotspot password (8-63 characters): " HOTSPOT_PASSWORD
-        echo
-        interactive_read -r -s -p "Confirm password: " password_confirm
-        echo
-        if [ "$HOTSPOT_PASSWORD" != "$password_confirm" ]; then
-            log_warn "Passwords do not match."
-            continue
-        fi
-        if [ "${#HOTSPOT_PASSWORD}" -ge 8 ] && [ "${#HOTSPOT_PASSWORD}" -le 63 ]; then
-            break
-        fi
-        log_warn "Hotspot password must be 8-63 characters."
-    done
 }
 
 prompt_hostname() {
     log_step "Hostname configuration"
     local current_hostname
     current_hostname="$(hostname)"
-    echo "Current hostname: $current_hostname"
-    interactive_read -r -p "Enter new hostname (or press Enter to keep current): " TARGET_HOSTNAME
-    if [ -z "$TARGET_HOSTNAME" ]; then
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
         TARGET_HOSTNAME="$current_hostname"
+    else
+        echo "Current hostname: $current_hostname"
+        interactive_read -r -p "Enter new hostname (or press Enter to keep current): " TARGET_HOSTNAME
+        if [ -z "$TARGET_HOSTNAME" ]; then
+            TARGET_HOSTNAME="$current_hostname"
+        fi
     fi
     log_info "Hostname set to: $TARGET_HOSTNAME"
 }
@@ -379,6 +401,11 @@ prompt_modules() {
     fi
     if [ "${#AVAILABLE_MODULES[@]}" -eq 0 ]; then
         log_info "No installable modules found; skipping module selection."
+        MODULE_SELECTIONS=()
+        return 0
+    fi
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        log_info "Non-interactive: skipping module selection."
         MODULE_SELECTIONS=()
         return 0
     fi
@@ -428,10 +455,12 @@ confirm_summary() {
         echo "  Modules: ${MODULE_SELECTIONS[*]}"
     fi
     echo
-    interactive_read -r -p "Is this correct? (y/n): " confirm
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        log_error "Installation aborted by user."
-        exit 1
+    if [ "${NONINTERACTIVE:-0}" != "1" ]; then
+        interactive_read -r -p "Is this correct? (y/n): " confirm
+        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+            log_error "Installation aborted by user."
+            exit 1
+        fi
     fi
 }
 
@@ -457,12 +486,17 @@ enabled=${MODULE_SELECTIONS[*]:-}
 EOF
 }
 
-# Run apt-get install allowing debconf prompts; user can respond via terminal
+# Run apt-get install. When NONINTERACTIVE=1 or no TTY, use DEBIAN_FRONTEND=noninteractive.
+# Otherwise allow debconf prompts so user can respond.
 apt_install_interactive() {
     local package="$1"
     # $package may contain multiple names (e.g. "python3 python3-pip"); word-split for apt
-    env -u DEBIAN_FRONTEND apt-get install -y $package < /dev/tty 2>&1 | tee -a "$INSTALL_LOG"
-    return "${PIPESTATUS[0]}"
+    if [ "${NONINTERACTIVE:-0}" = "1" ] || [ ! -e /dev/tty ]; then
+        DEBIAN_FRONTEND=noninteractive apt-get install -y $package >> "$INSTALL_LOG" 2>&1
+    else
+        env -u DEBIAN_FRONTEND apt-get install -y $package < /dev/tty 2>&1 | tee -a "$INSTALL_LOG"
+    fi
+    return "${PIPESTATUS[0]:-$?}"
 }
 
 install_system_dependencies() {
@@ -679,6 +713,10 @@ configure_services() {
 
 configure_nginx() {
     log_step "Configuring nginx"
+    if ! command -v nginx >/dev/null 2>&1; then
+        log_warn "nginx not found; skipping nginx configuration."
+        return 0
+    fi
     cat > /etc/nginx/sites-available/rpi-engineer <<'EOF'
 server {
     listen 80 default_server;
@@ -797,6 +835,10 @@ EOF
 
 configure_firewall() {
     log_step "Configuring firewall"
+    if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+        log_warn "Container detected; skipping firewall configuration."
+        return 0
+    fi
     if ! command -v iptables >/dev/null 2>&1; then
         log_warn "iptables not available; skipping firewall configuration."
         return 0
@@ -1143,6 +1185,10 @@ show_installation_summary() {
 }
 
 reboot_system() {
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        log_info "Non-interactive: skipping reboot. Run 'sudo reboot' manually if needed."
+        return 0
+    fi
     interactive_read -r -p "Press Enter to reboot now, or Ctrl+C to reboot manually later..."
     reboot
 }
