@@ -12,9 +12,9 @@ if [[ "$1" == "--build" ]]; then
     docker build -f tests/docker/Dockerfile.install-test -t "$IMAGE" .
 fi
 
-# Run with -it for interactive, mount repo, use env for non-interactive
+# Run with -it for interactive (remove -it when no TTY, e.g. CI)
 # NONINTERACTIVE=1 skips prompts; DEBIAN_FRONTEND=noninteractive for apt
-docker run --rm -it \
+docker run --rm \
     -v "$REPO_ROOT:/workspace:ro" \
     -e NONINTERACTIVE=1 \
     -e DEBIAN_FRONTEND=noninteractive \

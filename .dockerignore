@@ -1,0 +1,14 @@
+# Exclude from Docker build context
+.git
+.gitignore
+.planning
+.cursor
+.pytest_cache
+__pycache__
+*.pyc
+venv
+.venv
+htmlcov
+.coverage
+*.md
+!README.md

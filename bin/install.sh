@@ -173,7 +173,12 @@ check_disk_space() {
 }
 
 check_internet() {
-    if ! ping -c 1 -W 5 8.8.8.8 >/dev/null 2>&1; then
+    if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+        if ! curl -sf --connect-timeout 5 -o /dev/null https://archive.ubuntu.com/ubuntu/ >/dev/null 2>&1; then
+            log_error "No internet connectivity detected."
+            exit 1
+        fi
+    elif ! ping -c 1 -W 5 8.8.8.8 >/dev/null 2>&1; then
         log_error "No internet connectivity detected."
         exit 1
     fi
@@ -212,7 +217,7 @@ get_system_info() {
     ram_mb="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)"
     storage_mb="$(df -Pm / | awk 'NR==2 {print $4}')"
     echo "  OS: ${OS_ID} ${OS_VERSION}"
-    echo "  Model: $(tr -d '\0' < /proc/device-tree/model 2>/dev/null || echo "Unknown")"
+    echo "  Model: $([ -f /proc/device-tree/model ] && tr -d '\0' < /proc/device-tree/model || echo "Unknown")"
     echo "  RAM: ${ram_mb}MB"
     echo "  Storage: ${storage_mb}MB available"
 }
@@ -489,14 +494,15 @@ EOF
 # Run apt-get install. When NONINTERACTIVE=1 or no TTY, use DEBIAN_FRONTEND=noninteractive.
 # Otherwise allow debconf prompts so user can respond.
 apt_install_interactive() {
-    local package="$1"
+    local package="$1" status=0
     # $package may contain multiple names (e.g. "python3 python3-pip"); word-split for apt
     if [ "${NONINTERACTIVE:-0}" = "1" ] || [ ! -e /dev/tty ]; then
-        DEBIAN_FRONTEND=noninteractive apt-get install -y $package >> "$INSTALL_LOG" 2>&1
+        DEBIAN_FRONTEND=noninteractive apt-get install -y $package >> "$INSTALL_LOG" 2>&1 || status=$?
     else
         env -u DEBIAN_FRONTEND apt-get install -y $package < /dev/tty 2>&1 | tee -a "$INSTALL_LOG"
+        status="${PIPESTATUS[0]:-0}"
     fi
-    return "${PIPESTATUS[0]:-$?}"
+    return "$status"
 }
 
 install_system_dependencies() {
@@ -707,7 +713,11 @@ configure_services() {
     create_service_unit "rpi-engineer-monitor" "RPi Engineer Monitor Service" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/monitor_service/manager.py" "$SERVICE_USER"
     create_service_unit "rpi-engineer-update" "RPi Engineer Update Manager" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/update_manager/manager.py" "$SERVICE_USER"
     create_service_unit "rpi-engineer-logging" "RPi Engineer Logging Service" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/logging_service/manager.py" "$SERVICE_USER"
-    systemctl daemon-reload
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+    else
+        log_warn "systemd not detected; skipping daemon-reload."
+    fi
     SERVICES_CONFIGURED="yes"
 }
 
@@ -754,7 +764,11 @@ EOF
     ln -sf /etc/nginx/sites-available/rpi-engineer /etc/nginx/sites-enabled/rpi-engineer
     rm -f /etc/nginx/sites-enabled/default
     nginx -t >> "$INSTALL_LOG" 2>&1
-    systemctl restart nginx
+    if [ -d /run/systemd/system ]; then
+        systemctl restart nginx
+    else
+        log_warn "systemd not detected; nginx config written but not restarted."
+    fi
 }
 
 create_network_priority_script() {
@@ -1108,6 +1122,10 @@ EOF
 
 enable_services() {
     log_step "Enabling services"
+    if [ ! -d /run/systemd/system ]; then
+        log_warn "systemd not detected; skipping service enable/restart."
+        return 0
+    fi
     local services=(
         rpi-engineer
         rpi-engineer-api
