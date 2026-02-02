@@ -1,0 +1,25 @@
+<h1>BPF filter reference</h1>
+<p>
+  Use Berkeley Packet Filter (BPF) expressions to narrow packet capture scope.
+</p>
+
+<h2>Common examples</h2>
+<ul>
+  <li><code>tcp port 22</code> — Capture SSH traffic.</li>
+  <li><code>host 192.168.1.1</code> — Capture traffic to a specific host.</li>
+  <li><code>udp port 53</code> — Capture DNS queries.</li>
+  <li><code>net 10.0.0.0/24</code> — Capture traffic for a subnet.</li>
+</ul>
+
+<h2>Tips</h2>
+<p>
+  Start with a narrow filter to keep captures small, then widen as needed.
+</p>
+
+<h2>Related</h2>
+<ul>
+  <li><a href="../features/packet-capture.html">Packet capture</a></li>
+  <li><a href="../getting-started/first-capture.html">First packet capture</a></li>
+</ul>
+
+<p><strong>Last updated:</strong> 2026-02-02</p>

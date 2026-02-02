@@ -1,0 +1,81 @@
+.docs-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr 200px;
+  gap: 1.5rem;
+}
+
+.docs-sidebar,
+.docs-toc {
+  position: sticky;
+  top: 80px;
+  align-self: start;
+}
+
+.docs-sidebar {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.docs-group-title {
+  font-weight: 600;
+  color: var(--color-muted);
+  margin-bottom: 0.5rem;
+}
+
+.docs-group {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.doc-link {
+  border: none;
+  background: none;
+  text-align: left;
+  color: var(--color-fg);
+  padding: 0.3rem 0.2rem;
+  cursor: pointer;
+}
+
+.doc-link.active {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.docs-content {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.docs-content h1,
+.docs-content h2,
+.docs-content h3 {
+  margin-top: 1.5rem;
+}
+
+.docs-content p {
+  margin-top: 0.75rem;
+}
+
+.docs-toc {
+  color: var(--color-muted);
+}
+
+.toc-link {
+  display: block;
+  color: var(--color-muted);
+  padding: 0.2rem 0;
+}
+
+@media (max-width: 1023px) {
+  .docs-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .docs-sidebar,
+  .docs-toc {
+    position: static;
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "example_module",
+  "display_name": "Example Module",
+  "version": "1.0.0",
+  "description": "Example module to validate module discovery and routing.",
+  "author": "chibashr",
+  "license": "MIT",
+  "type": "utility",
+  "dependencies": {
+    "system": [],
+    "python": [],
+    "modules": []
+  },
+  "api_routes": [
+    {
+      "path": "/api/v1/example/hello",
+      "methods": ["GET"],
+      "description": "Example module hello endpoint"
+    }
+  ],
+  "web_components": [
+    {
+      "name": "Example Module",
+      "path": "/modules/example_module/component.html",
+      "menu": "Modules",
+      "menu_order": 10,
+      "icon": "puzzle"
+    }
+  ],
+  "enabled_by_default": true
+}

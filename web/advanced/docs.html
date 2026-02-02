@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RPi Engineer-in-a-Box - Documentation</title>
+    <meta name="description" content="Embedded documentation." />
+    <script>
+      (function () {
+        try {
+          var storedTheme = localStorage.getItem("rpi-theme");
+          if (storedTheme) {
+            document.documentElement.setAttribute("data-theme", storedTheme);
+          }
+        } catch (error) {
+          // Ignore storage failures.
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="/css/base.css" />
+    <link rel="stylesheet" href="/css/theme.css" />
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="/css/pages/advanced.css" />
+    <link rel="stylesheet" href="/css/pages/docs.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="brand">
+            <div class="brand-mark" aria-hidden="true">RPi</div>
+            <div class="brand-text">
+              <div class="brand-title">RPi Engineer-in-a-Box</div>
+              <div class="brand-subtitle">Advanced Mode</div>
+            </div>
+          </div>
+          <button class="btn btn-ghost" id="collapse-toggle">Collapse</button>
+        </div>
+        <nav class="sidebar-nav" aria-label="Primary">
+          <a class="nav-item" href="/advanced/" data-page="dashboard"
+            >Dashboard</a
+          >
+          <a class="nav-item" href="/advanced/network.html" data-page="network"
+            >Network</a
+          >
+          <a class="nav-item" href="/advanced/serial.html" data-page="serial"
+            >Serial</a
+          >
+          <a class="nav-item" href="/advanced/capture.html" data-page="capture"
+            >Capture</a
+          >
+          <a class="nav-item" href="/advanced/system.html" data-page="system"
+            >System</a
+          >
+          <a class="nav-item" href="/advanced/updates.html" data-page="updates"
+            >Updates</a
+          >
+          <a class="nav-item" href="/advanced/modules.html" data-page="modules"
+            >Modules</a
+          >
+          <a class="nav-item" href="/advanced/logs.html" data-page="logs"
+            >Logs</a
+          >
+          <a class="nav-item" href="/advanced/docs.html" data-page="docs"
+            >Documentation</a
+          >
+        </nav>
+        <div class="sidebar-footer">
+          <button class="btn btn-secondary" id="switch-simple">
+            Switch to Simple Mode
+          </button>
+        </div>
+      </aside>
+
+      <div class="shell-content">
+        <header class="topbar">
+          <button class="btn btn-ghost" id="sidebar-toggle">Menu</button>
+          <div class="breadcrumb" id="breadcrumb">Documentation</div>
+          <div class="topbar-actions">
+            <label class="field theme-field" for="theme-select">
+              <span class="field-label">Theme</span>
+              <select id="theme-select" class="select">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="auto">Auto</option>
+              </select>
+            </label>
+          </div>
+        </header>
+
+        <main id="main-content" class="main-content docs-layout">
+          <aside class="docs-sidebar">
+            <h2>Documentation</h2>
+            <div class="docs-group">
+              <div class="docs-group-title">Getting started</div>
+              <button class="doc-link" data-doc="docs/index.html">
+                Overview
+              </button>
+              <button class="doc-link" data-doc="docs/getting-started/quick-start.html">
+                Quick start
+              </button>
+              <button
+                class="doc-link"
+                data-doc="docs/getting-started/first-capture.html"
+              >
+                First packet capture
+              </button>
+              <button
+                class="doc-link"
+                data-doc="docs/getting-started/first-serial-session.html"
+              >
+                First serial session
+              </button>
+            </div>
+            <div class="docs-group">
+              <div class="docs-group-title">Feature guides</div>
+              <button class="doc-link" data-doc="docs/features/network-management.html">
+                Network management
+              </button>
+              <button class="doc-link" data-doc="docs/features/serial-console.html">
+                Serial console
+              </button>
+              <button class="doc-link" data-doc="docs/features/packet-capture.html">
+                Packet capture
+              </button>
+              <button class="doc-link" data-doc="docs/features/remote-access.html">
+                Remote access
+              </button>
+            </div>
+            <div class="docs-group">
+              <div class="docs-group-title">Troubleshooting</div>
+              <button class="doc-link" data-doc="docs/troubleshooting/common-issues.html">
+                Common issues
+              </button>
+              <button class="doc-link" data-doc="docs/troubleshooting/network-issues.html">
+                Network issues
+              </button>
+              <button class="doc-link" data-doc="docs/troubleshooting/serial-issues.html">
+                Serial issues
+              </button>
+              <button class="doc-link" data-doc="docs/troubleshooting/capture-issues.html">
+                Capture issues
+              </button>
+            </div>
+            <div class="docs-group">
+              <div class="docs-group-title">Devices</div>
+              <button class="doc-link" data-doc="docs/devices/cisco.html">
+                Cisco
+              </button>
+              <button class="doc-link" data-doc="docs/devices/juniper.html">
+                Juniper
+              </button>
+              <button class="doc-link" data-doc="docs/devices/hp-aruba.html">
+                HP/Aruba
+              </button>
+            </div>
+            <div class="docs-group">
+              <div class="docs-group-title">Reference</div>
+              <button class="doc-link" data-doc="docs/reference/keyboard-shortcuts.html">
+                Keyboard shortcuts
+              </button>
+              <button class="doc-link" data-doc="docs/reference/bpf-filters.html">
+                BPF filter reference
+              </button>
+              <button class="doc-link" data-doc="docs/reference/faq.html">
+                FAQ
+              </button>
+            </div>
+          </aside>
+
+          <article class="docs-content" id="doc-content" aria-live="polite">
+            Loading documentation...
+          </article>
+
+          <aside class="docs-toc">
+            <div class="docs-group-title">On this page</div>
+            <div id="doc-outline">Select a document.</div>
+          </aside>
+        </main>
+      </div>
+    </div>
+
+    <div class="toast-region" id="toast-region" aria-live="polite"></div>
+
+    <script type="module" src="/js/pages/advanced.js" defer></script>
+    <script type="module" src="/js/pages/docs.js" defer></script>
+  </body>
+</html>

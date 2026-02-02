@@ -1,0 +1,83 @@
+"""RPi Engineer-in-a-Box API Gateway (Phase 1 skeleton)."""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+from flask import Flask
+from flask_sock import Sock
+from flask_cors import CORS
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
+
+from services.api_gateway.response import success_response  # noqa: E402
+from services.api_gateway.routes import register_routes  # noqa: E402
+from services.api_gateway.websockets import register_websockets  # noqa: E402
+
+
+def create_app() -> Flask:
+    web_root = REPO_ROOT / "web"
+    app = Flask(__name__, static_folder=str(web_root), static_url_path="")
+    sock = Sock(app)
+
+    CORS(
+        app,
+        resources={
+            r"/api/*": {
+                "origins": [r"http://192\.168\.50\.\d+(?::\d+)?"],
+            }
+        },
+    )
+
+    register_routes(app)
+    register_websockets(sock)
+
+    @app.after_request
+    def add_security_headers(response):
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none'"
+        )
+        return response
+
+    @app.get("/health")
+    def health_check():
+        return success_response({"status": "healthy"})
+
+    @app.get("/")
+    def serve_simple_index():
+        """Serve simple mode index at root."""
+        from flask import send_file
+
+        return send_file(web_root / "index.html")
+
+    @app.get("/advanced/")
+    @app.get("/advanced")
+    def serve_advanced_index():
+        """Serve advanced mode index at /advanced/."""
+        from flask import send_file
+
+        return send_file(web_root / "advanced" / "index.html")
+
+    return app
+
+
+app = create_app()
+
+
+if __name__ == "__main__":
+    host = os.getenv("RPI_ENGINEER_API_HOST", "0.0.0.0")
+    port = int(os.getenv("RPI_ENGINEER_API_PORT", "5000"))
+    debug = os.getenv("RPI_ENGINEER_DEBUG", "0") == "1"
+    app.run(host=host, port=port, debug=debug)

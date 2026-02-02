@@ -1,0 +1,48 @@
+.container {
+  width: min(1100px, 100%);
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+  padding: 1.5rem;
+}
+
+.card + .card,
+.card + section,
+section + .card {
+  margin-top: 1.5rem;
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.grid-2 {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.grid-3 {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.grid-4 {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+@media (min-width: 640px) {
+  .container {
+    padding: 2.5rem 2rem 4rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    padding: 3rem 2.5rem 4rem;
+  }
+}

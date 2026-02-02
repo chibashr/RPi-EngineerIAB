@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RPi Engineer-in-a-Box - Simple Mode</title>
+    <meta
+      name="description"
+      content="Simple Mode landing page for RPi Engineer-in-a-Box."
+    />
+    <script>
+      (function () {
+        try {
+          var storedTheme = localStorage.getItem("rpi-theme");
+          if (storedTheme) {
+            document.documentElement.setAttribute("data-theme", storedTheme);
+          }
+        } catch (error) {
+          // Ignore storage failures.
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/theme.css" />
+    <link rel="stylesheet" href="css/layout.css" />
+    <link rel="stylesheet" href="css/components.css" />
+    <link rel="stylesheet" href="css/pages/simple.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <header class="simple-header">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">RPi</div>
+        <div class="brand-text">
+          <div class="brand-title">RPi Engineer-in-a-Box</div>
+          <div class="brand-subtitle">Simple Mode</div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span class="badge badge-simple" aria-label="Mode badge"
+          >Simple Mode</span
+        >
+        <label class="field theme-field" for="theme-select">
+          <span class="field-label">Theme</span>
+          <select id="theme-select" class="select">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="auto">Auto</option>
+          </select>
+        </label>
+        <button class="btn btn-secondary" id="switch-advanced">
+          Switch to Advanced Mode
+        </button>
+      </div>
+    </header>
+
+    <main id="main-content" class="container">
+      <div
+        class="connection-banner"
+        id="simple-connection-banner"
+        role="status"
+      ></div>
+      <section class="card status-card" aria-live="polite">
+        <div class="card-header">
+          <h2>System Status</h2>
+          <div class="status-indicator" id="system-health">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span class="status-text">Loading status...</span>
+          </div>
+        </div>
+        <div class="metrics-grid">
+          <div class="metric">
+            <div class="metric-label">CPU</div>
+            <div class="metric-value" id="metric-cpu">--%</div>
+            <div class="meter">
+              <div class="meter-fill" id="meter-cpu"></div>
+            </div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Memory</div>
+            <div class="metric-value" id="metric-memory">--%</div>
+            <div class="meter">
+              <div class="meter-fill" id="meter-memory"></div>
+            </div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Temperature</div>
+            <div class="metric-value" id="metric-temp">-- C</div>
+            <div class="meter">
+              <div class="meter-fill" id="meter-temp"></div>
+            </div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Storage</div>
+            <div class="metric-value" id="metric-storage">--%</div>
+            <div class="meter">
+              <div class="meter-fill" id="meter-storage"></div>
+            </div>
+          </div>
+        </div>
+        <div class="status-summary" id="network-summary">
+          Checking network status...
+        </div>
+        <details class="status-details">
+          <summary>Details</summary>
+          <div class="detail-grid">
+            <div>
+              <div class="detail-label">Interfaces</div>
+              <ul class="detail-list" id="interface-list">
+                <li>Loading interfaces...</li>
+              </ul>
+            </div>
+            <div>
+              <div class="detail-label">Services</div>
+              <ul class="detail-list" id="service-list">
+                <li>Loading services...</li>
+              </ul>
+            </div>
+            <div>
+              <div class="detail-label">Recent Alerts</div>
+              <ul class="detail-list" id="alert-list">
+                <li>No alerts yet.</li>
+              </ul>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <section class="card connection-card" id="connection-card">
+        <div class="card-header">
+          <h2>Connection Info</h2>
+          <button class="btn btn-ghost" id="toggle-connection-privacy">
+            Hide
+          </button>
+        </div>
+        <div class="connection-grid">
+          <div class="connection-block">
+            <div class="connection-header">
+              <h3>WiFi Hotspot</h3>
+              <span class="status-pill status-pill-info" id="wifi-status"
+                >Unknown</span
+              >
+            </div>
+            <div class="connection-row">
+              <span class="connection-label">SSID</span>
+              <span class="connection-value" id="wifi-ssid"
+                >Not available</span
+              >
+              <button
+                class="btn btn-ghost btn-copy"
+                data-copy-target="wifi-ssid"
+              >
+                Copy
+              </button>
+            </div>
+            <div class="connection-row">
+              <span class="connection-label">Password</span>
+              <span
+                class="connection-value masked"
+                id="wifi-password"
+                data-reveal="false"
+                >Hidden</span
+              >
+              <button class="btn btn-ghost" id="toggle-wifi-password">
+                Show
+              </button>
+            </div>
+            <div class="connection-note">
+              Configure hotspot details in Advanced Mode.
+            </div>
+          </div>
+          <div class="connection-block">
+            <div class="connection-header">
+              <h3>Remote Access</h3>
+              <span class="status-pill status-pill-info" id="remote-status"
+                >Checking</span
+              >
+            </div>
+            <div class="connection-row">
+              <span class="connection-label">Tool</span>
+              <span class="connection-value" id="remote-tool">--</span>
+            </div>
+            <div class="connection-row">
+              <span class="connection-label">Connection ID</span>
+              <span class="connection-value" id="remote-id">--</span>
+              <button
+                class="btn btn-ghost btn-copy"
+                data-copy-target="remote-id"
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="quick-actions">
+        <h2>Quick Actions</h2>
+        <div class="action-grid">
+          <a class="action-card" href="/advanced/capture.html">
+            <div class="action-title">Capture Packets</div>
+            <div class="action-meta" id="action-capture">
+              Requires active interfaces
+            </div>
+          </a>
+          <a class="action-card" href="/advanced/serial.html">
+            <div class="action-title">Serial Console</div>
+            <div class="action-meta" id="action-serial">
+              Devices: --
+            </div>
+          </a>
+          <a class="action-card" href="/advanced/logs.html">
+            <div class="action-title">View Logs</div>
+            <div class="action-meta" id="action-logs">Alerts: --</div>
+          </a>
+          <a class="action-card" href="/advanced/docs.html">
+            <div class="action-title">Documentation</div>
+            <div class="action-meta">Guides and references</div>
+          </a>
+        </div>
+      </section>
+
+      <section class="card mode-switch-card">
+        <div class="mode-switch-content">
+          <div>
+            <h2>Need advanced features?</h2>
+            <p>
+              Switch to Advanced Mode for full control of network, serial,
+              capture, system, and updates.
+            </p>
+          </div>
+          <button class="btn btn-primary" id="switch-advanced-cta">
+            Switch to Advanced Mode
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="simple-footer">
+      <div>Version: <span id="version-label">--</span></div>
+      <div>Last update: <span id="last-update">--</span></div>
+      <div><a href="/advanced/">Go to Advanced Mode</a></div>
+    </footer>
+
+    <div class="toast-region" id="toast-region" aria-live="polite"></div>
+
+    <noscript>
+      <div class="noscript">
+        This interface requires JavaScript for live data. Core navigation and
+        documentation remain available.
+      </div>
+    </noscript>
+
+    <script type="module" src="js/pages/simple.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,472 @@
+"""Network Manager implementation for interface and routing operations."""
+
+from __future__ import annotations
+
+import json
+import os
+import platform
+import shutil
+import socket
+import subprocess
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+try:
+    import psutil  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    psutil = None
+
+PROFILE_DIR = Path("/etc/rpi-engineer/network_profiles")
+CONFIG_DIR = Path("/etc/rpi-engineer/network_configs")
+
+
+@dataclass
+class NetworkRoute:
+    destination: str
+    gateway: str
+    interface: Optional[str] = None
+
+
+class NetworkManager:
+    """Manage network interfaces, routing, and profiles."""
+
+    def list_interfaces(self) -> Dict[str, List[Dict[str, object]]]:
+        interfaces = [self._build_interface(iface) for iface in self._interface_names()]
+        return {"interfaces": interfaces}
+
+    def get_interface(self, interface_id: str) -> Dict[str, object]:
+        if interface_id not in self._interface_names():
+            raise KeyError("Interface not found")
+        return self._build_interface(interface_id)
+
+    def update_interface(self, interface_id: str, config: Dict[str, object]) -> Dict[str, object]:
+        if interface_id not in self._interface_names():
+            raise KeyError("Interface not found")
+        mode = config.get("mode")
+        if mode not in {"dhcp", "static"}:
+            raise ValueError("Mode must be dhcp or static")
+        if os.getenv("RPI_ENGINEER_DRY_RUN", "1") == "1":
+            self._save_interface_config(interface_id, config)
+            return {"interface": interface_id, "mode": mode, "applied": False}
+        if mode == "dhcp":
+            self._apply_dhcp(interface_id)
+        else:
+            self._apply_static(interface_id, config)
+        return {"interface": interface_id, "mode": mode, "applied": True}
+
+    def list_routes(self) -> Dict[str, List[Dict[str, str]]]:
+        return {"routes": [route.__dict__ for route in self._routes()]}
+
+    def add_route(self, payload: Dict[str, object]) -> Dict[str, object]:
+        destination = payload.get("destination")
+        gateway = payload.get("gateway")
+        interface = payload.get("interface")
+        if not destination or not gateway:
+            raise ValueError("destination and gateway are required")
+        if os.getenv("RPI_ENGINEER_DRY_RUN", "1") == "1":
+            self._save_route(NetworkRoute(destination, gateway, interface))
+            return {"destination": destination, "gateway": gateway, "interface": interface}
+        cmd = ["ip", "route", "add", str(destination), "via", str(gateway)]
+        if interface:
+            cmd += ["dev", str(interface)]
+        subprocess.run(cmd, check=True)
+        return {"destination": destination, "gateway": gateway, "interface": interface}
+
+    def list_profiles(self) -> Dict[str, List[Dict[str, object]]]:
+        profiles = []
+        for path in sorted(PROFILE_DIR.glob("*.json")):
+            try:
+                payload = json.loads(path.read_text())
+                profiles.append(
+                    {
+                        "name": payload.get("name", path.stem),
+                        "description": payload.get("description", ""),
+                        "saved_at": payload.get("saved_at"),
+                    }
+                )
+            except (OSError, json.JSONDecodeError):
+                continue
+        return {"profiles": profiles}
+
+    def save_profile(self, payload: Dict[str, object]) -> Dict[str, object]:
+        name = payload.get("name")
+        if not name:
+            raise ValueError("Profile name is required")
+        description = payload.get("description", "")
+        PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+        data = {
+            "name": name,
+            "description": description,
+            "saved_at": _timestamp(),
+            "interfaces": self.list_interfaces()["interfaces"],
+            "routes": self.list_routes()["routes"],
+        }
+        path = PROFILE_DIR / f"{name}.json"
+        path.write_text(json.dumps(data, indent=2))
+        return {"name": name, "description": description}
+
+    def load_profile(self, name: str) -> Dict[str, object]:
+        path = PROFILE_DIR / f"{name}.json"
+        if not path.exists():
+            raise KeyError("Profile not found")
+        payload = json.loads(path.read_text())
+        if os.getenv("RPI_ENGINEER_DRY_RUN", "1") == "1":
+            return {"name": name, "applied": False}
+        for iface in payload.get("interfaces", []):
+            iface_id = iface.get("id")
+            config = iface.get("config")
+            if iface_id and config:
+                self.update_interface(iface_id, config)
+        return {"name": name, "applied": True}
+
+    def get_status(self) -> Dict[str, object]:
+        wan_interface = self._default_route_interface()
+        wan_status = "connected" if self._check_connectivity() else "disconnected"
+        hotspot_status = "active" if self._hotspot_active() else "inactive"
+        hotspot_config = self._get_hotspot_config() or {}
+        return {
+            "wan_interface": wan_interface or "",
+            "wan_status": wan_status,
+            "hotspot_status": hotspot_status,
+            "ssid": hotspot_config.get("ssid", ""),
+            "channel": hotspot_config.get("channel", ""),
+            "last_test": _timestamp(),
+        }
+
+    def reset_network(self, preserve_hotspot: bool = False) -> Dict[str, object]:
+        dry_run = os.getenv("RPI_ENGINEER_DRY_RUN", "1") == "1"
+        if dry_run:
+            return {"reset": True, "preserve_hotspot": preserve_hotspot, "applied": False}
+        if platform.system().lower() == "windows":
+            raise RuntimeError("Network reset not supported on Windows")
+        hotspot_config = None
+        if preserve_hotspot:
+            hotspot_config = self._get_hotspot_config()
+        for iface in self._interface_names():
+            if preserve_hotspot and iface.startswith("wlan"):
+                continue
+            try:
+                subprocess.run(["ip", "link", "set", iface, "down"], check=False)
+                subprocess.run(["ip", "addr", "flush", "dev", iface], check=False)
+            except Exception:
+                pass
+        if preserve_hotspot and hotspot_config:
+            self._restore_hotspot_config(hotspot_config)
+        return {"reset": True, "preserve_hotspot": preserve_hotspot, "applied": True}
+
+    def create_vlan(self, payload: Dict[str, object]) -> Dict[str, object]:
+        parent = payload.get("parent")
+        vlan_id = payload.get("vlan_id")
+        name = payload.get("name")
+        if not parent or vlan_id is None:
+            raise ValueError("parent and vlan_id are required")
+        if not isinstance(vlan_id, int) or vlan_id < 1 or vlan_id > 4094:
+            raise ValueError("vlan_id must be between 1 and 4094")
+        vlan_name = name or f"{parent}.{vlan_id}"
+        dry_run = os.getenv("RPI_ENGINEER_DRY_RUN", "1") == "1"
+        if dry_run:
+            return {"parent": parent, "vlan_id": vlan_id, "name": vlan_name, "applied": False}
+        if platform.system().lower() == "windows":
+            raise RuntimeError("VLAN creation not supported on Windows")
+        if not _which("ip"):
+            raise RuntimeError("ip command not available")
+        if parent not in self._interface_names():
+            raise ValueError("Parent interface not found")
+        subprocess.run(
+            ["ip", "link", "add", "link", parent, "name", vlan_name, "type", "vlan", "id", str(vlan_id)],
+            check=True,
+        )
+        subprocess.run(["ip", "link", "set", vlan_name, "up"], check=True)
+        return {"parent": parent, "vlan_id": vlan_id, "name": vlan_name, "applied": True}
+
+    def configure_hotspot(self, payload: Dict[str, object]) -> Dict[str, object]:
+        ssid = payload.get("ssid")
+        password = payload.get("password")
+        channel = payload.get("channel", 6)
+        if not ssid:
+            raise ValueError("SSID is required")
+        dry_run = os.getenv("RPI_ENGINEER_DRY_RUN", "1") == "1"
+        if dry_run:
+            return {"ssid": ssid, "channel": channel, "applied": False}
+        if platform.system().lower() == "windows":
+            raise RuntimeError("Hotspot configuration not supported on Windows")
+        if not _which("systemctl"):
+            raise RuntimeError("systemctl not available")
+        hostapd_config = Path("/etc/hostapd/hostapd.conf")
+        hostapd_config.parent.mkdir(parents=True, exist_ok=True)
+        config_content = f"""interface=wlan0
+driver=nl80211
+ssid={ssid}
+hw_mode=g
+channel={channel}
+wpa=2
+wpa_passphrase={password or ""}
+wpa_key_mgmt=WPA-PSK
+"""
+        hostapd_config.write_text(config_content)
+        subprocess.run(["systemctl", "restart", "hostapd"], check=False)
+        return {"ssid": ssid, "channel": channel, "applied": True}
+
+    def _interface_names(self) -> List[str]:
+        if psutil:
+            return list(psutil.net_if_addrs().keys())
+        if _which("ip"):
+            try:
+                data = _run_ip_json(["addr"])
+                return [entry.get("ifname") for entry in data if entry.get("ifname")]
+            except (OSError, json.JSONDecodeError):
+                pass
+        return []
+
+    def _build_interface(self, name: str) -> Dict[str, object]:
+        addrs = self._interface_addrs(name)
+        stats = self._interface_stats(name)
+        ip_address = addrs.get("ip_address")
+        gateway, metric = self._gateway_for(name)
+        iface_type = self._interface_type(name)
+        return {
+            "id": name,
+            "name": name,
+            "friendly_name": self._friendly_name(name),
+            "type": iface_type,
+            "status": "up" if stats.get("isup") else "down",
+            "ip_address": ip_address,
+            "gateway": gateway,
+            "metric": metric,
+            "role": self._role_for(name, iface_type),
+            "mac_address": addrs.get("mac_address"),
+            "mtu": stats.get("mtu"),
+            "speed_mbps": stats.get("speed"),
+            "driver": self._driver_for(name),
+        }
+
+    def _interface_addrs(self, name: str) -> Dict[str, Optional[str]]:
+        if psutil:
+            ip_address = None
+            mac_address = None
+            af_link = getattr(psutil, "AF_LINK", None)
+            for addr in psutil.net_if_addrs().get(name, []):
+                if addr.family == socket.AF_INET:
+                    ip_address = addr.address
+                if af_link and addr.family == af_link:
+                    mac_address = addr.address
+            return {"ip_address": ip_address, "mac_address": mac_address}
+        return {"ip_address": None, "mac_address": None}
+
+    def _interface_stats(self, name: str) -> Dict[str, Optional[object]]:
+        if psutil:
+            stats = psutil.net_if_stats().get(name)
+            if stats:
+                return {"isup": stats.isup, "mtu": stats.mtu, "speed": stats.speed}
+        return {"isup": False, "mtu": None, "speed": None}
+
+    def _gateway_for(self, name: str) -> Tuple[Optional[str], Optional[int]]:
+        if not _which("ip"):
+            return None, None
+        result = subprocess.run(
+            ["ip", "route", "show", "default", "dev", name],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return None, None
+        parts = result.stdout.strip().split()
+        gateway = None
+        metric = None
+        if "via" in parts:
+            idx = parts.index("via")
+            if idx + 1 < len(parts):
+                gateway = parts[idx + 1]
+        if "metric" in parts:
+            idx = parts.index("metric")
+            if idx + 1 < len(parts) and parts[idx + 1].isdigit():
+                metric = int(parts[idx + 1])
+        if metric is None:
+            metric = 100 if name.startswith("usb") else 200 if name.startswith("eth") else None
+        return gateway, metric
+
+    def _routes(self) -> List[NetworkRoute]:
+        routes = []
+        if not _which("ip"):
+            return routes
+        output = subprocess.run(["ip", "route"], capture_output=True, text=True)
+        if output.returncode != 0:
+            return routes
+        for line in output.stdout.splitlines():
+            parts = line.split()
+            if not parts:
+                continue
+            destination = parts[0]
+            gateway = ""
+            interface = None
+            if "via" in parts:
+                gateway = parts[parts.index("via") + 1]
+            if "dev" in parts:
+                interface = parts[parts.index("dev") + 1]
+            routes.append(NetworkRoute(destination, gateway, interface))
+        return routes
+
+    def _default_route_interface(self) -> Optional[str]:
+        if not _which("ip"):
+            return None
+        output = subprocess.run(
+            ["ip", "route", "show", "default"], capture_output=True, text=True
+        )
+        if output.returncode != 0:
+            return None
+        for line in output.stdout.splitlines():
+            parts = line.split()
+            if "dev" in parts:
+                return parts[parts.index("dev") + 1]
+        return None
+
+    def _check_connectivity(self) -> bool:
+        if platform.system().lower() == "windows":
+            return False
+        ping = subprocess.run(
+            ["ping", "-c", "1", "-W", "1", "8.8.8.8"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if ping.returncode != 0:
+            return False
+        try:
+            socket.gethostbyname("example.com")
+        except OSError:
+            return False
+        return True
+
+    def _hotspot_active(self) -> bool:
+        if platform.system().lower() == "windows":
+            return False
+        if _which("systemctl"):
+            result = subprocess.run(
+                ["systemctl", "is-active", "hostapd"],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                return True
+        return False
+
+    def _role_for(self, name: str, iface_type: str) -> str:
+        if iface_type == "wifi" and name.startswith("wlan"):
+            return "lan"
+        return "wan"
+
+    def _interface_type(self, name: str) -> str:
+        if name.startswith("usb"):
+            return "usb"
+        if name.startswith("eth"):
+            return "ethernet"
+        if name.startswith("wlan"):
+            return "wifi"
+        return "unknown"
+
+    def _friendly_name(self, name: str) -> str:
+        if name.startswith("usb"):
+            return "USB Jetpack"
+        if name.startswith("eth"):
+            return "Ethernet"
+        if name.startswith("wlan"):
+            return "WiFi Hotspot"
+        return name
+
+    def _driver_for(self, name: str) -> Optional[str]:
+        if not _which("ethtool"):
+            return None
+        result = subprocess.run(
+            ["ethtool", "-i", name], capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            return None
+        for line in result.stdout.splitlines():
+            if line.startswith("driver:"):
+                return line.split(":", 1)[1].strip()
+        return None
+
+    def _apply_dhcp(self, interface_id: str) -> None:
+        if platform.system().lower() == "windows":
+            raise RuntimeError("DHCP not supported on Windows")
+        subprocess.run(["dhclient", "-r", interface_id], check=False)
+        subprocess.run(["dhclient", interface_id], check=True)
+
+    def _apply_static(self, interface_id: str, config: Dict[str, object]) -> None:
+        ip_address = config.get("ip_address")
+        netmask = config.get("netmask")
+        gateway = config.get("gateway")
+        if not ip_address or not netmask:
+            raise ValueError("ip_address and netmask required for static mode")
+        if platform.system().lower() == "windows":
+            raise RuntimeError("Static config not supported on Windows")
+        cidr = _netmask_to_cidr(str(netmask))
+        subprocess.run(["ip", "addr", "flush", "dev", interface_id], check=True)
+        subprocess.run(
+            ["ip", "addr", "add", f"{ip_address}/{cidr}", "dev", interface_id],
+            check=True,
+        )
+        if gateway:
+            subprocess.run(
+                ["ip", "route", "replace", "default", "via", str(gateway), "dev", interface_id],
+                check=True,
+            )
+
+    def _save_interface_config(self, interface_id: str, config: Dict[str, object]) -> None:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        path = CONFIG_DIR / f"{interface_id}.json"
+        payload = {"interface": interface_id, "config": config, "saved_at": _timestamp()}
+        path.write_text(json.dumps(payload, indent=2))
+
+    def _save_route(self, route: NetworkRoute) -> None:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        path = CONFIG_DIR / "routes.json"
+        payload = []
+        if path.exists():
+            try:
+                payload = json.loads(path.read_text())
+            except (OSError, json.JSONDecodeError):
+                payload = []
+        payload.append(route.__dict__)
+        path.write_text(json.dumps(payload, indent=2))
+
+    def _get_hotspot_config(self) -> Optional[Dict[str, object]]:
+        hostapd_config = Path("/etc/hostapd/hostapd.conf")
+        if not hostapd_config.exists():
+            return None
+        try:
+            content = hostapd_config.read_text()
+            config = {}
+            for line in content.splitlines():
+                if "=" in line and not line.strip().startswith("#"):
+                    key, value = line.split("=", 1)
+                    config[key.strip()] = value.strip()
+            return config
+        except OSError:
+            return None
+
+    def _restore_hotspot_config(self, config: Dict[str, object]) -> None:
+        hostapd_config = Path("/etc/hostapd/hostapd.conf")
+        hostapd_config.parent.mkdir(parents=True, exist_ok=True)
+        content = "\n".join(f"{k}={v}" for k, v in config.items())
+        hostapd_config.write_text(content)
+        if _which("systemctl"):
+            subprocess.run(["systemctl", "restart", "hostapd"], check=False)
+
+
+def _run_ip_json(args: List[str]) -> List[Dict[str, object]]:
+    output = subprocess.check_output(["ip", "-j"] + args, text=True)
+    return json.loads(output)
+
+
+def _netmask_to_cidr(netmask: str) -> int:
+    return sum(bin(int(part)).count("1") for part in netmask.split("."))
+
+
+def _timestamp() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _which(binary: str) -> Optional[str]:
+    return shutil.which(binary)

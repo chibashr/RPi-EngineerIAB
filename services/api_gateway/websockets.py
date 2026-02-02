@@ -1,0 +1,238 @@
+"""WebSocket endpoints for serial console and capture streaming."""
+
+from __future__ import annotations
+
+import json
+import logging
+import threading
+import time
+from typing import Optional
+
+from flask_sock import Sock
+
+from services.capture_manager import capture_manager
+from services.capture_manager.manager import split_bpf_filter
+from services.serial_manager import serial_manager
+from services.system_manager import SystemManager
+from services.network_manager import NetworkManager
+
+try:
+    import serial  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    serial = None
+
+
+def register_websockets(sock: Sock) -> None:
+    system_manager = SystemManager()
+    network_manager = NetworkManager()
+    logger = logging.getLogger(__name__)
+
+    @sock.route("/ws/status")
+    def status_stream(ws) -> None:  # type: ignore[no-untyped-def]
+        stop_event = threading.Event()
+        send_lock = threading.Lock()
+
+        def safe_send(payload: dict) -> bool:
+            try:
+                with send_lock:
+                    ws.send(json.dumps(payload))
+                return True
+            except Exception:
+                stop_event.set()
+                return False
+
+        def receiver() -> None:
+            while not stop_event.is_set():
+                try:
+                    message = ws.receive()
+                except Exception:
+                    break
+                if message is None:
+                    break
+                try:
+                    payload = json.loads(message)
+                except json.JSONDecodeError:
+                    continue
+                if payload.get("type") == "ping":
+                    safe_send({"type": "pong"})
+            stop_event.set()
+
+        thread = threading.Thread(target=receiver, daemon=True)
+        thread.start()
+
+        while not stop_event.is_set():
+            system_status = system_manager.get_status()
+            if not safe_send({"type": "system_metrics", "data": system_status}):
+                break
+            network_status = network_manager.get_status()
+            if not safe_send({"type": "network_status", "data": network_status}):
+                break
+            network_interfaces = network_manager.list_interfaces()
+            if not safe_send(
+                {"type": "network_interfaces", "data": network_interfaces}
+            ):
+                break
+            time.sleep(2)
+
+    @sock.route("/ws/serial/<session_id>")
+    def serial_console(ws, session_id: str) -> None:  # type: ignore[no-untyped-def]
+        try:
+            session = serial_manager.get_session_record(session_id)
+        except KeyError:
+            ws.send(json.dumps({"type": "error", "message": "Session not found"}))
+            return
+        if not serial:
+            ws.send(json.dumps({"type": "error", "message": "pyserial not installed"}))
+            return
+        config = session.config or {}
+        baud_rate = int(config.get("baud_rate", 9600))
+        data_bits = int(config.get("data_bits", 8))
+        parity = str(config.get("parity", "none")).upper()
+        stop_bits = int(config.get("stop_bits", 1))
+        timeout = 0.1
+        parity_map = {
+            "NONE": serial.PARITY_NONE,
+            "N": serial.PARITY_NONE,
+            "EVEN": serial.PARITY_EVEN,
+            "E": serial.PARITY_EVEN,
+            "ODD": serial.PARITY_ODD,
+            "O": serial.PARITY_ODD,
+        }
+        bytesize_map = {
+            5: serial.FIVEBITS,
+            6: serial.SIXBITS,
+            7: serial.SEVENBITS,
+            8: serial.EIGHTBITS,
+        }
+        stopbits_map = {1: serial.STOPBITS_ONE, 2: serial.STOPBITS_TWO}
+        try:
+            ser = serial.Serial(
+                session.device_id,
+                baudrate=baud_rate,
+                bytesize=bytesize_map.get(data_bits, serial.EIGHTBITS),
+                parity=parity_map.get(parity, serial.PARITY_NONE),
+                stopbits=stopbits_map.get(stop_bits, serial.STOPBITS_ONE),
+                timeout=timeout,
+            )
+        except Exception as exc:
+            ws.send(json.dumps({"type": "error", "message": str(exc)}))
+            return
+
+        session.websocket_connected = True
+        stop_event = threading.Event()
+        send_lock = threading.Lock()
+
+        def reader() -> None:
+            last_status = time.time()
+            while not stop_event.is_set():
+                try:
+                    data = ser.read(ser.in_waiting or 1)
+                except Exception:
+                    break
+                if data:
+                    serial_manager.record_rx(session_id, data)
+                    payload = {"type": "data", "data": data.decode(errors="ignore")}
+                    with send_lock:
+                        try:
+                            ws.send(json.dumps(payload))
+                        except Exception:
+                            break
+                if time.time() - last_status > 1:
+                    last_status = time.time()
+                    status = {
+                        "type": "status",
+                        "bytes_tx": session.bytes_tx,
+                        "bytes_rx": session.bytes_rx,
+                    }
+                    with send_lock:
+                        try:
+                            ws.send(json.dumps(status))
+                        except Exception:
+                            break
+
+        thread = threading.Thread(target=reader, daemon=True)
+        thread.start()
+
+        try:
+            while True:
+                message = ws.receive()
+                if message is None:
+                    break
+                try:
+                    payload = json.loads(message)
+                except json.JSONDecodeError:
+                    ws.send(json.dumps({"type": "error", "message": "Invalid JSON"}))
+                    continue
+                msg_type = payload.get("type")
+                if msg_type == "data":
+                    data = payload.get("data", "")
+                    if data:
+                        raw = data.encode()
+                        ser.write(raw)
+                        serial_manager.record_tx(session_id, raw)
+                elif msg_type == "control":
+                    action = payload.get("action")
+                    if action == "pause_logging":
+                        serial_manager.update_session(session_id, {"logging_paused": True})
+                    if action == "resume_logging":
+                        serial_manager.update_session(session_id, {"logging_paused": False})
+        except Exception as exc:
+            logger.debug("Serial WebSocket loop exited: %s", exc)
+        finally:
+            stop_event.set()
+            session.websocket_connected = False
+            ser.close()
+
+    @sock.route("/ws/capture/<capture_id>")
+    def capture_stream(ws, capture_id: str) -> None:  # type: ignore[no-untyped-def]
+        job = capture_manager.get_job(capture_id)
+        if not job:
+            ws.send(json.dumps({"type": "error", "message": "Capture not found"}))
+            return
+        interface = job.interface
+        filter_expr = job.filter or ""
+        if not _which("tcpdump"):
+            ws.send(json.dumps({"type": "error", "message": "tcpdump not installed"}))
+            return
+        cmd = ["tcpdump", "-l", "-n", "-i", interface]
+        if filter_expr:
+            try:
+                cmd += split_bpf_filter(filter_expr)
+            except ValueError as exc:
+                ws.send(json.dumps({"type": "error", "message": str(exc)}))
+                return
+        proc = _popen_stream(cmd)
+        if not proc:
+            ws.send(json.dumps({"type": "error", "message": "Unable to start tcpdump"}))
+            return
+        try:
+            for line in proc.stdout:  # type: ignore[union-attr]
+                payload = {"type": "packet", "summary": line.strip()}
+                try:
+                    ws.send(json.dumps(payload))
+                except Exception:
+                    break
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except Exception:
+                proc.kill()
+                proc.wait()
+
+
+def _popen_stream(cmd: list[str]) -> Optional["subprocess.Popen[str]"]:
+    import subprocess
+
+    try:
+        return subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+        )
+    except OSError:
+        return None
+
+
+def _which(binary: str) -> Optional[str]:
+    import shutil
+
+    return shutil.which(binary)

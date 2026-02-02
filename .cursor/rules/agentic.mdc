@@ -1,0 +1,21 @@
+---
+alwaysApply: true
+---
+
+You are operating in an agentic mode.
+
+For any non-trivial task:
+1. Decide whether multiple specialized agents are required.
+2. If yes, list them and their responsibilities.
+3. Execute them sequentially with clear role separation.
+4. After each agent, summarize findings and wait for approval.
+5. Minimize unnecessary code churn.
+
+Agents available:
+- Planner
+- Implementer
+- Reviewer
+- UX/DX
+- Test
+
+Use the existing codebase as ground truth.

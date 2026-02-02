@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RPi Engineer-in-a-Box - Network</title>
+    <meta name="description" content="Network management in Advanced Mode." />
+    <script>
+      (function () {
+        try {
+          var storedTheme = localStorage.getItem("rpi-theme");
+          if (storedTheme) {
+            document.documentElement.setAttribute("data-theme", storedTheme);
+          }
+        } catch (error) {
+          // Ignore storage failures.
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="/css/base.css" />
+    <link rel="stylesheet" href="/css/theme.css" />
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="/css/pages/advanced.css" />
+    <link rel="stylesheet" href="/css/pages/network.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="brand">
+            <div class="brand-mark" aria-hidden="true">RPi</div>
+            <div class="brand-text">
+              <div class="brand-title">RPi Engineer-in-a-Box</div>
+              <div class="brand-subtitle">Advanced Mode</div>
+            </div>
+          </div>
+          <button class="btn btn-ghost" id="collapse-toggle">Collapse</button>
+        </div>
+        <nav class="sidebar-nav" aria-label="Primary">
+          <a class="nav-item" href="/advanced/" data-page="dashboard"
+            >Dashboard</a
+          >
+          <a class="nav-item" href="/advanced/network.html" data-page="network"
+            >Network</a
+          >
+          <a class="nav-item" href="/advanced/serial.html" data-page="serial"
+            >Serial</a
+          >
+          <a class="nav-item" href="/advanced/capture.html" data-page="capture"
+            >Capture</a
+          >
+          <a class="nav-item" href="/advanced/system.html" data-page="system"
+            >System</a
+          >
+          <a class="nav-item" href="/advanced/updates.html" data-page="updates"
+            >Updates</a
+          >
+          <a class="nav-item" href="/advanced/modules.html" data-page="modules"
+            >Modules</a
+          >
+          <a class="nav-item" href="/advanced/logs.html" data-page="logs"
+            >Logs</a
+          >
+          <a class="nav-item" href="/advanced/docs.html" data-page="docs"
+            >Documentation</a
+          >
+        </nav>
+        <div class="sidebar-footer">
+          <button class="btn btn-secondary" id="switch-simple">
+            Switch to Simple Mode
+          </button>
+        </div>
+      </aside>
+
+      <div class="shell-content">
+        <header class="topbar">
+          <button class="btn btn-ghost" id="sidebar-toggle">Menu</button>
+          <div class="breadcrumb" id="breadcrumb">Network</div>
+          <div class="topbar-actions">
+            <label class="field theme-field" for="theme-select">
+              <span class="field-label">Theme</span>
+              <select id="theme-select" class="select">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="auto">Auto</option>
+              </select>
+            </label>
+          </div>
+        </header>
+
+        <main id="main-content" class="main-content">
+          <div class="page-header">
+            <div>
+              <h1>Network Management</h1>
+              <p class="page-subtitle">
+                Configure interfaces, routing, profiles, and hotspot settings.
+              </p>
+            </div>
+            <div class="toolbar">
+              <button class="btn btn-secondary" id="refresh-network">
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div class="tabs" data-tabs>
+            <button class="tab-button" data-tab-target="interfaces">
+              Interfaces
+            </button>
+            <button class="tab-button" data-tab-target="vlans">VLANs</button>
+            <button class="tab-button" data-tab-target="routing">Routing</button>
+            <button class="tab-button" data-tab-target="profiles">
+              Profiles
+            </button>
+            <button class="tab-button" data-tab-target="hotspot">
+              Hotspot
+            </button>
+          </div>
+
+          <section class="card" data-tab-panel="interfaces">
+            <div class="section-header">
+              <h2>Interfaces</h2>
+              <button class="btn btn-primary" id="configure-interface">
+                Configure Interface
+              </button>
+            </div>
+            <div class="section-body">
+              <table class="status-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>IP</th>
+                    <th>Role</th>
+                  </tr>
+                </thead>
+                <tbody id="interface-table-body">
+                  <tr>
+                    <td colspan="4">Loading interfaces...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="card" data-tab-panel="vlans" hidden>
+            <div class="section-header">
+              <h2>VLANs</h2>
+              <button class="btn btn-primary" id="add-vlan">Add VLAN</button>
+            </div>
+            <p class="section-muted">
+              Configure VLAN interfaces and assign parent links.
+            </p>
+            <div class="empty-state" id="vlan-list">No VLANs configured.</div>
+          </section>
+
+          <section class="card" data-tab-panel="routing" hidden>
+            <div class="section-header">
+              <h2>Routing</h2>
+              <button class="btn btn-primary" id="add-route">Add Route</button>
+            </div>
+            <table class="status-table">
+              <thead>
+                <tr>
+                  <th>Destination</th>
+                  <th>Gateway</th>
+                  <th>Interface</th>
+                </tr>
+              </thead>
+              <tbody id="route-table-body">
+                <tr>
+                  <td colspan="3">Loading routes...</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="card" data-tab-panel="profiles" hidden>
+            <div class="section-header">
+              <h2>Profiles</h2>
+              <button class="btn btn-primary" id="save-profile">
+                Save Profile
+              </button>
+            </div>
+            <ul class="status-list" id="profile-list"></ul>
+          </section>
+
+          <section class="card" data-tab-panel="hotspot" hidden>
+            <div class="section-header">
+              <h2>Hotspot</h2>
+              <button class="btn btn-secondary" id="configure-hotspot">
+                Configure
+              </button>
+            </div>
+            <div class="info-grid">
+              <div>
+                <div class="info-label">Status</div>
+                <div class="info-value" id="hotspot-status">Unknown</div>
+              </div>
+              <div>
+                <div class="info-label">SSID</div>
+                <div class="info-value" id="hotspot-ssid">--</div>
+              </div>
+              <div>
+                <div class="info-label">Channel</div>
+                <div class="info-value" id="hotspot-channel">--</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card factory-reset-card">
+            <div class="section-header">
+              <h2>Factory Reset</h2>
+            </div>
+            <p class="section-muted">
+              Reset network settings to factory defaults. You may keep the
+              hotspot enabled for recovery.
+            </p>
+            <label class="field checkbox-field">
+              <input type="checkbox" id="preserve-hotspot" />
+              Preserve hotspot configuration
+            </label>
+            <button class="btn btn-secondary" id="reset-network">
+              Reset Network
+            </button>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <div class="toast-region" id="toast-region" aria-live="polite"></div>
+
+    <script type="module" src="/js/pages/advanced.js" defer></script>
+    <script type="module" src="/js/pages/network.js" defer></script>
+  </body>
+</html>

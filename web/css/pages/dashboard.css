@@ -1,0 +1,92 @@
+.metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.metric-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 1rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.metric-card .metric-label {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.metric-card .metric-value {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 0.4rem 0 0.8rem;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.panel-meta {
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.status-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.status-table th,
+.status-table td {
+  text-align: left;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.status-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  background: rgba(90, 100, 114, 0.06);
+}
+
+.status-item .status-label {
+  font-weight: 600;
+}
+
+.status-item .status-value {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}

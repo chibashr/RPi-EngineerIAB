@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RPi Engineer-in-a-Box - Dashboard</title>
+    <meta
+      name="description"
+      content="Advanced mode dashboard for RPi Engineer-in-a-Box."
+    />
+    <script>
+      (function () {
+        try {
+          var storedTheme = localStorage.getItem("rpi-theme");
+          if (storedTheme) {
+            document.documentElement.setAttribute("data-theme", storedTheme);
+          }
+        } catch (error) {
+          // Ignore storage failures.
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="/css/base.css" />
+    <link rel="stylesheet" href="/css/theme.css" />
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="/css/pages/advanced.css" />
+    <link rel="stylesheet" href="/css/pages/dashboard.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="brand">
+            <div class="brand-mark" aria-hidden="true">RPi</div>
+            <div class="brand-text">
+              <div class="brand-title">RPi Engineer-in-a-Box</div>
+              <div class="brand-subtitle">Advanced Mode</div>
+            </div>
+          </div>
+          <button class="btn btn-ghost" id="collapse-toggle">Collapse</button>
+        </div>
+        <nav class="sidebar-nav" aria-label="Primary">
+          <a class="nav-item" href="/advanced/" data-page="dashboard"
+            >Dashboard</a
+          >
+          <a class="nav-item" href="/advanced/network.html" data-page="network"
+            >Network</a
+          >
+          <a class="nav-item" href="/advanced/serial.html" data-page="serial"
+            >Serial</a
+          >
+          <a class="nav-item" href="/advanced/capture.html" data-page="capture"
+            >Capture</a
+          >
+          <a class="nav-item" href="/advanced/system.html" data-page="system"
+            >System</a
+          >
+          <a class="nav-item" href="/advanced/updates.html" data-page="updates"
+            >Updates</a
+          >
+          <a class="nav-item" href="/advanced/modules.html" data-page="modules"
+            >Modules</a
+          >
+          <a class="nav-item" href="/advanced/logs.html" data-page="logs"
+            >Logs</a
+          >
+          <a class="nav-item" href="/advanced/docs.html" data-page="docs"
+            >Documentation</a
+          >
+        </nav>
+        <div class="sidebar-footer">
+          <button class="btn btn-secondary" id="switch-simple">
+            Switch to Simple Mode
+          </button>
+        </div>
+      </aside>
+
+      <div class="shell-content">
+        <header class="topbar">
+          <button class="btn btn-ghost" id="sidebar-toggle">Menu</button>
+          <div class="breadcrumb" id="breadcrumb">Dashboard</div>
+          <div class="topbar-actions">
+            <label class="field theme-field" for="theme-select">
+              <span class="field-label">Theme</span>
+              <select id="theme-select" class="select">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="auto">Auto</option>
+              </select>
+            </label>
+          </div>
+        </header>
+
+        <main id="main-content" class="main-content">
+          <div
+            class="connection-banner"
+            id="dashboard-connection-banner"
+            role="status"
+          ></div>
+          <div class="page-header">
+            <div>
+              <h1>Dashboard</h1>
+              <p class="page-subtitle">
+                System health, network status, and active tasks at a glance.
+              </p>
+            </div>
+            <div class="toolbar">
+              <a class="btn btn-primary" href="/advanced/capture.html"
+                >Start Capture</a
+              >
+              <a class="btn btn-secondary" href="/advanced/serial.html"
+                >Open Serial</a
+              >
+              <a class="btn btn-secondary" href="/advanced/updates.html"
+                >Check Updates</a
+              >
+              <a class="btn btn-ghost" href="/advanced/logs.html"
+                >View Logs</a
+              >
+            </div>
+          </div>
+
+          <section class="metrics-row">
+            <div class="metric-card">
+              <div class="metric-label">CPU</div>
+              <div class="metric-value" id="dash-cpu-value">--%</div>
+              <div class="meter">
+                <div class="meter-fill" id="dash-cpu-meter"></div>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Memory</div>
+              <div class="metric-value" id="dash-memory-value">--%</div>
+              <div class="meter">
+                <div class="meter-fill" id="dash-memory-meter"></div>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Temperature</div>
+              <div class="metric-value" id="dash-temp-value">-- C</div>
+              <div class="meter">
+                <div class="meter-fill" id="dash-temp-meter"></div>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Storage</div>
+              <div class="metric-value" id="dash-storage-value">--%</div>
+              <div class="meter">
+                <div class="meter-fill" id="dash-storage-meter"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="dashboard-grid">
+            <div class="panel">
+              <div class="panel-header">
+                <h2>Network Status</h2>
+                <span class="panel-meta" id="network-summary">Loading...</span>
+              </div>
+              <div class="panel-body">
+                <table class="status-table">
+                  <thead>
+                    <tr>
+                      <th>Interface</th>
+                      <th>Status</th>
+                      <th>IP</th>
+                      <th>Type</th>
+                    </tr>
+                  </thead>
+                  <tbody id="network-table-body">
+                    <tr>
+                      <td colspan="4">Loading interfaces...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <h2>Service Status</h2>
+                <span class="panel-meta" id="service-summary">Loading...</span>
+              </div>
+              <div class="panel-body">
+                <ul class="status-list" id="service-list"></ul>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <h2>Active Captures</h2>
+                <span class="panel-meta" id="capture-summary">Loading...</span>
+              </div>
+              <div class="panel-body">
+                <ul class="status-list" id="capture-list"></ul>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <h2>Recent Alerts</h2>
+                <span class="panel-meta" id="alert-summary">Loading...</span>
+              </div>
+              <div class="panel-body">
+                <ul class="status-list" id="alert-list"></ul>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <div class="toast-region" id="toast-region" aria-live="polite"></div>
+
+    <script type="module" src="/js/pages/advanced.js" defer></script>
+    <script type="module" src="/js/pages/dashboard.js" defer></script>
+  </body>
+</html>

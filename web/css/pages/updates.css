@@ -1,0 +1,47 @@
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.info-label {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.info-value {
+  font-weight: 600;
+}
+
+.section-muted {
+  color: var(--color-muted);
+  margin-top: 0.75rem;
+}
+
+.empty-state {
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
+  padding: 1rem;
+  color: var(--color-muted);
+}

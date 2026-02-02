@@ -1,0 +1,44 @@
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.status-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.log-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  align-items: end;
+  margin-bottom: 1rem;
+}
+
+.log-content {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: rgba(90, 100, 114, 0.05);
+  padding: 1rem;
+  min-height: 240px;
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 0.85rem;
+}
+
+.empty-state {
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
+  padding: 1rem;
+  color: var(--color-muted);
+}

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RPi Engineer-in-a-Box - Updates</title>
+    <meta name="description" content="Updates and maintenance." />
+    <script>
+      (function () {
+        try {
+          var storedTheme = localStorage.getItem("rpi-theme");
+          if (storedTheme) {
+            document.documentElement.setAttribute("data-theme", storedTheme);
+          }
+        } catch (error) {
+          // Ignore storage failures.
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="/css/base.css" />
+    <link rel="stylesheet" href="/css/theme.css" />
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="/css/pages/advanced.css" />
+    <link rel="stylesheet" href="/css/pages/updates.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="brand">
+            <div class="brand-mark" aria-hidden="true">RPi</div>
+            <div class="brand-text">
+              <div class="brand-title">RPi Engineer-in-a-Box</div>
+              <div class="brand-subtitle">Advanced Mode</div>
+            </div>
+          </div>
+          <button class="btn btn-ghost" id="collapse-toggle">Collapse</button>
+        </div>
+        <nav class="sidebar-nav" aria-label="Primary">
+          <a class="nav-item" href="/advanced/" data-page="dashboard"
+            >Dashboard</a
+          >
+          <a class="nav-item" href="/advanced/network.html" data-page="network"
+            >Network</a
+          >
+          <a class="nav-item" href="/advanced/serial.html" data-page="serial"
+            >Serial</a
+          >
+          <a class="nav-item" href="/advanced/capture.html" data-page="capture"
+            >Capture</a
+          >
+          <a class="nav-item" href="/advanced/system.html" data-page="system"
+            >System</a
+          >
+          <a class="nav-item" href="/advanced/updates.html" data-page="updates"
+            >Updates</a
+          >
+          <a class="nav-item" href="/advanced/modules.html" data-page="modules"
+            >Modules</a
+          >
+          <a class="nav-item" href="/advanced/logs.html" data-page="logs"
+            >Logs</a
+          >
+          <a class="nav-item" href="/advanced/docs.html" data-page="docs"
+            >Documentation</a
+          >
+        </nav>
+        <div class="sidebar-footer">
+          <button class="btn btn-secondary" id="switch-simple">
+            Switch to Simple Mode
+          </button>
+        </div>
+      </aside>
+
+      <div class="shell-content">
+        <header class="topbar">
+          <button class="btn btn-ghost" id="sidebar-toggle">Menu</button>
+          <div class="breadcrumb" id="breadcrumb">Updates</div>
+          <div class="topbar-actions">
+            <label class="field theme-field" for="theme-select">
+              <span class="field-label">Theme</span>
+              <select id="theme-select" class="select">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="auto">Auto</option>
+              </select>
+            </label>
+          </div>
+        </header>
+
+        <main id="main-content" class="main-content">
+          <div class="page-header">
+            <div>
+              <h1>Updates & Maintenance</h1>
+              <p class="page-subtitle">
+                Manage software updates, backups, and data retention.
+              </p>
+            </div>
+            <div class="toolbar">
+              <button class="btn btn-secondary" id="refresh-updates">
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div class="tabs" data-tabs>
+            <button class="tab-button" data-tab-target="updates">
+              Software Updates
+            </button>
+            <button class="tab-button" data-tab-target="backup">
+              Configuration Backup
+            </button>
+            <button class="tab-button" data-tab-target="data">
+              Data Management
+            </button>
+          </div>
+
+          <section class="card" data-tab-panel="updates">
+            <div class="section-header">
+              <h2>Software Updates</h2>
+              <div class="button-row">
+                <button class="btn btn-secondary" id="check-updates">
+                  Check for Updates
+                </button>
+                <button class="btn btn-primary" id="apply-update">
+                  Apply Update
+                </button>
+                <button class="btn btn-ghost" id="rollback-update">
+                  Rollback
+                </button>
+              </div>
+            </div>
+            <div class="info-grid">
+              <div>
+                <div class="info-label">Current Version</div>
+                <div class="info-value" id="current-version">--</div>
+              </div>
+              <div>
+                <div class="info-label">Update Available</div>
+                <div class="info-value" id="update-available">--</div>
+              </div>
+              <div>
+                <div class="info-label">Available Version</div>
+                <div class="info-value" id="available-version">--</div>
+              </div>
+            </div>
+            <p class="section-muted" id="release-notes">Release notes pending.</p>
+          </section>
+
+          <section class="card" data-tab-panel="backup" hidden>
+            <div class="section-header">
+              <h2>Configuration Backup</h2>
+              <div class="button-row">
+                <button class="btn btn-primary" id="create-backup">
+                  Create Backup
+                </button>
+              </div>
+            </div>
+            <div class="form-row">
+              <label class="field">
+                <span class="field-label">Restore backup</span>
+                <input class="input" type="file" id="backup-file" />
+              </label>
+              <button class="btn btn-secondary" id="restore-backup">
+                Restore
+              </button>
+            </div>
+          </section>
+
+          <section class="card" data-tab-panel="data" hidden>
+            <div class="section-header">
+              <h2>Data Management</h2>
+              <button class="btn btn-secondary" id="cleanup-wizard">
+                Cleanup Wizard
+              </button>
+            </div>
+            <div class="empty-state">
+              Data cleanup tools will be enabled once retention policies are
+              configured.
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <div class="toast-region" id="toast-region" aria-live="polite"></div>
+
+    <script type="module" src="/js/pages/advanced.js" defer></script>
+    <script type="module" src="/js/pages/updates.js" defer></script>
+  </body>
+</html>
