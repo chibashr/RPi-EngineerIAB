@@ -622,6 +622,16 @@ install_required_packages() {
             echo "  $package installed."
         else
             log_error "Failed to install $package. Check $INSTALL_LOG for details."
+            if echo "$package" | grep -q python3 && [ -f "$INSTALL_LOG" ] && grep -q "cannot get content of\|py3clean\|error processing package python3" "$INSTALL_LOG" 2>/dev/null; then
+                echo ""
+                echo "  This may be the known 'py3clean' issue. On the target system run:"
+                echo "    sudo dpkg --configure -a"
+                echo "    sudo apt-get install -f -y"
+                echo "  If python3 still fails, remove the package named in the error (e.g. alacarte, hplip-data, thonny):"
+                echo "    sudo apt remove --allow-remove-essential <PACKAGE>"
+                echo "  then run the two commands above again and re-run this installer."
+                echo "  See: web/docs/troubleshooting/install-issues.html"
+            fi
             exit 1
         fi
     done

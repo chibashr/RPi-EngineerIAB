@@ -1,0 +1,45 @@
+<h1>Installation issues</h1>
+<p>
+  Fixes for failures during <code>bin/install.sh</code> (e.g. package install or dpkg errors).
+</p>
+
+<h2>python3 install fails: py3clean "cannot get content of"</h2>
+<p><strong>Symptom:</strong> Install fails with:</p>
+<pre>Exception: cannot get content of alacarte
+error running python rtupdate hook alacarte
+...
+dpkg: error processing package python3 (--configure):
+ installed python3 package post-installation script subprocess returned error exit status 4
+[ERROR] Failed to install python3. Check /tmp/rpi-engineer-install-*.log for details.</pre>
+<p>Other package names that may appear include <code>hplip-data</code>, <code>system-config-printer-common</code>, <code>thonny</code>.</p>
+<p><strong>Cause:</strong> The system’s <code>python3</code> package runs <code>py3clean</code> after install. <code>py3clean</code> tries to list files of other packages; if those packages are missing, half-installed, or virtual, it fails and blocks <code>python3</code> configuration.</p>
+<p><strong>Resolution (on the Raspberry Pi or target system):</strong></p>
+<ol>
+  <li>Fix dpkg and try to complete configuration:
+    <pre>sudo dpkg --configure -a
+sudo apt-get install -f -y</pre>
+  </li>
+  <li>If python3 still fails, remove the packages that py3clean is complaining about (only if you do not need them). Replace <code>PACKAGE</code> with the name from the error (e.g. <code>alacarte</code>, <code>hplip-data</code>, <code>system-config-printer-common</code>, <code>thonny</code>):
+    <pre>sudo apt remove --allow-remove-essential PACKAGE</pre>
+    Repeat for each failing package, then:
+    <pre>sudo dpkg --configure -a
+sudo apt-get install -f -y</pre>
+  </li>
+  <li>Confirm python3 is installed and re-run the installer:
+    <pre>python3 --version
+sudo ./bin/install.sh</pre>
+  </li>
+</ol>
+<p>If you need one of those packages (e.g. printer support), install it again after the RPi Engineer install completes: <code>sudo apt install hplip-data</code> (or the package you removed).</p>
+
+<h2>dpkg database broken (parsing / status)</h2>
+<p><strong>Symptom:</strong> Errors about “parsing file …/status” or “unknown characters” when running apt or the installer.</p>
+<p><strong>Resolution:</strong> Backup and fix <code>/var/lib/dpkg/status</code> (remove corrupt lines or restore from backup), then run <code>sudo dpkg --configure -a</code> and <code>sudo apt-get install -f</code>. See the installer’s pre-flight error message for exact steps.</p>
+
+<h2>Related</h2>
+<ul>
+  <li><a href="common-issues.html">Common issues</a></li>
+  <li><a href="network-issues.html">Network issues</a></li>
+</ul>
+
+<p><strong>Last updated:</strong> 2026-02-02</p>
