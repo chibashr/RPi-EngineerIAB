@@ -55,6 +55,26 @@ chmod o+x /opt /opt/rpi-engineer</pre>
 <p><strong>Cause:</strong> The dashboard reads state from systemd via <code>systemctl show --property=ActiveState --value &lt;unit&gt;</code>. If the API cannot query systemd (e.g. different user context or timeout), or if units were briefly inactive when the check ran, the display can disagree.</p>
 <p><strong>Resolution:</strong> On the device, verify each unit’s state with <code>systemctl is-active rpi-engineer-api</code> (and similarly for <code>rpi-engineer-system</code>, <code>rpi-engineer-serial</code>, <code>rpi-engineer-logging</code>, <code>rpi-engineer-update</code>, etc.). If they report <code>active</code>, refresh the dashboard or wait for the next poll/WebSocket update. If the mismatch persists, ensure the API service runs with access to systemd (e.g. not in a restricted container that cannot see system units).</p>
 
+<h2 id="teamviewer-running-but-connection-id-not-on-dashboard">TeamViewer running but connection ID not on dashboard</h2>
+<p><strong>Symptom:</strong> <code>systemctl status teamviewerd</code> shows <strong>active (running)</strong>, but the dashboard shows no TeamViewer connection or an empty ID.</p>
+<p><strong>Cause:</strong> The dashboard gets the ID from the API, which tries: <code>teamviewer info</code> (CLI), then <code>/etc/rpi-engineer/remote_access.conf</code>, then TeamViewer config files (<code>/opt/teamviewer/config/global.conf</code> or <code>/etc/teamviewer/global.conf</code>). If the ID was not yet available at install time or the API user cannot run the CLI or read the config, the field stays empty.</p>
+<p><strong>Resolution:</strong></p>
+<ol>
+  <li>On the device, get the ID: <code>sudo teamviewer info</code> (look for <strong>TeamViewer ID:</strong>).</li>
+  <li>If you have a TeamViewer ID, add it to the app config so the dashboard shows it. As root: open <code>/etc/rpi-engineer/remote_access.conf</code>, ensure the <code>teamviewer</code> object has <code>"id": "XXXXXXXXX"</code> (digits only, no spaces). Keep the JSON valid. Save and refresh the dashboard.</li>
+  <li>Optional: so the API can read the ID from TeamViewer’s config, allow read access: <code>sudo chmod 644 /etc/teamviewer/global.conf</code> (if that file exists). Then restart the API: <code>sudo systemctl restart rpi-engineer-api</code>.</li>
+</ol>
+
+<h2 id="anydesk-session-closed-display_server_not_supported">AnyDesk: "Session closed" / "display_server_not_supported"</h2>
+<p><strong>Symptom:</strong> Connecting with AnyDesk using the ID from the dashboard shows a dialog: <strong>Session Closed</strong>, <strong>Status: display_server_not_supported</strong>.</p>
+<p><strong>Cause:</strong> AnyDesk on Linux requires an active graphical display (X11). On headless or console-only systems (no monitor, no desktop session), there is no display server for AnyDesk to attach to, so the connection fails with this error.</p>
+<p><strong>Resolution:</strong></p>
+<ul>
+  <li><strong>Use TeamViewer or VNC instead</strong> for headless/field devices. TeamViewer and VNC can work in unattended mode without a physical display.</li>
+  <li>If you must use AnyDesk: attach a monitor (or a headless HDMI dongle) and ensure a user is logged in to an X11 desktop session; or use a different machine that has an active display.</li>
+</ul>
+<p>See <a href="../features/remote-access.html">Remote access</a> for supported tools.</p>
+
 <h2>Related</h2>
 <ul>
   <li><a href="install-issues.html">Installation issues</a></li>

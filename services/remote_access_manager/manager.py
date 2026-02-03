@@ -23,6 +23,7 @@ REMOTE_ACCESS_CONFIG_FILE = REMOTE_ACCESS_CONFIG_DIR / "remote_access.conf"
 # Native config paths for ID fallback when app config is missing/unreadable
 ANYDESK_SERVICE_CONF = Path("/etc/anydesk/service.conf")
 TEAMVIEWER_GLOBAL_CONF = Path("/opt/teamviewer/config/global.conf")
+TEAMVIEWER_ETC_CONF = Path("/etc/teamviewer/global.conf")  # Debian/TeamViewer host package
 TEAMVIEWER_LOG_DIR = Path("/var/log/teamviewer")
 
 
@@ -113,16 +114,17 @@ class RemoteAccessManager:
 
     def _teamviewer_id_from_native_config(self) -> Optional[str]:
         """Read TeamViewer ID from config or logs when app config is unavailable."""
-        if TEAMVIEWER_GLOBAL_CONF.is_file():
-            try:
-                text = TEAMVIEWER_GLOBAL_CONF.read_text(
-                    encoding="utf-8", errors="replace"
-                )
-                match = re.search(r"ClientID\s*=\s*(\d+)", text, re.IGNORECASE)
-                if match:
-                    return _format_id(match.group(1))
-            except OSError as e:
-                logger.debug("Could not read TeamViewer global.conf: %s", e)
+        for conf_path in (TEAMVIEWER_GLOBAL_CONF, TEAMVIEWER_ETC_CONF):
+            if conf_path.is_file():
+                try:
+                    text = conf_path.read_text(
+                        encoding="utf-8", errors="replace"
+                    )
+                    match = re.search(r"ClientID\s*=\s*(\d+)", text, re.IGNORECASE)
+                    if match:
+                        return _format_id(match.group(1))
+                except OSError as e:
+                    logger.debug("Could not read TeamViewer config %s: %s", conf_path, e)
         if TEAMVIEWER_LOG_DIR.is_dir():
             try:
                 for log in sorted(TEAMVIEWER_LOG_DIR.glob("*.log"), reverse=True):

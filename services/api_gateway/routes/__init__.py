@@ -1,7 +1,5 @@
 """API route registrations for the gateway."""
 
-from flask import abort, send_file
-
 from services.module_manager import module_manager
 
 from .backup import backup_bp
@@ -27,10 +25,3 @@ def register_routes(app) -> None:
     app.register_blueprint(modules_bp)
     app.register_blueprint(remote_bp)
     module_manager.register_module_routes(app)
-
-    @app.get("/modules/<module_id>/<path:asset_path>")
-    def module_asset(module_id: str, asset_path: str):
-        asset = module_manager.resolve_web_asset(module_id, asset_path)
-        if not asset:
-            abort(404)
-        return send_file(asset)

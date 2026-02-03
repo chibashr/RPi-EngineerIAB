@@ -56,6 +56,65 @@ function renderRows(tableBody, items) {
   });
 }
 
+const configIds = {
+  enabled: "snmp-config-enabled",
+  bind_address: "snmp-config-bind",
+  port: "snmp-config-port",
+  persist: "snmp-config-persist",
+  max_live: "snmp-config-max-live",
+  max_stored: "snmp-config-max-stored",
+};
+
+function getConfigFormValues() {
+  return {
+    enabled: document.getElementById(configIds.enabled)?.checked ?? true,
+    bind_address: document.getElementById(configIds.bind_address)?.value?.trim() || "0.0.0.0",
+    port: parseInt(document.getElementById(configIds.port)?.value || "1162", 10),
+    persist: document.getElementById(configIds.persist)?.checked ?? true,
+    max_live: parseInt(document.getElementById(configIds.max_live)?.value || "500", 10),
+    max_stored: parseInt(document.getElementById(configIds.max_stored)?.value || "10000", 10),
+  };
+}
+
+function setConfigFormValues(config) {
+  const el = (id) => document.getElementById(id);
+  if (el(configIds.enabled)) el(configIds.enabled).checked = !!config.enabled;
+  if (el(configIds.bind_address)) el(configIds.bind_address).value = config.bind_address ?? "0.0.0.0";
+  if (el(configIds.port)) el(configIds.port).value = String(config.port ?? 1162);
+  if (el(configIds.persist)) el(configIds.persist).checked = !!config.persist;
+  if (el(configIds.max_live)) el(configIds.max_live).value = String(config.max_live ?? 500);
+  if (el(configIds.max_stored)) el(configIds.max_stored).value = String(config.max_stored ?? 10000);
+}
+
+async function loadConfig() {
+  try {
+    const config = await fetchJson("/api/v1/snmp_traps/config");
+    setConfigFormValues(config);
+  } catch (error) {
+    showToast("Failed to load configuration.", "error");
+  }
+}
+
+async function saveConfig() {
+  const payload = getConfigFormValues();
+  if (payload.port < 1 || payload.port > 65535) {
+    showToast("Port must be between 1 and 65535.", "error");
+    return;
+  }
+  try {
+    await fetch("/api/v1/snmp_traps/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    showToast("Configuration saved. Receiver will restart if needed.", "success");
+    loadConfig();
+    refresh();
+  } catch (error) {
+    showToast("Failed to save configuration.", "error");
+  }
+}
+
 async function refresh() {
   try {
     const status = await fetchJson("/api/v1/snmp_traps/status");
@@ -126,6 +185,7 @@ async function clearBuffers() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  loadConfig();
   refresh();
   setInterval(refresh, 5000);
 
@@ -134,4 +194,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const clearBtn = document.getElementById("clear-snmp");
   if (clearBtn) clearBtn.addEventListener("click", clearBuffers);
+
+  const saveConfigBtn = document.getElementById("snmp-save-config");
+  if (saveConfigBtn) saveConfigBtn.addEventListener("click", saveConfig);
 });

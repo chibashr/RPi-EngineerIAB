@@ -113,6 +113,45 @@
             </div>
           </div>
 
+          <section class="card" id="snmp-config-section">
+            <div class="section-header">
+              <h2>Configuration</h2>
+              <button class="btn btn-primary" id="snmp-save-config" type="button">Save</button>
+            </div>
+            <form id="snmp-config-form" class="snmp-config-form">
+              <div class="form-row">
+                <label class="field" for="snmp-config-enabled">
+                  <span class="field-label">Enabled</span>
+                  <input type="checkbox" id="snmp-config-enabled" name="enabled" />
+                </label>
+                <label class="field" for="snmp-config-persist">
+                  <span class="field-label">Persist to storage</span>
+                  <input type="checkbox" id="snmp-config-persist" name="persist" />
+                </label>
+              </div>
+              <div class="form-row">
+                <label class="field" for="snmp-config-bind">
+                  <span class="field-label">Bind address</span>
+                  <input type="text" id="snmp-config-bind" name="bind_address" placeholder="0.0.0.0" />
+                </label>
+                <label class="field" for="snmp-config-port">
+                  <span class="field-label">UDP port</span>
+                  <input type="number" id="snmp-config-port" name="port" min="1" max="65535" placeholder="1162" />
+                </label>
+              </div>
+              <div class="form-row">
+                <label class="field" for="snmp-config-max-live">
+                  <span class="field-label">Max live traps (memory)</span>
+                  <input type="number" id="snmp-config-max-live" name="max_live" min="1" max="100000" placeholder="500" />
+                </label>
+                <label class="field" for="snmp-config-max-stored">
+                  <span class="field-label">Max stored traps</span>
+                  <input type="number" id="snmp-config-max-stored" name="max_stored" min="0" max="1000000" placeholder="10000" />
+                </label>
+              </div>
+            </form>
+          </section>
+
           <section class="card">
             <div class="section-header">
               <h2>Status</h2>

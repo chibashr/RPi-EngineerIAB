@@ -16,6 +16,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from services.api_gateway.response import success_response  # noqa: E402
 from services.api_gateway.routes import register_routes  # noqa: E402
 from services.api_gateway.websockets import register_websockets  # noqa: E402
+from services.module_manager import module_manager  # noqa: E402
 
 
 def create_app() -> Flask:
@@ -24,6 +25,16 @@ def create_app() -> Flask:
     # not by a catch-all that would 404 for module assets. We serve web/ explicitly below.
     app = Flask(__name__, static_folder=None)
     sock = Sock(app)
+
+    # Register module asset route first so it is never shadowed by the web catch-all.
+    @app.get("/modules/<module_id>/<path:asset_path>")
+    def module_asset(module_id: str, asset_path: str):
+        from flask import abort, send_file
+
+        asset = module_manager.resolve_web_asset(module_id, asset_path)
+        if not asset:
+            abort(404)
+        return send_file(asset)
 
     # Allow local and LAN access: hotspot (192.168.50.x), other LAN subnets, localhost.
     # Supports non-internet LANs and access from the Pi itself.

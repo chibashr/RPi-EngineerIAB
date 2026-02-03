@@ -59,3 +59,29 @@ def test_anydesk_id_fallback_to_config(monkeypatch):
 
     monkeypatch.setattr(shutil, "which", which_no_anydesk)
     assert manager._anydesk_id() == "111 222 333"
+
+
+@pytest.mark.unit
+def test_teamviewer_id_fallback_to_etc_config(monkeypatch, tmp_path):
+    """When CLI and app config lack ID, TeamViewer ID is read from /etc/teamviewer/global.conf."""
+    from pathlib import Path
+
+    from services.remote_access_manager import manager as ram
+
+    etc_conf = tmp_path / "global.conf"
+    etc_conf.write_text("[int32]\nClientID = 987654321\n")
+    monkeypatch.setattr(ram, "TEAMVIEWER_ETC_CONF", etc_conf)
+    monkeypatch.setattr(ram, "TEAMVIEWER_GLOBAL_CONF", tmp_path / "nonexistent.conf")
+    monkeypatch.setattr(ram, "TEAMVIEWER_LOG_DIR", tmp_path / "logs")
+
+    manager = RemoteAccessManager()
+    monkeypatch.setattr(manager, "_get_remote_access_config", lambda: {})
+    real_which = shutil.which
+
+    def which_no_teamviewer(cmd):
+        if cmd == "teamviewer":
+            return None
+        return real_which(cmd)
+
+    monkeypatch.setattr(shutil, "which", which_no_teamviewer)
+    assert manager._teamviewer_id() == "987 654 321"
