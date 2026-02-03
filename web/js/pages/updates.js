@@ -136,6 +136,18 @@ async function loadUpdates() {
     const payload = await fetchCheckUpdates();
     const data = extractData(payload) || {};
     renderUpdateStatus(data);
+    if (data?.update_available) {
+      showToast("Update available. You can apply it below.", "success");
+    } else {
+      const note = (data?.release_notes || "").trim();
+      const isLimited =
+        note.includes("Version comparison unavailable") ||
+        note.includes("git not available");
+      showToast(
+        isLimited ? "Update check complete. " + note : "Update check complete. You're up to date.",
+        isLimited ? "info" : "success"
+      );
+    }
   } catch (error) {
     const message =
       error?.name === "AbortError"
