@@ -470,6 +470,9 @@ class UpdateManager:
             except Exception as rollback_exc:
                 logger.warning("Rollback failed after update error: %s", rollback_exc)
                 emit(f"Rollback failed: {rollback_exc}")
+                raise RuntimeError(
+                    f"Update failed: {exc}. Rollback could not complete: {rollback_exc}"
+                ) from exc
             raise RuntimeError(f"Update failed; rollback attempted: {exc}") from exc
         emit("Done.")
         return {
