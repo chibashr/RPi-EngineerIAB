@@ -83,6 +83,47 @@ mark_step_done() {
     echo "$step" >> "$INSTALL_PROGRESS_FILE"
 }
 
+# Progress bar (sticky at bottom of terminal when stdout is a tty)
+PROGRESS_BAR_WIDTH=40
+PROGRESS_LINES=""
+progress_init() {
+    if [ ! -t 1 ]; then return 0; fi
+    PROGRESS_LINES=$(tput lines 2>/dev/null) || true
+    if [ -z "$PROGRESS_LINES" ] || [ "$PROGRESS_LINES" -le 2 ]; then return 0; fi
+    tput csr 1 $((PROGRESS_LINES - 1)) 2>/dev/null || true
+}
+
+progress_bar() {
+    local current="$1"
+    local total="$2"
+    local label="${3:-}"
+    local pct=0
+    [ "$total" -gt 0 ] && pct=$((current * 100 / total))
+    local filled=$((current * PROGRESS_BAR_WIDTH / total))
+    [ "$filled" -gt "$PROGRESS_BAR_WIDTH" ] && filled=$PROGRESS_BAR_WIDTH
+    local bar=""
+    local i=0
+    for ((i = 0; i < PROGRESS_BAR_WIDTH; i++)); do
+        [ "$i" -lt "$filled" ] && bar="${bar}#" || bar="${bar}-"
+    done
+    local max_label_len=40
+    [ "${#label}" -gt "$max_label_len" ] && label="${label:0:$((max_label_len - 3))}..."
+    local line="[${bar}] ${current}/${total}  ${pct}%  ${label}"
+    if [ -t 1 ] && [ -n "$PROGRESS_LINES" ] && [ "$PROGRESS_LINES" -gt 1 ]; then
+        tput cup "$PROGRESS_LINES" 0 2>/dev/null || true
+        tput el 2>/dev/null || true
+        printf '%s' "$line"
+        tput cup $((PROGRESS_LINES - 1)) 0 2>/dev/null || true
+    fi
+    echo "[INFO] Progress: ${current}/${total} (${pct}%) ${label}" >> "$INSTALL_LOG"
+}
+
+progress_cleanup() {
+    if [ ! -t 1 ]; then return 0; fi
+    printf '\033[r' 2>/dev/null || true
+    tput csr 0 "${PROGRESS_LINES:-999}" 2>/dev/null || true
+}
+
 detect_interrupted_install() {
     [ -f "$INSTALL_PROGRESS_FILE" ]
 }
@@ -734,13 +775,13 @@ install_python_dependencies() {
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "python_deps"; then log_info "Step 'python_deps' already completed; skipping."; return 0; fi
     log_step "Installing Python dependencies"
     local venv_path="$INSTALL_DIR/venv"
-    if [ ! -d "$venv_path" ]; then
-        echo "Creating virtual environment..."
-        python3 -m venv "$venv_path" 2>&1 | tee -a "$INSTALL_LOG"
-        echo "Virtual environment created."
-    else
-        log_info "Virtual environment already exists: $venv_path"
+    if [ -d "$venv_path" ]; then
+        echo "Removing existing virtual environment to ensure a clean install..."
+        rm -rf "$venv_path"
     fi
+    echo "Creating virtual environment..."
+    python3 -m venv "$venv_path" 2>&1 | tee -a "$INSTALL_LOG"
+    echo "Virtual environment created."
     if [ -f "$INSTALL_DIR/requirements.txt" ]; then
         echo "Installing Python packages from requirements.txt..."
         "$venv_path/bin/pip" install --upgrade pip 2>&1 | tee -a "$INSTALL_LOG"
@@ -1173,10 +1214,13 @@ install_anydesk() {
     if dpkg -s anydesk >/dev/null 2>&1; then
         log_info "AnyDesk already installed."
     else
+        echo "  Adding AnyDesk repository and key..."
         curl -fsSL https://keys.anydesk.com/repos/DEB-GPG-KEY | gpg --dearmor -o /usr/share/keyrings/anydesk.gpg
         echo "deb [signed-by=/usr/share/keyrings/anydesk.gpg] http://deb.anydesk.com/ all main" > /etc/apt/sources.list.d/anydesk-stable.list
-        apt-get update >> "$INSTALL_LOG" 2>&1
-        apt-get install -y anydesk >> "$INSTALL_LOG" 2>&1
+        echo "  Updating package lists (may take a minute)..."
+        DEBIAN_FRONTEND=noninteractive apt-get update >> "$INSTALL_LOG" 2>&1
+        echo "  Installing AnyDesk package..."
+        DEBIAN_FRONTEND=noninteractive apt-get install -y anydesk >> "$INSTALL_LOG" 2>&1
     fi
     if [ -n "$REMOTE_ACCESS_PASSWORD" ]; then
         echo "$REMOTE_ACCESS_PASSWORD" | anydesk --set-password >> "$INSTALL_LOG" 2>&1 || true
@@ -1199,8 +1243,10 @@ install_teamviewer() {
         else
             pkg_url="https://download.teamviewer.com/download/linux/teamviewer-host_arm64.deb"
         fi
-        wget -O /tmp/teamviewer.deb "$pkg_url" >> "$INSTALL_LOG" 2>&1
-        apt-get install -y /tmp/teamviewer.deb >> "$INSTALL_LOG" 2>&1
+        echo "  Downloading TeamViewer package (may take several minutes on slow links)..."
+        wget -O /tmp/teamviewer.deb "$pkg_url" 2>&1 | tee -a "$INSTALL_LOG"
+        echo "  Installing TeamViewer..."
+        DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/teamviewer.deb >> "$INSTALL_LOG" 2>&1
     fi
     if [ -n "$REMOTE_ACCESS_PASSWORD" ]; then
         teamviewer passwd "$REMOTE_ACCESS_PASSWORD" >> "$INSTALL_LOG" 2>&1 || true
@@ -1470,6 +1516,7 @@ main() {
     if [ "${DEBUG:-0}" = "1" ]; then
         set -x
     fi
+    trap 'progress_cleanup' EXIT
 
     run_preflight_checks
     prompt_repair_or_start_over
@@ -1494,31 +1541,54 @@ main() {
         run_wizard
     fi
 
+    progress_init
     if [ "$INSTALL_MODE" != "reconfigure" ]; then
         if [ "$INSTALL_MODE" != "continue" ]; then
             : > "$INSTALL_PROGRESS_FILE"
         fi
+        progress_bar 1 16 "System dependencies"
         install_system_dependencies
+        progress_bar 2 16 "Required packages"
         install_required_packages
+        progress_bar 3 16 "Directories"
         create_directories
+        progress_bar 4 16 "Deploying files"
         deploy_files
+        progress_bar 5 16 "Python dependencies"
         install_python_dependencies
+        progress_bar 6 16 "User permissions"
         setup_user_permissions
+        progress_bar 7 16 "Systemd services"
         configure_services
+        progress_bar 8 16 "Nginx"
         configure_nginx
+        progress_bar 9 16 "WiFi hotspot"
         configure_hotspot
+        progress_bar 10 16 "Firewall"
         configure_firewall
+        progress_bar 11 16 "Modules"
         install_modules
+        progress_bar 12 16 "Remote access"
         setup_remote_access
+        progress_bar 13 16 "Configuration files"
         generate_configs
+        progress_bar 14 16 "Enabling services"
         enable_services
+        progress_bar 15 16 "Health check"
         create_health_check_script
+        progress_bar 16 16 "Complete"
     else
+        progress_bar 1 6 "WiFi hotspot"
         configure_hotspot
+        progress_bar 2 6 "Firewall"
         configure_firewall
+        progress_bar 3 6 "Remote access"
         setup_remote_access
+        progress_bar 4 6 "Configuration files"
         generate_configs
+        progress_bar 5 6 "Enabling services"
         enable_services
+        progress_bar 6 6 "Health check"
         create_health_check_script
     fi
 

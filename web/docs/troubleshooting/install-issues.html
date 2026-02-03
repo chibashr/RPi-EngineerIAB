@@ -38,6 +38,11 @@ sudo ./bin/install.sh</pre>
 <p><strong>Cause:</strong> On some Raspberry Pi OS setups the directory <code>/etc/network/interfaces.d</code> does not exist (e.g. when using NetworkManager or a minimal install).</p>
 <p><strong>Resolution:</strong> The installer now creates the directory automatically. If you see this with an older install script, update the repo and re-run, or create the directory and re-run: <code>sudo mkdir -p /etc/network/interfaces.d</code> then run the installer again.</p>
 
+<h2>Install seems to hang at AnyDesk or TeamViewer</h2>
+<p><strong>Symptom:</strong> The installer sits at "Installing AnyDesk" or "Installing TeamViewer" with no output for several minutes.</p>
+<p><strong>Cause:</strong> Those steps download packages and keys from the internet. On a slow connection or busy Pi this can take 5–15 minutes. The script now prints progress lines so you can see it is still working.</p>
+<p><strong>What to do:</strong> Wait; do not interrupt. If nothing changes for 15+ minutes, check internet and re-run (use "Continue" if offered).</p>
+
 <h2>dpkg database broken (parsing / status)</h2>
 <p><strong>Symptom:</strong> Errors about “parsing file …/status” or “unknown characters” when running apt or the installer.</p>
 <p><strong>Resolution:</strong> Backup and fix <code>/var/lib/dpkg/status</code> (remove corrupt lines or restore from backup), then run <code>sudo dpkg --configure -a</code> and <code>sudo apt-get install -f</code>. See the installer’s pre-flight error message for exact steps.</p>
