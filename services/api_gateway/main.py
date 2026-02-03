@@ -23,12 +23,20 @@ def create_app() -> Flask:
     app = Flask(__name__, static_folder=str(web_root), static_url_path="")
     sock = Sock(app)
 
+    # Allow local and LAN access: hotspot (192.168.50.x), other LAN subnets, localhost.
+    # Supports non-internet LANs and access from the Pi itself.
+    _cors_origins = [
+        r"http://127\.0\.0\.1(:\d+)?$",
+        r"http://localhost(:\d+)?$",
+        r"http://192\.168\.\d+\.\d+(:\d+)?$",
+        r"http://10\.\d+\.\d+\.\d+(:\d+)?$",
+        r"http://172\.(1[6-9]|2\d|3[01])\.\d+\.\d+(:\d+)?$",
+    ]
     CORS(
         app,
         resources={
-            r"/api/*": {
-                "origins": [r"http://192\.168\.50\.\d+(?::\d+)?"],
-            }
+            r"/api/*": {"origins": _cors_origins},
+            r"/ws/*": {"origins": _cors_origins},
         },
     )
 
