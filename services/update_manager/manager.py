@@ -59,6 +59,14 @@ def _is_hash(value: str) -> bool:
     return bool(value) and len(value) == 40 and all(ch in "0123456789abcdef" for ch in value)
 
 
+def _sudo_unavailable_message(err: str) -> bool:
+    """True if the error indicates sudo cannot run (e.g. container no-new-privileges)."""
+    if not err:
+        return False
+    lower = err.lower()
+    return "no new privileges" in lower or "adjust the container" in lower
+
+
 def _github_repo_slug(repo_url: str) -> Optional[str]:
     """Return 'owner/repo' for GitHub URLs, else None."""
     if not repo_url or "github.com" not in repo_url:
@@ -765,6 +773,7 @@ class UpdateManager:
         root_dir = Path(os.getenv("RPI_ENGINEER_ROOT", "/opt/rpi-engineer"))
         if (root_dir / ".git").is_dir():
             script = root_dir / "bin" / "apply-update.sh"
+            ran_sudo_ok = False
             if script.exists():
                 try:
                     proc = subprocess.run(
@@ -782,60 +791,73 @@ class UpdateManager:
                         timeout=120,
                         check=False,
                     )
-                    if proc.returncode != 0:
-                        raise RuntimeError(
-                            proc.stderr.strip() or proc.stdout.strip() or "apply-update.sh failed"
+                    if proc.returncode == 0:
+                        ran_sudo_ok = True
+                    else:
+                        err = (proc.stderr or "").strip() or (proc.stdout or "").strip()
+                        if _sudo_unavailable_message(err):
+                            logger.warning(
+                                "sudo unavailable (e.g. container no-new-privileges), attempting update without sudo: %s",
+                                err[:200],
+                            )
+                        else:
+                            raise RuntimeError(err or "apply-update.sh failed")
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    err = str(exc)
+                    if _sudo_unavailable_message(err):
+                        logger.warning(
+                            "sudo failed (e.g. container), attempting update without sudo: %s",
+                            err,
                         )
+                    else:
+                        raise RuntimeError(f"Git update failed: {exc}") from exc
+            if not ran_sudo_ok:
+                try:
+                    remote = subprocess.run(
+                        ["git", "remote", "get-url", "origin"],
+                        cwd=root_dir,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    if remote.returncode != 0:
+                        subprocess.run(
+                            ["git", "remote", "add", "origin", repo],
+                            cwd=root_dir,
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                        )
+                    else:
+                        subprocess.run(
+                            ["git", "remote", "set-url", "origin", repo],
+                            cwd=root_dir,
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                        )
+                    fetch = subprocess.run(
+                        ["git", "fetch", "origin", branch],
+                        cwd=root_dir,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                        check=False,
+                    )
+                    if fetch.returncode != 0:
+                        raise RuntimeError(fetch.stderr.strip() or "git fetch failed")
+                    reset = subprocess.run(
+                        ["git", "reset", "--hard", f"origin/{branch}"],
+                        cwd=root_dir,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    if reset.returncode != 0:
+                        raise RuntimeError(reset.stderr.strip() or "git reset failed")
                 except (OSError, subprocess.TimeoutExpired) as exc:
                     raise RuntimeError(f"Git update failed: {exc}") from exc
-                self._apply_web_permissions(root_dir)
-                return
-            try:
-                remote = subprocess.run(
-                    ["git", "remote", "get-url", "origin"],
-                    cwd=root_dir,
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                if remote.returncode != 0:
-                    subprocess.run(
-                        ["git", "remote", "add", "origin", repo],
-                        cwd=root_dir,
-                        capture_output=True,
-                        text=True,
-                        check=False,
-                    )
-                else:
-                    subprocess.run(
-                        ["git", "remote", "set-url", "origin", repo],
-                        cwd=root_dir,
-                        capture_output=True,
-                        text=True,
-                        check=False,
-                    )
-                fetch = subprocess.run(
-                    ["git", "fetch", "origin", branch],
-                    cwd=root_dir,
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                    check=False,
-                )
-                if fetch.returncode != 0:
-                    raise RuntimeError(fetch.stderr.strip() or "git fetch failed")
-                reset = subprocess.run(
-                    ["git", "reset", "--hard", f"origin/{branch}"],
-                    cwd=root_dir,
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                if reset.returncode != 0:
-                    raise RuntimeError(reset.stderr.strip() or "git reset failed")
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                raise RuntimeError(f"Git update failed: {exc}") from exc
-            self._write_version(target_version)
+                self._write_version(target_version)
             self._apply_web_permissions(root_dir)
             return
 
