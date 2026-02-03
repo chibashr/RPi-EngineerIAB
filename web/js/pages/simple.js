@@ -223,9 +223,34 @@ function updateQuickActions(serialCount) {
   elements.quick.serial.textContent = `Devices: ${serialCount}`;
 }
 
+function renderAlerts(alerts) {
+  if (!elements.alertList) {
+    return;
+  }
+  elements.alertList.textContent = "";
+  const list = alerts && Array.isArray(alerts) ? alerts : [];
+  if (list.length === 0) {
+    const item = document.createElement("li");
+    item.textContent = "No alerts yet.";
+    elements.alertList.appendChild(item);
+    return;
+  }
+  list.slice(0, 5).forEach((alert) => {
+    const item = document.createElement("li");
+    item.textContent = alert.message || alert.summary || "Alert";
+    elements.alertList.appendChild(item);
+  });
+}
+
 function updateFooter(systemInfo) {
-  elements.footer.version.textContent = systemInfo?.version || "--";
-  elements.footer.lastUpdate.textContent = new Date().toLocaleString();
+  if (elements.footer.version) {
+    elements.footer.version.textContent = systemInfo?.version ?? "--";
+  }
+  if (elements.footer.lastUpdate) {
+    elements.footer.lastUpdate.textContent = systemInfo?.last_update
+      ? new Date(systemInfo.last_update).toLocaleString()
+      : "—";
+  }
 }
 
 function showToast(message, variant = "info") {
@@ -243,10 +268,14 @@ async function loadSystemStatus() {
 
 async function loadSystemStatusWithOptions(options) {
   try {
-    const payload = await apiGet("/api/v1/system/status");
-    const data = extractData(payload) || {};
+    const [statusPayload, infoPayload] = await Promise.all([
+      apiGet("/api/v1/system/status"),
+      apiGet("/api/v1/system/info"),
+    ]);
+    const data = extractData(statusPayload) || {};
+    const info = extractData(infoPayload) || {};
     clearApiConnectionError();
-    setStatusIndicator(data.status);
+    setStatusIndicator(data.health ?? data.status);
     setMetric("cpu", data.resources?.cpu_percent, "%", elements.meters.cpu);
     setMetric(
       "memory",
@@ -267,7 +296,8 @@ async function loadSystemStatusWithOptions(options) {
       elements.meters.storage
     );
     renderServices(data.services);
-    updateFooter(data);
+    renderAlerts(data.alerts ?? data.monitor?.alerts);
+    updateFooter(info);
   } catch (error) {
     setStatusIndicator("Unknown");
     if (!options.suppressError) {

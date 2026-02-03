@@ -38,7 +38,7 @@ function renderServices(services) {
   if (!services || Object.keys(services).length === 0) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 3;
+    cell.colSpan = 2;
     cell.textContent = "No services reported.";
     row.appendChild(cell);
     elements.serviceTable.appendChild(row);
@@ -47,7 +47,7 @@ function renderServices(services) {
 
   Object.entries(services).forEach(([name, status]) => {
     const row = document.createElement("tr");
-    [name, status, "--"].forEach((value) => {
+    [name, status].forEach((value) => {
       const cell = document.createElement("td");
       cell.textContent = value || "--";
       row.appendChild(cell);
