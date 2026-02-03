@@ -203,6 +203,7 @@ def register_websockets(sock: Sock) -> None:
             try:
                 result = update_manager.apply_update(progress_callback=progress_callback)
                 send_message("done", {"result": result})
+                time.sleep(0.25)  # allow client to receive "done" before handler return closes the socket
             except Exception as exc:
                 logger.exception("Update apply failed in stream: %s", exc)
                 send_message("error", {"message": str(exc)})

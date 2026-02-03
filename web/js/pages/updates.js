@@ -204,7 +204,6 @@ function applyUpdateWithLog(applyButton, logWrapper, logPre) {
 
   /** Fallback when WebSocket is unavailable: apply via REST and show result in log. */
   const applyViaRest = async () => {
-    appendLog("Stream unavailable. Applying update via REST...");
     const timeoutMs = 150000;
     const url = new URL("/api/v1/updates/apply", window.location.origin);
     const controller = new AbortController();
@@ -258,6 +257,7 @@ function applyUpdateWithLog(applyButton, logWrapper, logPre) {
     ws = new WebSocket(wsUrl);
   } catch (e) {
     appendLog("WebSocket failed: " + e);
+    appendLog("Completing via REST...");
     maybeFallback();
     return;
   }
@@ -289,14 +289,14 @@ function applyUpdateWithLog(applyButton, logWrapper, logPre) {
   };
 
   ws.onerror = () => {
-    appendLog("Stream connection error. Falling back to REST...");
+    appendLog("Stream ended. Completing via REST...");
     maybeFallback();
   };
 
   ws.onclose = (ev) => {
     if (finished) return;
     if (ev.code !== 1000 && !ev.wasClean) {
-      appendLog("Stream closed. Falling back to REST...");
+      appendLog("Stream ended. Completing via REST...");
       maybeFallback();
     } else {
       applyButton.disabled = false;
