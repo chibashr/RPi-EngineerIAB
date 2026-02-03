@@ -1067,6 +1067,14 @@ EOF
     else
         log_warn "systemd not detected; nginx config written but not restarted."
     fi
+    SCRIPT_PATH="$INSTALL_DIR/bin/apply-web-permissions.sh"
+    if [ -f "$SCRIPT_PATH" ]; then
+        chmod 755 "$SCRIPT_PATH"
+        SUDOERS_FILE="/etc/sudoers.d/rpi-engineer-apply-web-permissions"
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: $SCRIPT_PATH" > "$SUDOERS_FILE"
+        chmod 440 "$SUDOERS_FILE"
+        echo "Sudoers rule added so updates can re-apply web permissions."
+    fi
     mark_step_done "nginx"
 }
 

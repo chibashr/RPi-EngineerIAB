@@ -274,6 +274,28 @@ class UpdateManager:
         }
         self._state_file.write_text(json.dumps(payload, indent=2))
 
+    def _apply_web_permissions(self, root_dir: Path) -> None:
+        """Re-apply nginx config and web root permissions so 403 is fixed after update."""
+        script = root_dir / "bin" / "apply-web-permissions.sh"
+        if not script.exists():
+            return
+        try:
+            result = subprocess.run(
+                ["sudo", str(script)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            if result.returncode != 0:
+                logger.warning(
+                    "apply-web-permissions.sh failed (rc=%s): %s",
+                    result.returncode,
+                    result.stderr.strip() or result.stdout.strip(),
+                )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+            logger.warning("Could not run apply-web-permissions.sh: %s", e)
+
     def _read_state(self) -> Optional[UpdateState]:
         if not self._state_file.exists():
             return None
@@ -309,6 +331,7 @@ class UpdateManager:
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(item, destination)
         self._write_version(target_version)
+        self._apply_web_permissions(root_dir)
 
     def _add_dir_to_archive(
         self,

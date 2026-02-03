@@ -10,8 +10,8 @@
 
 <h2>403 Forbidden when opening 192.168.50.1</h2>
 <p><strong>Symptom:</strong> Browser shows <strong>403 Forbidden</strong> when opening <strong>http://192.168.50.1</strong> (e.g. from hotspot or LAN).</p>
-<p><strong>Common causes:</strong> (1) Nginx access rules blocking LAN/hotspot. (2) Web root not readable by nginx—nginx runs as <code>www-data</code> (or the user in <code>/etc/nginx/nginx.conf</code>); if it does not own or cannot read <code>/opt/rpi-engineer/web</code>, you get 403.</p>
-<p><strong>Resolution:</strong> Re-run the installer so it applies the latest nginx config and sets web root ownership to the nginx user: <code>sudo /opt/rpi-engineer/bin/install.sh</code> (or your install path), then <code>sudo systemctl restart nginx</code>. To confirm the cause, check <code>/var/log/nginx/error.log</code> (e.g. <code>Permission denied</code> or <code>13</code> means file permissions). Manual fix: <code>sudo chown -R www-data:www-data /opt/rpi-engineer/web</code> and <code>sudo chmod o+x /opt /opt/rpi-engineer</code> so nginx can traverse the path, then <code>sudo systemctl restart nginx</code>.</p>
+<p><strong>Common causes:</strong> (1) Nginx access rules blocking LAN/hotspot. (2) Web root not readable by nginx—nginx runs as <code>www-data</code> (or the user in <code>/etc/nginx/nginx.conf</code>); if it does not own or cannot read the web root, you get 403.</p>
+<p><strong>Resolution:</strong> Run the bundled fix once (as root): <code>sudo /opt/rpi-engineer/bin/apply-web-permissions.sh</code>. It rewrites the nginx config and sets web root ownership so the UI is reachable. After that, applying an update from the web UI will re-run this script automatically if you have run the full installer at least once (it adds a sudoers rule). Alternatively, re-run the full installer: <code>sudo /opt/rpi-engineer/bin/install.sh</code>. To confirm the cause, check <code>/var/log/nginx/error.log</code> (e.g. <code>Permission denied</code> or <code>13</code> means file permissions).</p>
 
 <h2>No network access</h2>
 <p><strong>Symptom:</strong> WAN shows disconnected on the dashboard.</p>
