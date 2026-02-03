@@ -23,7 +23,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 
 DEFAULT_UPDATE_REPO = "https://github.com/chibashr/RPi-EngineerIAB.git"
@@ -416,11 +416,23 @@ class UpdateManager:
             "update_branch": branch,
         }
 
-    def apply_update(self) -> Dict[str, object]:
+    def apply_update(
+        self,
+        progress_callback: Optional[Callable[[str], None]] = None,
+    ) -> Dict[str, object]:
+        def emit(msg: str) -> None:
+            if progress_callback:
+                progress_callback(msg)
+
         update_info = self.check_for_updates()
+        emit("Checking for updates...")
         if not update_info.get("update_available"):
+            emit("No update available. You're up to date.")
             return {"status": "up_to_date", "current_version": update_info["current_version"]}
+        emit(f"Update available: {update_info.get('available_version', '')[:7]} (target).")
+        emit("Creating pre-update config backup...")
         backup_path = self.create_config_backup(label="pre-update")
+        emit(f"Backup created: {backup_path.name}")
         previous_version = self._current_version()
         target_version = str(update_info.get("available_version") or previous_version)
         state = UpdateState(
@@ -431,6 +443,7 @@ class UpdateManager:
         )
         self._write_state(state)
         if os.getenv("RPI_ENGINEER_DRY_RUN", "1") == "1":
+            emit("Dry run: update not applied (set RPI_ENGINEER_DRY_RUN=0 to apply).")
             return {
                 "status": "applied",
                 "dry_run": True,
@@ -439,13 +452,20 @@ class UpdateManager:
                 "backup_path": str(backup_path),
             }
         try:
-            self._perform_update(target_version)
+            emit("Applying update (git fetch + reset)...")
+            self._perform_update(target_version, progress_callback=progress_callback)
+            emit("Update applied. Re-applying web permissions if needed...")
         except Exception as exc:
+            emit(f"Update failed: {exc}")
+            emit("Attempting rollback...")
             try:
                 self.rollback_update()
+                emit("Rollback completed.")
             except Exception as rollback_exc:
                 logger.warning("Rollback failed after update error: %s", rollback_exc)
+                emit(f"Rollback failed: {rollback_exc}")
             raise RuntimeError(f"Update failed; rollback attempted: {exc}") from exc
+        emit("Done.")
         return {
             "status": "applied",
             "dry_run": False,
@@ -787,7 +807,15 @@ class UpdateManager:
             if still_missing:
                 logger.error("%s still missing after repair: %s", dir_name, still_missing[:20])
 
-    def _perform_update(self, target_version: str) -> None:
+    def _perform_update(
+        self,
+        target_version: str,
+        progress_callback: Optional[Callable[[str], None]] = None,
+    ) -> None:
+        def emit(msg: str) -> None:
+            if progress_callback:
+                progress_callback(msg)
+
         repo = os.getenv("RPI_ENGINEER_UPDATE_REPO", DEFAULT_UPDATE_REPO)
         branch = os.getenv("RPI_ENGINEER_UPDATE_BRANCH", DEFAULT_UPDATE_BRANCH)
         root_dir = Path(os.getenv("RPI_ENGINEER_ROOT", "/opt/rpi-engineer"))
@@ -796,6 +824,7 @@ class UpdateManager:
             ran_sudo_ok = False
             if script.exists():
                 try:
+                    emit("Running apply-update.sh (sudo)...")
                     proc = subprocess.run(
                         [
                             "sudo",
@@ -813,9 +842,11 @@ class UpdateManager:
                     )
                     if proc.returncode == 0:
                         ran_sudo_ok = True
+                        emit("apply-update.sh completed.")
                     else:
                         err = (proc.stderr or "").strip() or (proc.stdout or "").strip()
                         if _sudo_unavailable_message(err):
+                            emit("sudo unavailable (e.g. container), trying without sudo...")
                             logger.warning(
                                 "sudo unavailable (e.g. container no-new-privileges), attempting update without sudo: %s",
                                 err[:200],
@@ -825,6 +856,7 @@ class UpdateManager:
                 except (OSError, subprocess.TimeoutExpired) as exc:
                     err = str(exc)
                     if _sudo_unavailable_message(err):
+                        emit("sudo failed, trying git in-process...")
                         logger.warning(
                             "sudo failed (e.g. container), attempting update without sudo: %s",
                             err,
@@ -833,6 +865,7 @@ class UpdateManager:
                         raise RuntimeError(f"Git update failed: {exc}") from exc
             if not ran_sudo_ok:
                 try:
+                    emit("Setting remote origin...")
                     remote = subprocess.run(
                         ["git", "remote", "get-url", "origin"],
                         cwd=root_dir,
@@ -856,6 +889,7 @@ class UpdateManager:
                             text=True,
                             check=False,
                         )
+                    emit("Fetching from origin...")
                     fetch = subprocess.run(
                         ["git", "fetch", "origin", branch],
                         cwd=root_dir,
@@ -866,6 +900,7 @@ class UpdateManager:
                     )
                     if fetch.returncode != 0:
                         raise RuntimeError(fetch.stderr.strip() or "git fetch failed")
+                    emit("Resetting to origin/" + branch + "...")
                     reset = subprocess.run(
                         ["git", "reset", "--hard", f"origin/{branch}"],
                         cwd=root_dir,
@@ -875,12 +910,15 @@ class UpdateManager:
                     )
                     if reset.returncode != 0:
                         raise RuntimeError(reset.stderr.strip() or "git reset failed")
+                    emit("Writing version file...")
                 except (OSError, subprocess.TimeoutExpired) as exc:
                     raise RuntimeError(f"Git update failed: {exc}") from exc
                 self._write_version(target_version)
+            emit("Applying web permissions...")
             self._apply_web_permissions(root_dir)
             return
 
+        emit("Not a git repo; cloning to staging...")
         staging_dir = self._staging_dir / "update"
         if staging_dir.exists():
             shutil.rmtree(staging_dir, ignore_errors=True)
@@ -888,6 +926,7 @@ class UpdateManager:
             ["git", "clone", "--depth", "1", "--branch", branch, repo, str(staging_dir)],
             check=True,
         )
+        emit("Copying files to install directory...")
         # Critical dirs: replace entirely so we get a clean deploy (avoids 403, service crashes).
         replace_dirs = {"web", "services", "bin", "lib"}
         for item in staging_dir.iterdir():
@@ -903,6 +942,7 @@ class UpdateManager:
                 shutil.copy2(item, destination)
         self._verify_and_repair_core_assets(root_dir, staging_dir)
         self._write_version(target_version)
+        emit("Applying web permissions...")
         self._apply_web_permissions(root_dir)
 
     def _add_dir_to_archive(

@@ -1,4 +1,4 @@
-"""WebSocket endpoints for serial console and capture streaming."""
+"""WebSocket endpoints for serial console, capture streaming, and update progress."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from services.capture_manager.manager import split_bpf_filter
 from services.serial_manager import serial_manager
 from services.system_manager import SystemManager
 from services.network_manager import NetworkManager
+from services.update_manager import update_manager
 
 try:
     import serial  # type: ignore
@@ -182,6 +183,35 @@ def register_websockets(sock: Sock) -> None:
             stop_event.set()
             session.websocket_connected = False
             ser.close()
+
+    @sock.route("/ws/updates/apply")
+    def updates_apply_stream(ws) -> None:  # type: ignore[no-untyped-def]
+        """Stream update apply progress (same steps as CLI) over WebSocket."""
+        send_lock = threading.Lock()
+
+        def send_message(msg_type: str, payload: dict) -> None:
+            try:
+                with send_lock:
+                    ws.send(json.dumps({"type": msg_type, **payload}))
+            except Exception as e:
+                logger.debug("Update stream send failed: %s", e)
+
+        def progress_callback(line: str) -> None:
+            send_message("progress", {"line": line})
+
+        def run_apply() -> None:
+            try:
+                result = update_manager.apply_update(progress_callback=progress_callback)
+                send_message("done", {"result": result})
+            except Exception as exc:
+                logger.exception("Update apply failed in stream: %s", exc)
+                send_message("error", {"message": str(exc)})
+
+        thread = threading.Thread(target=run_apply, daemon=True)
+        thread.start()
+        thread.join(timeout=180)
+        if thread.is_alive():
+            send_message("error", {"message": "Update timed out after 3 minutes."})
 
     @sock.route("/ws/capture/<capture_id>")
     def capture_stream(ws, capture_id: str) -> None:  # type: ignore[no-untyped-def]

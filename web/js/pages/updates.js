@@ -176,6 +176,77 @@ async function loadUpdates() {
   }
 }
 
+/** Apply update with live CLI-style log via WebSocket (same interactivity as command line). */
+function applyUpdateWithLog(applyButton, logWrapper, logPre) {
+  if (!applyButton || !logWrapper || !logPre) return;
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const wsUrl = `${protocol}//${window.location.host}/ws/updates/apply`;
+  logWrapper.hidden = false;
+  logPre.textContent = "";
+  applyButton.disabled = true;
+  const originalLabel = applyButton.textContent;
+  applyButton.textContent = "Updating…";
+
+  const appendLog = (line) => {
+    logPre.textContent += line + "\n";
+    logPre.scrollTop = logPre.scrollHeight;
+  };
+
+  const finish = (success, message) => {
+    applyButton.disabled = false;
+    applyButton.textContent = originalLabel;
+    if (message) showToast(message, success ? "success" : "error");
+    loadUpdates();
+  };
+
+  let ws;
+  try {
+    ws = new WebSocket(wsUrl);
+  } catch (e) {
+    appendLog("Failed to open connection: " + e);
+    finish(false, "Unable to start update stream.");
+    return;
+  }
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "progress" && msg.line != null) {
+        appendLog(msg.line);
+      } else if (msg.type === "done" && msg.result) {
+        const d = msg.result;
+        if (d.dry_run) {
+          appendLog("Dry run complete. Set RPI_ENGINEER_DRY_RUN=0 to apply.");
+          finish(true, "Dry run: update not applied. Set RPI_ENGINEER_DRY_RUN=0 to apply.");
+        } else if (d.status === "applied") {
+          appendLog("Update applied successfully.");
+          finish(true, "Update applied successfully (configuration kept).");
+        } else {
+          appendLog("Already up to date.");
+          finish(true, "System is already up to date.");
+        }
+      } else if (msg.type === "error") {
+        appendLog("Error: " + (msg.message || "Unknown error"));
+        finish(false, msg.message || "Update failed.");
+      }
+    } catch (e) {
+      appendLog("Parse error: " + e);
+    }
+  };
+
+  ws.onerror = () => {
+    appendLog("Connection error.");
+    finish(false, "Update stream connection error.");
+  };
+
+  ws.onclose = () => {
+    if (applyButton.disabled && applyButton.textContent === "Updating…") {
+      applyButton.disabled = false;
+      applyButton.textContent = originalLabel;
+    }
+  };
+}
+
 function setupActions() {
   const checkButton = document.getElementById("check-updates");
   if (checkButton) {
@@ -183,23 +254,17 @@ function setupActions() {
   }
 
   const applyButton = document.getElementById("apply-update");
+  const logWrapper = document.getElementById("update-log-wrapper");
+  const logPre = document.getElementById("update-log");
+  const logClose = document.getElementById("update-log-close");
   if (applyButton) {
-    applyButton.addEventListener("click", async () => {
-      try {
-        const payload = await apiPost("/api/v1/updates/apply", {});
-        const data = extractData(payload) || {};
-        if (data.dry_run) {
-          showToast("Dry run: update not applied. Set RPI_ENGINEER_DRY_RUN=0 to apply.", "info");
-        } else if (data.status === "applied") {
-          showToast("Update applied successfully (configuration kept).", "success");
-        } else {
-          showToast("System is already up to date.", "success");
-        }
-        await loadUpdates();
-      } catch (error) {
-        const msg = error?.message || "Unable to apply update.";
-        showToast(msg, "error");
-      }
+    applyButton.addEventListener("click", () => {
+      applyUpdateWithLog(applyButton, logWrapper, logPre);
+    });
+  }
+  if (logClose && logWrapper) {
+    logClose.addEventListener("click", () => {
+      logWrapper.hidden = true;
     });
   }
 

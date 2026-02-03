@@ -145,6 +145,13 @@
             <p class="section-muted" style="margin-top: 0;">
               Rollback restores configuration and the version ref; it does not restore application code.
             </p>
+            <div class="update-log-wrapper" id="update-log-wrapper" hidden>
+              <div class="update-log-header">
+                <span class="update-log-title">Update log</span>
+                <button type="button" class="btn btn-ghost btn-sm" id="update-log-close" aria-label="Close log">×</button>
+              </div>
+              <pre class="update-log" id="update-log" aria-live="polite"></pre>
+            </div>
             <div class="info-grid">
               <div>
                 <div class="info-label">Update Branch</div>
