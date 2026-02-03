@@ -846,7 +846,10 @@ ensure_source_dir() {
         log_info "Running from install directory; cloning repository for deploy."
         local clone_dir="/tmp/rpi-engineer-src-$(date +%s)"
         echo "Cloning $REPO_URL (branch $BRANCH)..."
-        git clone --branch "$BRANCH" "$REPO_URL" "$clone_dir" 2>&1 | tee -a "$INSTALL_LOG"
+        if ! git clone --branch "$BRANCH" "$REPO_URL" "$clone_dir" >> "$INSTALL_LOG" 2>&1; then
+            log_error "git clone failed (check network and $INSTALL_LOG)."
+            exit 1
+        fi
         SOURCE_DIR="$clone_dir"
         echo "Repository cloned to $clone_dir"
         return 0
@@ -862,7 +865,10 @@ ensure_source_dir() {
     fi
     local clone_dir="/tmp/rpi-engineer-src-$(date +%s)"
     echo "Cloning $REPO_URL (branch $BRANCH)..."
-    git clone --branch "$BRANCH" "$REPO_URL" "$clone_dir" 2>&1 | tee -a "$INSTALL_LOG"
+    if ! git clone --branch "$BRANCH" "$REPO_URL" "$clone_dir" >> "$INSTALL_LOG" 2>&1; then
+        log_error "git clone failed (check network and $INSTALL_LOG)."
+        exit 1
+    fi
     SOURCE_DIR="$clone_dir"
     echo "Repository cloned to $clone_dir"
 }
@@ -898,8 +904,15 @@ deploy_files() {
         if command -v git >/dev/null 2>&1; then
             log_info "Cloning repository and redeploying from fresh source."
             local clone_dir="/tmp/rpi-engineer-src-$(date +%s)"
-            git clone --branch "$BRANCH" "$REPO_URL" "$clone_dir" 2>&1 | tee -a "$INSTALL_LOG"
+            if ! git clone --branch "$BRANCH" "$REPO_URL" "$clone_dir" >> "$INSTALL_LOG" 2>&1; then
+                log_error "git clone failed (check network and $INSTALL_LOG)."
+                exit 1
+            fi
             SOURCE_DIR="$clone_dir"
+            if [ ! -f "$SOURCE_DIR/web/index.html" ] || [ ! -f "$SOURCE_DIR/services/logging_service/manager.py" ] || [ ! -f "$SOURCE_DIR/bin/apply-web-permissions.sh" ]; then
+                log_error "Clone incomplete or wrong branch; missing expected files."
+                exit 1
+            fi
             deploy_copy_from_source
             missing=""
             [ ! -f "$INSTALL_DIR/web/index.html" ] && missing="${missing} web/index.html"
