@@ -235,7 +235,7 @@ wpa_key_mgmt=WPA-PSK
         ip_address = addrs.get("ip_address")
         gateway, metric = self._gateway_for(name)
         iface_type = self._interface_type(name)
-        return {
+        out = {
             "id": name,
             "name": name,
             "friendly_name": self._friendly_name(name),
@@ -250,6 +250,11 @@ wpa_key_mgmt=WPA-PSK
             "speed_mbps": stats.get("speed"),
             "driver": self._driver_for(name),
         }
+        if iface_type == "wifi":
+            ssid, password = self._get_hotspot_credentials()
+            out["ssid"] = ssid
+            out["password"] = password
+        return out
 
     def _interface_addrs(self, name: str) -> Dict[str, Optional[str]]:
         if psutil:
@@ -493,6 +498,24 @@ wpa_key_mgmt=WPA-PSK
                 payload = []
         payload.append(route.__dict__)
         path.write_text(json.dumps(payload, indent=2))
+
+    def _get_hotspot_credentials(self) -> Tuple[str, str]:
+        """Return (ssid, password) for the WiFi hotspot from hostapd config or hotspot.secret."""
+        if platform.system().lower() == "windows":
+            return ("", "")
+        config = self._get_hotspot_config()
+        ssid = (config.get("ssid") or "").strip()
+        password = (config.get("wpa_passphrase") or "").strip()
+        if not ssid and HOTSPOT_SECRET_PATH.exists():
+            try:
+                lines = HOTSPOT_SECRET_PATH.read_text().strip().splitlines()
+                if lines:
+                    ssid = (lines[0] or "").strip()
+                if len(lines) > 1:
+                    password = (lines[1] or "").strip()
+            except OSError:
+                pass
+        return (ssid, password)
 
     def _get_hotspot_config(self) -> Optional[Dict[str, object]]:
         hostapd_config = Path("/etc/hostapd/hostapd.conf")

@@ -39,6 +39,23 @@
   margin-top: 0.75rem;
 }
 
+.files-changed-section {
+  margin-top: 1rem;
+}
+
+.files-changed-list {
+  max-height: 12rem;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  margin: 0.25rem 0 0;
+  padding-left: 1.5rem;
+}
+
+.files-changed-list code {
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+
 .empty-state {
   border: 1px dashed var(--color-border);
   border-radius: 12px;

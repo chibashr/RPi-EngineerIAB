@@ -316,6 +316,10 @@ determine_install_mode() {
         log_info "Install mode: continue (repair/resume interrupted install)"
         return 0
     fi
+    if [ "${NONINTERACTIVE:-0}" = "1" ] && [ "$INSTALL_MODE" = "reconfigure" ]; then
+        log_info "Install mode: reconfigure (from environment; will use existing install.conf)"
+        return 0
+    fi
     if [ -d "$INSTALL_DIR" ] || [ -d "$CONFIG_DIR" ]; then
         log_warn "Existing installation detected."
         if [ "${NONINTERACTIVE:-0}" != "1" ]; then
@@ -1846,6 +1850,14 @@ main() {
         else
             log_info "Non-interactive: keeping previously configured modules."
         fi
+        write_install_conf
+        if [ "$TARGET_HOSTNAME" != "$(hostname)" ]; then
+            hostnamectl set-hostname "$TARGET_HOSTNAME"
+        fi
+    elif [ "$INSTALL_MODE" = "reconfigure" ] && [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        load_install_conf
+        UPGRADE_SKIP_CONFIG="1"
+        log_info "Reconfigure (non-interactive): re-applying config from existing install.conf."
         write_install_conf
         if [ "$TARGET_HOSTNAME" != "$(hostname)" ]; then
             hostnamectl set-hostname "$TARGET_HOSTNAME"

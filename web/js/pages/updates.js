@@ -8,6 +8,8 @@ const elements = {
   isAvailable: document.getElementById("update-available"),
   availableSince: document.getElementById("available-since"),
   notes: document.getElementById("release-notes"),
+  filesChangedSection: document.getElementById("files-changed-section"),
+  filesChangedList: document.getElementById("files-changed-list"),
 };
 
 function showToast(message, variant = "info") {
@@ -46,6 +48,29 @@ function renderUpdateStatus(data) {
     elements.availableSince.textContent = formatDateTime(data?.available_since);
   }
   elements.notes.textContent = data?.release_notes || "Release notes pending.";
+
+  const filesChanged = Array.isArray(data?.files_changed) ? data.files_changed : [];
+  if (elements.filesChangedSection && elements.filesChangedList) {
+    if (filesChanged.length === 0) {
+      elements.filesChangedSection.hidden = true;
+      elements.filesChangedList.innerHTML = "";
+    } else {
+      elements.filesChangedSection.hidden = false;
+      elements.filesChangedList.innerHTML = filesChanged
+        .slice(0, 100)
+        .map((path) => `<li><code>${escapeHtml(path)}</code></li>`)
+        .join("");
+      if (filesChanged.length > 100) {
+        elements.filesChangedList.innerHTML += `<li class="section-muted">… and ${filesChanged.length - 100} more</li>`;
+      }
+    }
+  }
+}
+
+function escapeHtml(s) {
+  const div = document.createElement("div");
+  div.textContent = s;
+  return div.innerHTML;
 }
 
 async function loadUpdates() {
@@ -70,15 +95,36 @@ function setupActions() {
       try {
         const payload = await apiPost("/api/v1/updates/apply", {});
         const data = extractData(payload) || {};
-        showToast(
-          data.status === "applied"
-            ? "Update applied successfully."
-            : "System is already up to date.",
-          "success"
-        );
+        if (data.dry_run) {
+          showToast("Dry run: update not applied. Set RPI_ENGINEER_DRY_RUN=0 to apply.", "info");
+        } else if (data.status === "applied") {
+          showToast("Update applied successfully (configuration kept).", "success");
+        } else {
+          showToast("System is already up to date.", "success");
+        }
         await loadUpdates();
       } catch (error) {
         showToast("Unable to apply update.", "error");
+      }
+    });
+  }
+
+  const reconfigureButton = document.getElementById("reconfigure-update");
+  if (reconfigureButton) {
+    reconfigureButton.addEventListener("click", async () => {
+      try {
+        const payload = await apiPost("/api/v1/updates/reconfigure", {});
+        const data = extractData(payload) || {};
+        if (data.status === "reconfigure_dry_run") {
+          showToast(data.message || "Reconfigure dry run. Set RPI_ENGINEER_DRY_RUN=0 to run.", "info");
+        } else if (data.status === "reconfigured") {
+          showToast(data.message || "Configuration re-applied. Reboot recommended for hotspot.", "success");
+        } else {
+          showToast("Reconfigure completed.", "success");
+        }
+        await loadUpdates();
+      } catch (error) {
+        showToast("Reconfigure failed. You may need to run the install script as root.", "error");
       }
     });
   }

@@ -7,12 +7,14 @@ either a 40-char git hash (after an in-app update) or a fallback version string.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import shutil
 import subprocess
 import tempfile
+import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import dataclass
@@ -86,6 +88,43 @@ def _github_commit_date(repo_slug: str, commit_hash: str) -> Optional[str]:
         return None
 
 
+def _github_tree_blobs(repo_slug: str, commit_ref: str) -> Optional[list[tuple[str, str]]]:
+    """Fetch recursive tree for commit; return list of (path, blob_sha) for type blob under CORE_DIRS."""
+    if not commit_ref:
+        return None
+    try:
+        url = f"https://api.github.com/repos/{repo_slug}/commits/{commit_ref}"
+        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            commit_data = json.loads(resp.read().decode())
+        tree_url = (commit_data.get("commit") or {}).get("tree", {}).get("url")
+        if not tree_url:
+            return None
+        req2 = urllib.request.Request(tree_url + "?recursive=1", headers={"Accept": "application/vnd.github.v3+json"})
+        with urllib.request.urlopen(req2, timeout=15) as resp2:
+            tree_data = json.loads(resp2.read().decode())
+        blobs: list[tuple[str, str]] = []
+        for node in tree_data.get("tree") or []:
+            if node.get("type") != "blob":
+                continue
+            path = node.get("path") or ""
+            if not path or path.startswith((".git", ".github", "__pycache__")) or ".pyc" in path:
+                continue
+            top = path.split("/")[0] if "/" in path else path
+            if top not in CORE_DIRS:
+                continue
+            blobs.append((path, node.get("sha") or ""))
+        return blobs
+    except Exception:
+        return None
+
+
+def _git_blob_sha(content: bytes) -> str:
+    """Compute git blob object SHA1 (blob {size}\\0{content})."""
+    blob = b"blob " + str(len(content)).encode() + b"\0" + content
+    return hashlib.sha1(blob).hexdigest()
+
+
 def _safe_extract(archive: zipfile.ZipFile, destination: Path) -> None:
     destination = destination.resolve()
     for member in archive.infolist():
@@ -141,6 +180,7 @@ class UpdateManager:
                 "release_notes": "git not available on this system.",
                 "last_update": last_update,
                 "available_since": None,
+                "files_changed": [],
             }
         result = subprocess.run(
             ["git", "ls-remote", repo, branch],
@@ -160,20 +200,37 @@ class UpdateManager:
                 "release_notes": "Version comparison unavailable.",
                 "last_update": last_update,
                 "available_since": None,
+                "files_changed": [],
             }
-        update_available = bool(available and available != current_hash)
+        ref_differs = bool(available and available != current_hash)
+        root_dir = Path(os.getenv("RPI_ENGINEER_ROOT", "/opt/rpi-engineer"))
+        files_changed: list[str] = []
+        slug = _github_repo_slug(repo)
+        if slug and available and _is_hash(available):
+            blobs = _github_tree_blobs(slug, available)
+            if blobs:
+                for path, remote_sha in blobs:
+                    local_path = root_dir / path
+                    try:
+                        content = local_path.read_bytes()
+                    except OSError:
+                        files_changed.append(path)
+                        continue
+                    local_sha = _git_blob_sha(content)
+                    if local_sha != remote_sha:
+                        files_changed.append(path)
+        update_available = ref_differs or len(files_changed) > 0
         available_since = None
-        if available and update_available:
-            slug = _github_repo_slug(repo)
-            if slug:
-                available_since = _github_commit_date(slug, available)
+        if available and update_available and slug:
+            available_since = _github_commit_date(slug, available)
         return {
             "current_version": current_hash,
             "update_available": update_available,
             "available_version": available,
-            "release_notes": "Release notes available after staging.",
+            "release_notes": "Release notes available after staging." if update_available else "",
             "last_update": last_update,
             "available_since": available_since,
+            "files_changed": files_changed[:200],
         }
 
     def apply_update(self) -> Dict[str, object]:
@@ -212,6 +269,39 @@ class UpdateManager:
             "previous_version": previous_version,
             "current_version": target_version,
             "backup_path": str(backup_path),
+        }
+
+    def run_reconfigure(self) -> Dict[str, object]:
+        """Run install script in reconfigure mode (re-apply config from existing install.conf). Requires root."""
+        root_dir = Path(os.getenv("RPI_ENGINEER_ROOT", "/opt/rpi-engineer"))
+        install_script = root_dir / "bin" / "install.sh"
+        if not install_script.exists():
+            raise RuntimeError("Install script not found; run reconfigure from the device where the app is installed.")
+        if os.getenv("RPI_ENGINEER_DRY_RUN", "1") == "1":
+            return {
+                "status": "reconfigure_dry_run",
+                "message": "Reconfigure would run install.sh with INSTALL_MODE=reconfigure. Set RPI_ENGINEER_DRY_RUN=0 to run.",
+            }
+        env = {**os.environ, "NONINTERACTIVE": "1", "INSTALL_MODE": "reconfigure"}
+        try:
+            result = subprocess.run(
+                ["sudo", str(install_script)],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("Reconfigure timed out after 5 minutes.") from None
+        except FileNotFoundError:
+            raise RuntimeError("sudo or install script not found.") from None
+        if result.returncode != 0:
+            stderr = (result.stderr or "").strip() or (result.stdout or "").strip()
+            raise RuntimeError(f"Reconfigure failed (exit {result.returncode}): {stderr[:500]}")
+        return {
+            "status": "reconfigured",
+            "message": "Configuration re-applied. Reboot recommended for hotspot changes.",
         }
 
     def rollback_update(self) -> Dict[str, object]:

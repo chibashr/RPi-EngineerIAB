@@ -118,13 +118,21 @@
 
           <section class="card" data-tab-panel="updates">
             <div class="section-header">
-              <h2>Software Updates</h2>
+              <div>
+                <h2>Software Updates</h2>
+                <p class="section-muted" style="margin-top: 0.25rem;">
+                  Check for differences between the repo and files on this device. Update with existing config or re-run configuration (like the install script).
+                </p>
+              </div>
               <div class="button-row">
                 <button class="btn btn-secondary" id="check-updates">
                   Check for Updates
                 </button>
-                <button class="btn btn-primary" id="apply-update">
-                  Apply Update
+                <button class="btn btn-primary" id="apply-update" title="Deploy repo files and keep current configuration">
+                  Update (keep configuration)
+                </button>
+                <button class="btn btn-secondary" id="reconfigure-update" title="Re-apply configuration from existing install.conf">
+                  Reconfigure
                 </button>
                 <button class="btn btn-ghost" id="rollback-update">
                   Rollback
@@ -152,6 +160,10 @@
                 <div class="info-label">New Update From</div>
                 <div class="info-value" id="available-since">--</div>
               </div>
+            </div>
+            <div class="files-changed-section" id="files-changed-section" hidden>
+              <div class="info-label">Files differing from repo</div>
+              <ul class="files-changed-list" id="files-changed-list" aria-label="Paths that differ from the remote repository"></ul>
             </div>
             <p class="section-muted" id="release-notes">Release notes pending.</p>
           </section>
