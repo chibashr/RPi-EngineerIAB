@@ -55,6 +55,22 @@ sudo ./bin/install.sh</pre>
 </ul>
 <p>In non-interactive mode (<code>NONINTERACTIVE=1</code>), upgrade defaults to using existing configuration and keeping previously configured modules.</p>
 
+<h2>Installer fails: Deploy incomplete (missing web/index.html or similar)</h2>
+<p><strong>Symptom:</strong> The installer exits with <code>[ERROR] Deploy incomplete; missing: web/index.html</code> (or <code>services/logging_service/manager.py</code>, <code>bin/apply-web-permissions.sh</code>).</p>
+<p><strong>Cause:</strong> The source directory used for deploy does not contain the required files (e.g. incomplete clone, wrong branch, or tarball without web/services/bin).</p>
+<p><strong>Resolution:</strong> Run the installer from a complete repo clone that includes <code>web/</code>, <code>services/</code>, and <code>bin/</code>. If running from <code>/opt/rpi-engineer</code>, the installer clones the repo automatically; ensure the device has network access. Otherwise clone the repo elsewhere and run <code>./bin/install.sh</code> from that directory.</p>
+
+<h2>Service fails: can't open file .../manager.py (No such file or directory)</h2>
+<p><strong>Symptom:</strong> <code>journalctl -u rpi-engineer-logging.service</code> (or another rpi-engineer-* service) shows:</p>
+<pre>python: can't open file '/opt/rpi-engineer/services/logging_service/manager.py': [Errno 2] No such file or directory</pre>
+<p><strong>Cause:</strong> Application files under <code>/opt/rpi-engineer/services/</code> are missing or incomplete (e.g. install was interrupted before deploy, or the install was from a clone that did not include the full tree).</p>
+<p><strong>Resolution:</strong></p>
+<ol>
+  <li>Re-run the installer on the device: <code>sudo /opt/rpi-engineer/bin/install.sh</code>, choose Upgrade and use existing configuration. When run from <code>/opt/rpi-engineer</code>, the installer clones the repo and deploys <code>web</code>, <code>services</code>, <code>bin</code>, <code>lib</code> (requires network).</li>
+  <li>Or from a machine with the full repo, copy the missing folders: <code>rsync -av ./services/ user@192.168.50.1:/opt/rpi-engineer/services/</code> (and similarly for <code>web</code>, <code>bin</code> if needed).</li>
+  <li>Then restart the failing service: <code>sudo systemctl restart rpi-engineer-logging</code> (or the service named in the error).</li>
+</ol>
+
 <h2>Interrupted installation: repair / continue</h2>
 <p><strong>Symptom:</strong> The installer was stopped partway through (power loss, Ctrl+C, or a step failed and you fixed the cause).</p>
 <p><strong>What the installer does:</strong> It records progress in <code>/tmp/rpi-engineer-install.progress</code>. If you run the installer again and that file is present, you will see:</p>

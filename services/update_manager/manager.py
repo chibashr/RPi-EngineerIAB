@@ -277,24 +277,45 @@ class UpdateManager:
     def _apply_web_permissions(self, root_dir: Path) -> None:
         """Re-apply nginx config and web root permissions so 403 is fixed after update."""
         script = root_dir / "bin" / "apply-web-permissions.sh"
-        if not script.exists():
-            return
-        try:
-            result = subprocess.run(
-                ["sudo", str(script)],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=False,
-            )
-            if result.returncode != 0:
-                logger.warning(
-                    "apply-web-permissions.sh failed (rc=%s): %s",
-                    result.returncode,
-                    result.stderr.strip() or result.stdout.strip(),
+        if script.exists():
+            try:
+                result = subprocess.run(
+                    ["sudo", str(script)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
                 )
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
-            logger.warning("Could not run apply-web-permissions.sh: %s", e)
+                if result.returncode != 0:
+                    logger.warning(
+                        "apply-web-permissions.sh failed (rc=%s): %s",
+                        result.returncode,
+                        result.stderr.strip() or result.stdout.strip(),
+                    )
+                return
+            except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+                logger.warning("Could not run apply-web-permissions.sh: %s", e)
+        # Fallback when script missing: apply web root ownership so nginx can serve.
+        web_dir = root_dir / "web"
+        if web_dir.is_dir():
+            try:
+                subprocess.run(
+                    ["sudo", "chown", "-R", "www-data:www-data", str(web_dir)],
+                    capture_output=True,
+                    timeout=15,
+                    check=False,
+                )
+                for parent in [root_dir.parent, root_dir]:
+                    if parent.is_dir():
+                        subprocess.run(
+                            ["sudo", "chmod", "o+x", str(parent)],
+                            capture_output=True,
+                            timeout=5,
+                            check=False,
+                        )
+                logger.info("Applied web permissions (fallback; apply-web-permissions.sh missing)")
+            except (subprocess.TimeoutExpired, OSError) as e:
+                logger.warning("Could not apply web permissions fallback: %s", e)
 
     def _read_state(self) -> Optional[UpdateState]:
         if not self._state_file.exists():
@@ -321,11 +342,15 @@ class UpdateManager:
             ["git", "clone", "--depth", "1", "--branch", branch, repo, str(staging_dir)],
             check=True,
         )
+        # Critical dirs: replace entirely so we get a clean deploy (avoids 403, service crashes).
+        replace_dirs = {"web", "services", "bin", "lib"}
         for item in staging_dir.iterdir():
             if item.name in {".git", ".github"}:
                 continue
             destination = root_dir / item.name
             if item.is_dir():
+                if item.name in replace_dirs and destination.exists():
+                    shutil.rmtree(destination, ignore_errors=True)
                 shutil.copytree(item, destination, dirs_exist_ok=True)
             else:
                 destination.parent.mkdir(parents=True, exist_ok=True)

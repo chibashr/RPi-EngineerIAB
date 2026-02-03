@@ -840,6 +840,17 @@ backup_existing_install() {
 }
 
 ensure_source_dir() {
+    # When running from install dir (e.g. /opt/rpi-engineer), clone to get a fresh source
+    # for deploy; otherwise we would skip deploy and leave broken/incomplete state.
+    if [ "$SOURCE_DIR" = "$INSTALL_DIR" ]; then
+        log_info "Running from install directory; cloning repository for deploy."
+        local clone_dir="/tmp/rpi-engineer-src-$(date +%s)"
+        echo "Cloning $REPO_URL (branch $BRANCH)..."
+        git clone --branch "$BRANCH" "$REPO_URL" "$clone_dir" 2>&1 | tee -a "$INSTALL_LOG"
+        SOURCE_DIR="$clone_dir"
+        echo "Repository cloned to $clone_dir"
+        return 0
+    fi
     if [ -d "$SOURCE_DIR/services" ] && [ -d "$SOURCE_DIR/web" ]; then
         return 0
     fi
@@ -885,6 +896,16 @@ deploy_files() {
     fi
     if [ -f "$SOURCE_DIR/requirements.txt" ]; then
         cp "$SOURCE_DIR/requirements.txt" "$INSTALL_DIR/requirements.txt"
+    fi
+    # Verify critical files exist so 403 and service crashes are avoided.
+    local missing=""
+    [ ! -f "$INSTALL_DIR/web/index.html" ] && missing="${missing} web/index.html"
+    [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && missing="${missing} services/logging_service/manager.py"
+    [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && missing="${missing} bin/apply-web-permissions.sh"
+    if [ -n "$missing" ]; then
+        log_error "Deploy incomplete; missing:$missing"
+        log_error "Re-run the installer from a complete repo clone, or ensure the source has these files."
+        exit 1
     fi
     echo "Application files deployed."
     APP_INSTALLED="yes"
