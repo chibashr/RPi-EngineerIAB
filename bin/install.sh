@@ -1043,8 +1043,21 @@ EOF
     ln -sf /etc/nginx/sites-available/rpi-engineer /etc/nginx/sites-enabled/rpi-engineer
     rm -f /etc/nginx/sites-enabled/default
     if [ -d "$INSTALL_DIR/web" ]; then
-        chmod -R o+rX "$INSTALL_DIR/web"
-        echo "Web root permissions set for nginx read access."
+        NGINX_USER="www-data"
+        if [ -f /etc/nginx/nginx.conf ] && grep -q '^[[:space:]]*user[[:space:]]' /etc/nginx/nginx.conf; then
+            NGINX_USER=$(grep '^[[:space:]]*user[[:space:]]' /etc/nginx/nginx.conf | head -1 | awk '{print $2}' | tr -d ';')
+        fi
+        if getent passwd "$NGINX_USER" >/dev/null 2>&1; then
+            chown -R "$NGINX_USER:$NGINX_USER" "$INSTALL_DIR/web"
+            echo "Web root ownership set to $NGINX_USER for nginx."
+        else
+            chmod -R o+rX "$INSTALL_DIR/web"
+            echo "Web root permissions set for nginx read access (user $NGINX_USER not found)."
+        fi
+        # Ensure nginx can traverse parent path (e.g. /opt, /opt/rpi-engineer).
+        for d in "$(dirname "$INSTALL_DIR")" "$INSTALL_DIR"; do
+            [ -d "$d" ] && chmod o+x "$d" 2>/dev/null || true
+        done
     fi
     echo "Testing nginx configuration..."
     nginx -t 2>&1 | tee -a "$INSTALL_LOG"
