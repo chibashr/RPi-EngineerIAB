@@ -20,6 +20,10 @@ REMOTE_ACCESS_CONFIG_DIR = Path(
     os.getenv("RPI_ENGINEER_CONFIG_DIR", "/etc/rpi-engineer")
 )
 REMOTE_ACCESS_CONFIG_FILE = REMOTE_ACCESS_CONFIG_DIR / "remote_access.conf"
+# Native config paths for ID fallback when app config is missing/unreadable
+ANYDESK_SERVICE_CONF = Path("/etc/anydesk/service.conf")
+TEAMVIEWER_GLOBAL_CONF = Path("/opt/teamviewer/config/global.conf")
+TEAMVIEWER_LOG_DIR = Path("/var/log/teamviewer")
 
 
 class RemoteAccessManager:
@@ -87,8 +91,54 @@ class RemoteAccessManager:
             logger.debug("Could not read remote_access config: %s", e)
             return {}
 
+    def _anydesk_id_from_native_config(self) -> Optional[str]:
+        """Read AnyDesk ID from /etc/anydesk/service.conf when app config is unavailable."""
+        if not ANYDESK_SERVICE_CONF.is_file():
+            return None
+        try:
+            text = ANYDESK_SERVICE_CONF.read_text(encoding="utf-8", errors="replace")
+            # Common key: ad.anynet.id = 123456789 or similar
+            for line in text.splitlines():
+                if "id" in line.lower() and "=" in line:
+                    match = re.search(r"=\s*(\d{9,10})\s*$", line.strip())
+                    if match:
+                        return _format_id(match.group(1))
+            # Fallback: any 9–10 digit number in file
+            match = re.search(r"\b(\d{9,10})\b", text)
+            if match:
+                return _format_id(match.group(1))
+        except OSError as e:
+            logger.debug("Could not read AnyDesk service.conf: %s", e)
+        return None
+
+    def _teamviewer_id_from_native_config(self) -> Optional[str]:
+        """Read TeamViewer ID from config or logs when app config is unavailable."""
+        if TEAMVIEWER_GLOBAL_CONF.is_file():
+            try:
+                text = TEAMVIEWER_GLOBAL_CONF.read_text(
+                    encoding="utf-8", errors="replace"
+                )
+                match = re.search(r"ClientID\s*=\s*(\d+)", text, re.IGNORECASE)
+                if match:
+                    return _format_id(match.group(1))
+            except OSError as e:
+                logger.debug("Could not read TeamViewer global.conf: %s", e)
+        if TEAMVIEWER_LOG_DIR.is_dir():
+            try:
+                for log in sorted(TEAMVIEWER_LOG_DIR.glob("*.log"), reverse=True):
+                    try:
+                        text = log.read_text(encoding="utf-8", errors="replace")
+                        match = re.search(r"id[=\s]+(\d{9,10})\b", text, re.IGNORECASE)
+                        if match:
+                            return _format_id(match.group(1))
+                    except OSError:
+                        continue
+            except OSError as e:
+                logger.debug("Could not read TeamViewer log dir: %s", e)
+        return None
+
     def _anydesk_id(self) -> Optional[str]:
-        # Prefer live CLI output; fall back to ID stored at install time
+        # 1) Live CLI 2) App config (remote_access.conf) 3) AnyDesk native config
         if shutil.which("anydesk"):
             result = subprocess.run(
                 ["anydesk", "--get-id"],
@@ -102,12 +152,12 @@ class RemoteAccessManager:
                     return formatted
         config = self._get_remote_access_config()
         raw = config.get("anydesk", {}).get("id") or ""
-        if not raw:
-            return None
-        return _format_id(str(raw).strip()) or None
+        if raw:
+            return _format_id(str(raw).strip()) or None
+        return self._anydesk_id_from_native_config()
 
     def _teamviewer_id(self) -> Optional[str]:
-        # Prefer live CLI output; fall back to ID stored at install time
+        # 1) Live CLI 2) App config (remote_access.conf) 3) TeamViewer config/logs
         if shutil.which("teamviewer"):
             result = subprocess.run(
                 ["teamviewer", "info"],
@@ -121,9 +171,9 @@ class RemoteAccessManager:
                     return _format_id(match.group(1))
         config = self._get_remote_access_config()
         raw = config.get("teamviewer", {}).get("id") or ""
-        if not raw:
-            return None
-        return _format_id(str(raw).strip()) or None
+        if raw:
+            return _format_id(str(raw).strip()) or None
+        return self._teamviewer_id_from_native_config()
 
     def _vnc_connection_id(self) -> Optional[str]:
         ip = self._primary_ip()

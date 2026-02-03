@@ -41,7 +41,7 @@
   "web_components": [
     {
       "name": "SNMP Trap Receiver",
-      "path": "/modules/snmp_trap_receiver/component.html",
+      "path": "/advanced/snmp.html",
       "menu": "Modules",
       "menu_order": 20,
       "icon": "puzzle"

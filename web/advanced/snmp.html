@@ -22,6 +22,7 @@
     <link rel="stylesheet" href="/css/layout.css" />
     <link rel="stylesheet" href="/css/components.css" />
     <link rel="stylesheet" href="/css/pages/advanced.css" />
+    <link rel="stylesheet" href="/css/pages/snmp.css" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to main content</a>
@@ -102,72 +103,79 @@
                 Monitor incoming SNMP traps with live and stored history. Enable and configure the module from the Modules page.
               </p>
             </div>
+            <div class="toolbar">
+              <button class="btn btn-secondary" id="refresh-snmp">
+                Refresh
+              </button>
+              <button class="btn btn-ghost" id="clear-snmp">
+                Clear buffers
+              </button>
+            </div>
           </div>
 
           <section class="card">
             <div class="section-header">
-              <h2>Receiver Details</h2>
+              <h2>Status</h2>
             </div>
-            <div class="card-body">
-              <section class="module-panel" id="snmp-trap-receiver">
-                <header class="module-header">
-                  <h2>SNMP Trap Receiver</h2>
-                  <p class="module-subtitle">Live and stored SNMP trap details.</p>
-                </header>
+            <div class="receiver-status">
+              <div class="status-item">
+                <span class="status-label">State</span>
+                <span class="status-value" id="snmp-status-state">Loading...</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">Bind</span>
+                <span class="status-value" id="snmp-status-bind">--</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">Received</span>
+                <span class="status-value" id="snmp-status-received">--</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">Stored</span>
+                <span class="status-value" id="snmp-status-stored">--</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">Last</span>
+                <span class="status-value" id="snmp-status-last">--</span>
+              </div>
+            </div>
+          </section>
 
-                <div class="module-status">
-                  <div class="status-item">
-                    <span class="status-label">State</span>
-                    <span class="status-value" id="snmp-status-state">Loading...</span>
-                  </div>
-                  <div class="status-item">
-                    <span class="status-label">Bind</span>
-                    <span class="status-value" id="snmp-status-bind">--</span>
-                  </div>
-                  <div class="status-item">
-                    <span class="status-label">Received</span>
-                    <span class="status-value" id="snmp-status-received">--</span>
-                  </div>
-                  <div class="status-item">
-                    <span class="status-label">Stored</span>
-                    <span class="status-value" id="snmp-status-stored">--</span>
-                  </div>
-                  <div class="status-item">
-                    <span class="status-label">Last</span>
-                    <span class="status-value" id="snmp-status-last">--</span>
-                  </div>
-                </div>
+          <section class="card">
+            <div class="section-header">
+              <h2>Recent Traps</h2>
+            </div>
+            <div class="table-wrap">
+              <table class="receiver-table" id="snmp-recent-table">
+                <thead>
+                  <tr>
+                    <th>Received</th>
+                    <th>Source</th>
+                    <th>Trap OID</th>
+                    <th>Varbinds</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
 
-                <div class="module-section">
-                  <h3>Recent Traps</h3>
-                  <table class="module-table" id="snmp-recent-table">
-                    <thead>
-                      <tr>
-                        <th>Received</th>
-                        <th>Source</th>
-                        <th>Trap OID</th>
-                        <th>Varbinds</th>
-                      </tr>
-                    </thead>
-                    <tbody></tbody>
-                  </table>
-                </div>
-
-                <div class="module-section">
-                  <h3>Stored Traps</h3>
-                  <table class="module-table" id="snmp-stored-table">
-                    <thead>
-                      <tr>
-                        <th>Received</th>
-                        <th>Source</th>
-                        <th>Trap OID</th>
-                        <th>Varbinds</th>
-                      </tr>
-                    </thead>
-                    <tbody></tbody>
-                  </table>
-                </div>
-              </section>
+          <section class="card">
+            <div class="section-header">
+              <h2>Stored Traps</h2>
+            </div>
+            <div class="table-wrap">
+              <table class="receiver-table" id="snmp-stored-table">
+                <thead>
+                  <tr>
+                    <th>Received</th>
+                    <th>Source</th>
+                    <th>Trap OID</th>
+                    <th>Varbinds</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
             </div>
           </section>
         </main>
@@ -177,7 +185,6 @@
     <div class="toast-region" id="toast-region" aria-live="polite"></div>
 
     <script type="module" src="/modules/snmp_trap_receiver/module.js"></script>
-    <link rel="stylesheet" href="/modules/snmp_trap_receiver/module.css" />
     <script type="module" src="/js/pages/advanced.js" defer></script>
   </body>
 </html>

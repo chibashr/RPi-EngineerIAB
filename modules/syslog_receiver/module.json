@@ -41,7 +41,7 @@
   "web_components": [
     {
       "name": "Syslog Receiver",
-      "path": "/modules/syslog_receiver/component.html",
+      "path": "/advanced/syslog.html",
       "menu": "Modules",
       "menu_order": 30,
       "icon": "puzzle"

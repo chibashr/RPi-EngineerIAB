@@ -104,7 +104,38 @@ async function refresh() {
   }
 }
 
+function showToast(message, variant) {
+  const region = document.getElementById("toast-region");
+  if (!region) return;
+  const toast = document.createElement("div");
+  toast.className = `toast ${variant || "info"}`;
+  toast.textContent = message;
+  region.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
+
+async function clearBuffers() {
+  try {
+    const res = await fetch("/api/v1/syslog/clear", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target: "all" }),
+    });
+    if (!res.ok) throw new Error("Clear failed");
+    showToast("Buffers cleared.", "success");
+    refresh();
+  } catch (err) {
+    showToast("Failed to clear buffers.", "error");
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   refresh();
   setInterval(refresh, 5000);
+
+  const refreshBtn = document.getElementById("refresh-syslog");
+  if (refreshBtn) refreshBtn.addEventListener("click", () => refresh());
+
+  const clearBtn = document.getElementById("clear-syslog");
+  if (clearBtn) clearBtn.addEventListener("click", clearBuffers);
 });

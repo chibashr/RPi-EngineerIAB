@@ -1079,7 +1079,12 @@ setup_user_permissions() {
     find "$LOG_DIR" -type f -exec chmod 640 {} \;
     chmod 755 "$CONFIG_DIR"
     chmod 644 "$CONFIG_DIR/"* 2>/dev/null || true
-    chmod 600 "$CONFIG_DIR/install.conf" "$CONFIG_DIR/remote_access.conf" 2>/dev/null || true
+    chmod 600 "$CONFIG_DIR/install.conf" 2>/dev/null || true
+    # remote_access.conf holds only connection IDs (no passwords); API runs as $SERVICE_USER and must read it
+    if [ -f "$CONFIG_DIR/remote_access.conf" ]; then
+        chown "root:$SERVICE_GROUP" "$CONFIG_DIR/remote_access.conf"
+        chmod 640 "$CONFIG_DIR/remote_access.conf"
+    fi
     if [ -d "$INSTALL_DIR/bin" ]; then
         chmod 750 "$INSTALL_DIR/bin/"* 2>/dev/null || true
     fi
