@@ -197,7 +197,8 @@ function setupActions() {
         }
         await loadUpdates();
       } catch (error) {
-        showToast("Unable to apply update.", "error");
+        const msg = error?.message || "Unable to apply update.";
+        showToast(msg, "error");
       }
     });
   }

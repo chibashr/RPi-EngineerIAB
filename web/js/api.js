@@ -60,7 +60,15 @@ export async function apiPost(endpoint, body, options = {}) {
   );
 
   if (!response.ok) {
-    const message = `Request failed (${response.status})`;
+    let message = `Request failed (${response.status})`;
+    try {
+      const payload = await response.json();
+      if (payload?.error?.message && typeof payload.error.message === "string") {
+        message = payload.error.message;
+      }
+    } catch {
+      // ignore non-JSON or parse errors
+    }
     throw new Error(message);
   }
 
