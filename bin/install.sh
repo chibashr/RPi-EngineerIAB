@@ -887,6 +887,38 @@ deploy_files() {
         return 0
     fi
     backup_existing_install
+    deploy_copy_from_source
+    # Verify critical files; if missing, clone and redeploy once (handles incomplete source or stale script).
+    local missing=""
+    [ ! -f "$INSTALL_DIR/web/index.html" ] && missing="${missing} web/index.html"
+    [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && missing="${missing} services/logging_service/manager.py"
+    [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && missing="${missing} bin/apply-web-permissions.sh"
+    if [ -n "$missing" ]; then
+        log_warn "Deploy incomplete after copy; missing:$missing"
+        if command -v git >/dev/null 2>&1; then
+            log_info "Cloning repository and redeploying from fresh source."
+            local clone_dir="/tmp/rpi-engineer-src-$(date +%s)"
+            git clone --branch "$BRANCH" "$REPO_URL" "$clone_dir" 2>&1 | tee -a "$INSTALL_LOG"
+            SOURCE_DIR="$clone_dir"
+            deploy_copy_from_source
+            missing=""
+            [ ! -f "$INSTALL_DIR/web/index.html" ] && missing="${missing} web/index.html"
+            [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && missing="${missing} services/logging_service/manager.py"
+            [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && missing="${missing} bin/apply-web-permissions.sh"
+        fi
+    fi
+    if [ -n "$missing" ]; then
+        log_error "Deploy incomplete; missing:$missing"
+        log_error "Re-run the installer from a complete repo clone, or ensure the source has these files."
+        exit 1
+    fi
+    echo "Application files deployed."
+    APP_INSTALLED="yes"
+    mark_step_done "deploy"
+}
+
+# Copy from current SOURCE_DIR to INSTALL_DIR (used by deploy_files).
+deploy_copy_from_source() {
     echo "Copying services..."
     copy_path "$SOURCE_DIR/services" "$INSTALL_DIR/services"
     echo "Copying web..."
@@ -902,19 +934,6 @@ deploy_files() {
     if [ -f "$SOURCE_DIR/requirements.txt" ]; then
         cp "$SOURCE_DIR/requirements.txt" "$INSTALL_DIR/requirements.txt"
     fi
-    # Verify critical files exist so 403 and service crashes are avoided.
-    local missing=""
-    [ ! -f "$INSTALL_DIR/web/index.html" ] && missing="${missing} web/index.html"
-    [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && missing="${missing} services/logging_service/manager.py"
-    [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && missing="${missing} bin/apply-web-permissions.sh"
-    if [ -n "$missing" ]; then
-        log_error "Deploy incomplete; missing:$missing"
-        log_error "Re-run the installer from a complete repo clone, or ensure the source has these files."
-        exit 1
-    fi
-    echo "Application files deployed."
-    APP_INSTALLED="yes"
-    mark_step_done "deploy"
 }
 
 setup_user_permissions() {
