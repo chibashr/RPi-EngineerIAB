@@ -1,3 +1,5 @@
+import shutil
+
 import pytest
 
 from services.remote_access_manager.manager import RemoteAccessManager, _format_id
@@ -19,3 +21,41 @@ def test_tool_status_uses_process_state(monkeypatch):
 
     assert status["status"] == "running"
     assert status["ready"] is True
+
+
+@pytest.mark.unit
+def test_teamviewer_status_uses_teamviewerd_process(monkeypatch):
+    """TeamViewer daemon runs as 'teamviewerd'; status must reflect that."""
+    manager = RemoteAccessManager()
+    seen = []
+
+    def capture_process(name):
+        seen.append(name)
+        return name == "teamviewerd"
+
+    monkeypatch.setattr(manager, "_process_running", capture_process)
+    monkeypatch.setattr(manager, "_teamviewer_id", lambda: "444 555 666")
+
+    status = manager._tool_status("teamviewer")
+
+    assert "teamviewerd" in seen
+    assert status["status"] == "running"
+    assert status["connection_id"] == "444 555 666"
+
+
+@pytest.mark.unit
+def test_anydesk_id_fallback_to_config(monkeypatch):
+    """When CLI is unavailable, ID is read from remote_access.conf."""
+    manager = RemoteAccessManager()
+    monkeypatch.setattr(
+        manager, "_get_remote_access_config", lambda: {"anydesk": {"id": "111222333"}}
+    )
+    real_which = shutil.which
+
+    def which_no_anydesk(cmd):
+        if cmd == "anydesk":
+            return None
+        return real_which(cmd)
+
+    monkeypatch.setattr(shutil, "which", which_no_anydesk)
+    assert manager._anydesk_id() == "111 222 333"

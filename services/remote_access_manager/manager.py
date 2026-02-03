@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
 import shutil
 import socket
 import subprocess
-from typing import Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from services.network_manager import NetworkManager
 
 logger = logging.getLogger(__name__)
+
+REMOTE_ACCESS_CONFIG_DIR = Path(
+    os.getenv("RPI_ENGINEER_CONFIG_DIR", "/etc/rpi-engineer")
+)
+REMOTE_ACCESS_CONFIG_FILE = REMOTE_ACCESS_CONFIG_DIR / "remote_access.conf"
 
 
 class RemoteAccessManager:
@@ -36,7 +43,7 @@ class RemoteAccessManager:
         }
         status = {
             "anydesk": "running" if self._process_running("anydesk") else "stopped",
-            "teamviewer": "running" if self._process_running("teamviewer") else "stopped",
+            "teamviewer": "running" if self._process_running("teamviewerd") else "stopped",
             "vnc": "running" if self._process_running("x11vnc") else "stopped",
             "rpi_connect": "running" if self._rpi_connect_running() else "stopped",
         }
@@ -52,7 +59,7 @@ class RemoteAccessManager:
             ready = bool(connection_id)
         elif tool == "teamviewer":
             connection_id = self._teamviewer_id() or ""
-            status = "running" if self._process_running("teamviewer") else "stopped"
+            status = "running" if self._process_running("teamviewerd") else "stopped"
             ready = bool(connection_id)
         elif tool == "vnc":
             connection_id = self._vnc_connection_id() or ""
@@ -69,28 +76,54 @@ class RemoteAccessManager:
             "ready": ready,
         }
 
+    def _get_remote_access_config(self) -> Dict[str, Any]:
+        """Read remote_access.conf; return parsed JSON or empty dict."""
+        if not REMOTE_ACCESS_CONFIG_FILE.is_file():
+            return {}
+        try:
+            with open(REMOTE_ACCESS_CONFIG_FILE, encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.debug("Could not read remote_access config: %s", e)
+            return {}
+
     def _anydesk_id(self) -> Optional[str]:
-        if not shutil.which("anydesk"):
+        # Prefer live CLI output; fall back to ID stored at install time
+        if shutil.which("anydesk"):
+            result = subprocess.run(
+                ["anydesk", "--get-id"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                formatted = _format_id(result.stdout.strip())
+                if formatted:
+                    return formatted
+        config = self._get_remote_access_config()
+        raw = config.get("anydesk", {}).get("id") or ""
+        if not raw:
             return None
-        result = subprocess.run(
-            ["anydesk", "--get-id"], capture_output=True, text=True
-        )
-        if result.returncode != 0:
-            return None
-        return _format_id(result.stdout.strip())
+        return _format_id(str(raw).strip()) or None
 
     def _teamviewer_id(self) -> Optional[str]:
-        if not shutil.which("teamviewer"):
+        # Prefer live CLI output; fall back to ID stored at install time
+        if shutil.which("teamviewer"):
+            result = subprocess.run(
+                ["teamviewer", "info"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0 and result.stdout:
+                match = re.search(r"TeamViewer ID:\s*(\d+)", result.stdout)
+                if match:
+                    return _format_id(match.group(1))
+        config = self._get_remote_access_config()
+        raw = config.get("teamviewer", {}).get("id") or ""
+        if not raw:
             return None
-        result = subprocess.run(
-            ["teamviewer", "info"], capture_output=True, text=True
-        )
-        if result.returncode != 0:
-            return None
-        match = re.search(r"TeamViewer ID:\s*(\d+)", result.stdout)
-        if not match:
-            return None
-        return _format_id(match.group(1))
+        return _format_id(str(raw).strip()) or None
 
     def _vnc_connection_id(self) -> Optional[str]:
         ip = self._primary_ip()
