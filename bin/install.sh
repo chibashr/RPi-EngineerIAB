@@ -894,7 +894,7 @@ deploy_files() {
     fi
     backup_existing_install
     deploy_copy_from_source
-    # Verify critical files and required web assets; if missing, try explicit copy then clone once if needed.
+    # Verify critical files, required web assets, and API/service files; if missing, try explicit copy then clone once if needed.
     local missing=""
     [ ! -f "$INSTALL_DIR/web/index.html" ] && missing="${missing} web/index.html"
     [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && missing="${missing} services/logging_service/manager.py"
@@ -904,12 +904,17 @@ deploy_files() {
         [ -z "$path" ] && continue
         [ ! -e "$INSTALL_DIR/web/$path" ] && missing="${missing} web/$path"
     done
+    for path in $REQUIRED_SERVICE_ASSETS; do
+        [ -z "$path" ] && continue
+        [ ! -e "$INSTALL_DIR/$path" ] && missing="${missing} $path"
+    done
     if [ -n "$missing" ] && [ -d "$SOURCE_DIR" ]; then
         log_info "Copying critical files and web assets explicitly from source."
         [ ! -f "$INSTALL_DIR/web/index.html" ] && [ -f "$SOURCE_DIR/web/index.html" ] && mkdir -p "$INSTALL_DIR/web" && cp -a "$SOURCE_DIR/web/index.html" "$INSTALL_DIR/web/"
         [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && [ -f "$SOURCE_DIR/services/logging_service/manager.py" ] && mkdir -p "$INSTALL_DIR/services/logging_service" && cp -a "$SOURCE_DIR/services/logging_service/manager.py" "$INSTALL_DIR/services/logging_service/"
         [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && [ -f "$SOURCE_DIR/bin/apply-web-permissions.sh" ] && mkdir -p "$INSTALL_DIR/bin" && cp -a "$SOURCE_DIR/bin/apply-web-permissions.sh" "$INSTALL_DIR/bin/"
         verify_and_repair_web_assets || true
+        verify_and_repair_service_assets || true
         missing=""
         [ ! -f "$INSTALL_DIR/web/index.html" ] && missing="${missing} web/index.html"
         [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && missing="${missing} services/logging_service/manager.py"
@@ -917,6 +922,10 @@ deploy_files() {
         for path in $REQUIRED_WEB_ASSETS; do
             [ -z "$path" ] && continue
             [ ! -e "$INSTALL_DIR/web/$path" ] && missing="${missing} web/$path"
+        done
+        for path in $REQUIRED_SERVICE_ASSETS; do
+            [ -z "$path" ] && continue
+            [ ! -e "$INSTALL_DIR/$path" ] && missing="${missing} $path"
         done
     fi
     if [ -n "$missing" ]; then
@@ -945,6 +954,7 @@ deploy_files() {
                 [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && [ -f "$SOURCE_DIR/services/logging_service/manager.py" ] && mkdir -p "$INSTALL_DIR/services/logging_service" && cp -a "$SOURCE_DIR/services/logging_service/manager.py" "$INSTALL_DIR/services/logging_service/"
                 [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && [ -f "$SOURCE_DIR/bin/apply-web-permissions.sh" ] && mkdir -p "$INSTALL_DIR/bin" && cp -a "$SOURCE_DIR/bin/apply-web-permissions.sh" "$INSTALL_DIR/bin/"
                 verify_and_repair_web_assets || true
+                verify_and_repair_service_assets || true
                 missing=""
                 [ ! -f "$INSTALL_DIR/web/index.html" ] && missing="${missing} web/index.html"
                 [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && missing="${missing} services/logging_service/manager.py"
@@ -952,6 +962,10 @@ deploy_files() {
                 for path in $REQUIRED_WEB_ASSETS; do
                     [ -z "$path" ] && continue
                     [ ! -e "$INSTALL_DIR/web/$path" ] && missing="${missing} web/$path"
+                done
+                for path in $REQUIRED_SERVICE_ASSETS; do
+                    [ -z "$path" ] && continue
+                    [ ! -e "$INSTALL_DIR/$path" ] && missing="${missing} $path"
                 done
             fi
         fi
@@ -981,6 +995,67 @@ js/mode.js
 js/websocket.js
 advanced/index.html
 "
+
+# Required API/service files (relative to INSTALL_DIR). All must exist after deploy/upgrade.
+REQUIRED_SERVICE_ASSETS="
+services/api_gateway/main.py
+services/api_gateway/response.py
+services/api_gateway/websockets.py
+services/api_gateway/routes/__init__.py
+services/api_gateway/routes/system.py
+services/api_gateway/routes/network.py
+services/api_gateway/routes/remote.py
+services/api_gateway/routes/serial.py
+services/api_gateway/routes/capture.py
+services/api_gateway/routes/logs.py
+services/api_gateway/routes/updates.py
+services/api_gateway/routes/backup.py
+services/api_gateway/routes/modules.py
+services/system_manager/manager.py
+services/network_manager/manager.py
+services/serial_manager/manager.py
+services/capture_manager/manager.py
+services/remote_access_manager/manager.py
+services/update_manager/manager.py
+services/logging_service/manager.py
+services/monitor_service/manager.py
+services/module_manager/manager.py
+"
+
+# Verify required API/service files exist; if any missing, re-copy services tree and repair.
+verify_and_repair_service_assets() {
+    local missing=""
+    local path
+    for path in $REQUIRED_SERVICE_ASSETS; do
+        [ -z "$path" ] && continue
+        if [ ! -e "$INSTALL_DIR/$path" ]; then
+            missing="${missing} ${path}"
+        fi
+    done
+    if [ -z "$missing" ]; then
+        return 0
+    fi
+    log_warn "Missing API/service files after deploy:${missing}. Repairing from source."
+    [ -d "$SOURCE_DIR/services" ] && copy_path "$SOURCE_DIR/services" "$INSTALL_DIR/services"
+    for path in $REQUIRED_SERVICE_ASSETS; do
+        [ -z "$path" ] && continue
+        if [ ! -e "$INSTALL_DIR/$path" ] && [ -e "$SOURCE_DIR/$path" ]; then
+            mkdir -p "$(dirname "$INSTALL_DIR/$path")"
+            cp -a "$SOURCE_DIR/$path" "$INSTALL_DIR/$path"
+        fi
+    done
+    missing=""
+    for path in $REQUIRED_SERVICE_ASSETS; do
+        [ -z "$path" ] && continue
+        [ ! -e "$INSTALL_DIR/$path" ] && missing="${missing} ${path}"
+    done
+    if [ -n "$missing" ]; then
+        log_error "API/service files still missing after repair:${missing}. Ensure source has full services tree."
+        return 1
+    fi
+    log_info "API/service files repaired."
+    return 0
+}
 
 # Verify required web assets exist under INSTALL_DIR/web; if any missing, copy web tree from source.
 verify_and_repair_web_assets() {
@@ -1025,6 +1100,7 @@ verify_and_repair_web_assets() {
 deploy_copy_from_source() {
     echo "Copying services..."
     copy_path "$SOURCE_DIR/services" "$INSTALL_DIR/services"
+    verify_and_repair_service_assets || true
     echo "Copying web..."
     copy_path "$SOURCE_DIR/web" "$INSTALL_DIR/web"
     verify_and_repair_web_assets || true
