@@ -32,9 +32,28 @@ sudo ./bin/install.sh</pre>
 </ol>
 <p>If you need one of those packages (e.g. printer support), install it again after the RPi Engineer install completes: <code>sudo apt install hplip-data</code> (or the package you removed).</p>
 
+<h2>WiFi hotspot: /etc/network/interfaces.d/wlan0: No such file or directory</h2>
+<p><strong>Symptom:</strong> During "Configuring WiFi hotspot" the script fails with:</p>
+<pre>main: line 966: /etc/network/interfaces.d/wlan0: No such file or directory</pre>
+<p><strong>Cause:</strong> On some Raspberry Pi OS setups the directory <code>/etc/network/interfaces.d</code> does not exist (e.g. when using NetworkManager or a minimal install).</p>
+<p><strong>Resolution:</strong> The installer now creates the directory automatically. If you see this with an older install script, update the repo and re-run, or create the directory and re-run: <code>sudo mkdir -p /etc/network/interfaces.d</code> then run the installer again.</p>
+
 <h2>dpkg database broken (parsing / status)</h2>
 <p><strong>Symptom:</strong> Errors about “parsing file …/status” or “unknown characters” when running apt or the installer.</p>
 <p><strong>Resolution:</strong> Backup and fix <code>/var/lib/dpkg/status</code> (remove corrupt lines or restore from backup), then run <code>sudo dpkg --configure -a</code> and <code>sudo apt-get install -f</code>. See the installer’s pre-flight error message for exact steps.</p>
+
+<h2>Interrupted installation: repair / continue</h2>
+<p><strong>Symptom:</strong> The installer was stopped partway through (power loss, Ctrl+C, or a step failed and you fixed the cause).</p>
+<p><strong>What the installer does:</strong> It records progress in <code>/tmp/rpi-engineer-install.progress</code>. If you run the installer again and that file is present, you will see:</p>
+<pre>Interrupted installation detected (progress file present).
+  1) Continue / Repair (resume from where it stopped)
+  2) Start over (discard progress and run a new install)</pre>
+<p><strong>Resolution:</strong></p>
+<ul>
+  <li>Choose <strong>1) Continue / Repair</strong> to resume. The script reuses your previous choices (from <code>/etc/rpi-engineer/install.conf</code>), skips steps already completed, and continues from the next step. You will be asked for the WiFi hotspot password again if the hotspot step had not completed.</li>
+  <li>Choose <strong>2) Start over</strong> to remove the progress file and run a full new installation (you will go through the wizard again).</li>
+</ul>
+<p>On a successful completion, the progress file is removed automatically.</p>
 
 <h2>Related</h2>
 <ul>

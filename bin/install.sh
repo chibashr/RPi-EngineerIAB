@@ -23,6 +23,7 @@ REPO_URL="https://github.com/chibashr/RPi-EngineerIAB.git"
 BRANCH="main"
 
 INSTALL_LOG="/tmp/rpi-engineer-install-$(date +%Y%m%d-%H%M%S).log"
+INSTALL_PROGRESS_FILE="/tmp/rpi-engineer-install.progress"
 
 REMOTE_ACCESS_TOOLS=()
 REMOTE_ACCESS_PASSWORD=""
@@ -69,6 +70,21 @@ progress_done() {
 
 progress_fail() {
     echo "failed" | tee -a "$INSTALL_LOG"
+}
+
+# Repair/continue: track completed steps so an interrupted install can resume
+step_already_done() {
+    local step="$1"
+    [ -f "$INSTALL_PROGRESS_FILE" ] && grep -q "^${step}$" "$INSTALL_PROGRESS_FILE" 2>/dev/null
+}
+
+mark_step_done() {
+    local step="$1"
+    echo "$step" >> "$INSTALL_PROGRESS_FILE"
+}
+
+detect_interrupted_install() {
+    [ -f "$INSTALL_PROGRESS_FILE" ]
 }
 
 # Read from terminal when script is piped (e.g. curl | bash) so prompts work
@@ -254,6 +270,10 @@ get_system_info() {
 }
 
 determine_install_mode() {
+    if [ "$INSTALL_MODE" = "continue" ]; then
+        log_info "Install mode: continue (repair/resume interrupted install)"
+        return 0
+    fi
     if [ -d "$INSTALL_DIR" ] || [ -d "$CONFIG_DIR" ]; then
         log_warn "Existing installation detected."
         if [ "${NONINTERACTIVE:-0}" != "1" ]; then
@@ -273,6 +293,31 @@ determine_install_mode() {
         INSTALL_MODE="fresh"
     fi
     log_info "Install mode: $INSTALL_MODE"
+}
+
+# Offer repair/continue when a previous run was interrupted (progress file left behind)
+prompt_repair_or_start_over() {
+    if ! detect_interrupted_install; then
+        return 0
+    fi
+    log_warn "Interrupted installation detected (progress file present)."
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        log_info "Non-interactive: continuing (repair) installation."
+        INSTALL_MODE="continue"
+        return 0
+    fi
+    echo "The previous installation did not finish. You can:"
+    echo "  1) Continue / Repair (resume from where it stopped)"
+    echo "  2) Start over (discard progress and run a new install)"
+    interactive_read -r -p "Enter choice (1-2) [1]: " choice
+    case "${choice:-1}" in
+        1) INSTALL_MODE="continue"; log_info "Continuing interrupted installation." ;;
+        2)
+            rm -f "$INSTALL_PROGRESS_FILE"
+            log_info "Progress file removed; starting fresh."
+            ;;
+        *) INSTALL_MODE="continue" ;;
+    esac
 }
 
 prompt_welcome() {
@@ -522,6 +567,30 @@ enabled=${MODULE_SELECTIONS[*]:-}
 EOF
 }
 
+# Load install choices from a previous run (for repair/continue)
+load_install_conf() {
+    local conf="$CONFIG_DIR/install.conf"
+    if [ ! -f "$conf" ]; then
+        log_error "Cannot continue: $conf not found. Start over instead."
+        exit 1
+    fi
+    TARGET_HOSTNAME="$(awk -F= '/^hostname=/ {print $2; exit}' "$conf")"
+    HOTSPOT_SSID="$(awk -F= '/^hotspot_ssid=/ {print $2; exit}' "$conf")"
+    local tools_line
+    tools_line="$(awk -F= '/^tools=/ {print $2; exit}' "$conf")"
+    REMOTE_ACCESS_TOOLS=()
+    if [ -n "$tools_line" ]; then
+        read -r -a REMOTE_ACCESS_TOOLS <<< "$tools_line"
+    fi
+    local enabled_line
+    enabled_line="$(awk -F= '/^enabled=/ {print $2; exit}' "$conf")"
+    MODULE_SELECTIONS=()
+    if [ -n "$enabled_line" ]; then
+        read -r -a MODULE_SELECTIONS <<< "$enabled_line"
+    fi
+    log_info "Loaded previous choices from $conf (hostname=$TARGET_HOSTNAME, ssid=$HOTSPOT_SSID)."
+}
+
 # Run apt-get install. When NONINTERACTIVE=1 or no TTY, use DEBIAN_FRONTEND=noninteractive.
 # Otherwise allow debconf prompts so user can respond.
 apt_install_interactive() {
@@ -537,6 +606,7 @@ apt_install_interactive() {
 }
 
 install_system_dependencies() {
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "deps"; then log_info "Step 'deps' already completed; skipping."; return 0; fi
     log_step "Installing system dependencies"
     echo "Ensuring dpkg/apt state is clean..."
     DEBIAN_FRONTEND=noninteractive dpkg --configure -a >> "$INSTALL_LOG" 2>&1 || true
@@ -559,6 +629,7 @@ install_system_dependencies() {
         log_warn "Upgrade had issues (see $INSTALL_LOG); continuing with installation."
     fi
     echo
+    mark_step_done "deps"
 }
 
 # Install nginx from nginx.org when distro package fails (e.g. Trixie nginx-common parse)
@@ -601,6 +672,7 @@ validate_dependencies() {
 }
 
 install_required_packages() {
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "packages"; then log_info "Step 'packages' already completed; skipping."; DEPS_INSTALLED="yes"; return 0; fi
     log_step "Installing required packages"
     local packages=(
         python3 python3-pip python3-venv
@@ -655,9 +727,11 @@ install_required_packages() {
     validate_dependencies
     echo "Required packages installed."
     DEPS_INSTALLED="yes"
+    mark_step_done "packages"
 }
 
 install_python_dependencies() {
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "python_deps"; then log_info "Step 'python_deps' already completed; skipping."; return 0; fi
     log_step "Installing Python dependencies"
     local venv_path="$INSTALL_DIR/venv"
     if [ ! -d "$venv_path" ]; then
@@ -675,9 +749,11 @@ install_python_dependencies() {
     else
         log_warn "requirements.txt not found under $INSTALL_DIR"
     fi
+    mark_step_done "python_deps"
 }
 
 create_directories() {
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "directories"; then log_info "Step 'directories' already completed; skipping."; APP_INSTALLED="yes"; return 0; fi
     log_step "Creating directories"
     echo "Creating $INSTALL_DIR, $CONFIG_DIR, $DATA_DIR, $LOG_DIR..."
     mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$DATA_DIR" "$LOG_DIR"
@@ -686,6 +762,7 @@ create_directories() {
     mkdir -p "$DATA_DIR/captures" "$DATA_DIR/serial_logs" "$DATA_DIR/backups" "$DATA_DIR/database"
     echo "Directories created."
     APP_INSTALLED="yes"
+    mark_step_done "directories"
 }
 
 backup_existing_install() {
@@ -723,6 +800,7 @@ copy_path() {
 }
 
 deploy_files() {
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "deploy"; then log_info "Step 'deploy' already completed; skipping."; APP_INSTALLED="yes"; return 0; fi
     log_step "Deploying application files"
     ensure_source_dir
     if [ "$SOURCE_DIR" = "$INSTALL_DIR" ]; then
@@ -747,9 +825,11 @@ deploy_files() {
     fi
     echo "Application files deployed."
     APP_INSTALLED="yes"
+    mark_step_done "deploy"
 }
 
 setup_user_permissions() {
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "permissions"; then log_info "Step 'permissions' already completed; skipping."; return 0; fi
     log_step "Setting up user permissions"
     echo "Creating service user/group if needed..."
     if ! getent group "$SERVICE_GROUP" >/dev/null 2>&1; then
@@ -778,6 +858,7 @@ setup_user_permissions() {
     usermod -a -G dialout "$SERVICE_USER" || true
     usermod -a -G netdev "$SERVICE_USER" || true
     echo "Permissions configured."
+    mark_step_done "permissions"
 }
 
 create_master_service() {
@@ -829,6 +910,7 @@ EOF
 }
 
 configure_services() {
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "services"; then log_info "Step 'services' already completed; skipping."; SERVICES_CONFIGURED="yes"; return 0; fi
     log_step "Configuring systemd services"
     echo "Creating systemd service units..."
     create_master_service
@@ -847,9 +929,11 @@ configure_services() {
         log_warn "systemd not detected; skipping daemon-reload."
     fi
     SERVICES_CONFIGURED="yes"
+    mark_step_done "services"
 }
 
 configure_nginx() {
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "nginx"; then log_info "Step 'nginx' already completed; skipping."; return 0; fi
     log_step "Configuring nginx"
     echo "Writing nginx configuration..."
     if ! command -v nginx >/dev/null 2>&1; then
@@ -900,6 +984,7 @@ EOF
     else
         log_warn "systemd not detected; nginx config written but not restarted."
     fi
+    mark_step_done "nginx"
 }
 
 create_network_priority_script() {
@@ -934,6 +1019,7 @@ EOF
 }
 
 configure_hotspot() {
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "hotspot"; then log_info "Step 'hotspot' already completed; skipping."; HOTSPOT_CONFIGURED="yes"; return 0; fi
     log_step "Configuring WiFi hotspot"
     if [ ! -d /sys/class/net/wlan0 ]; then
         log_warn "wlan0 not found; skipping hotspot configuration."
@@ -963,6 +1049,7 @@ domain=local
 address=/rpi-engineer.local/$DEFAULT_HOTSPOT_IP
 EOF
 
+    mkdir -p /etc/network/interfaces.d
     cat > /etc/network/interfaces.d/wlan0 <<EOF
 auto wlan0
 iface wlan0 inet static
@@ -977,9 +1064,11 @@ EOF
     create_network_priority_script
     echo "WiFi hotspot configured (SSID: $HOTSPOT_SSID)."
     HOTSPOT_CONFIGURED="yes"
+    mark_step_done "hotspot"
 }
 
 configure_firewall() {
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "firewall"; then log_info "Step 'firewall' already completed; skipping."; return 0; fi
     log_step "Configuring firewall"
     if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
         log_warn "Container detected; skipping firewall configuration."
@@ -1016,6 +1105,7 @@ configure_firewall() {
     ensure_nat_rule POSTROUTING -o eth0 -j MASQUERADE
     ensure_nat_rule POSTROUTING -o usb0 -j MASQUERADE
     echo "Firewall rules configured."
+    mark_step_done "firewall"
 }
 
 install_module() {
@@ -1063,6 +1153,7 @@ install_module() {
 }
 
 install_modules() {
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "modules"; then log_info "Step 'modules' already completed; skipping."; MODULES_INSTALLED="yes"; return 0; fi
     log_step "Installing modules"
     if [ "${#MODULE_SELECTIONS[@]}" -eq 0 ]; then
         log_info "No modules to install."
@@ -1074,6 +1165,7 @@ install_modules() {
     done
     echo "Modules installed."
     MODULES_INSTALLED="yes"
+    mark_step_done "modules"
 }
 
 install_anydesk() {
@@ -1204,6 +1296,7 @@ EOF
 }
 
 setup_remote_access() {
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "remote_access"; then log_info "Step 'remote_access' already completed; skipping."; REMOTE_CONFIGURED="yes"; return 0; fi
     log_step "Setting up remote access"
     if [ "${#REMOTE_ACCESS_TOOLS[@]}" -eq 0 ]; then
         log_info "Remote access skipped."
@@ -1226,9 +1319,11 @@ setup_remote_access() {
     write_remote_access_config
     echo "Remote access configured."
     REMOTE_CONFIGURED="yes"
+    mark_step_done "remote_access"
 }
 
 generate_configs() {
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "configs"; then log_info "Step 'configs' already completed; skipping."; return 0; fi
     log_step "Generating configuration files"
     echo "Writing system.conf, remote_access.conf..."
     mkdir -p "$CONFIG_DIR"
@@ -1258,9 +1353,11 @@ level=INFO
 retention_days=7
 EOF
     echo "Configuration files written."
+    mark_step_done "configs"
 }
 
 enable_services() {
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "enable_services"; then log_info "Step 'enable_services' already completed; skipping."; return 0; fi
     log_step "Enabling services"
     if [ ! -d /run/systemd/system ]; then
         log_warn "systemd not detected; skipping service enable/restart."
@@ -1286,9 +1383,11 @@ enable_services() {
         systemctl restart "$service" >> "$INSTALL_LOG" 2>&1 || true
     done
     echo "Services enabled and started."
+    mark_step_done "enable_services"
 }
 
 create_health_check_script() {
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "health_check"; then log_info "Step 'health_check' already completed; skipping."; return 0; fi
     cat > "$INSTALL_DIR/bin/health-check.sh" <<'EOF'
 #!/bin/bash
 echo "RPi Engineer-in-a-Box Health Check"
@@ -1307,6 +1406,7 @@ curl -s http://localhost/api/v1/system/status >/dev/null && echo "  - API respon
 echo "===================================="
 EOF
     chmod +x "$INSTALL_DIR/bin/health-check.sh"
+    mark_step_done "health_check"
 }
 
 show_installation_summary() {
@@ -1372,11 +1472,32 @@ main() {
     fi
 
     run_preflight_checks
+    prompt_repair_or_start_over
     determine_install_mode
     ensure_source_dir
-    run_wizard
+
+    if [ "$INSTALL_MODE" = "continue" ]; then
+        load_install_conf
+        if [ "${NONINTERACTIVE:-0}" != "1" ] && ! step_already_done "hotspot"; then
+            log_step "Hotspot password (for resume)"
+            echo "SSID from previous run: $HOTSPOT_SSID"
+            while true; do
+                interactive_read -r -s -p "Enter WiFi hotspot password (8-63 characters): " HOTSPOT_PASSWORD
+                echo
+                if [ "${#HOTSPOT_PASSWORD}" -ge 8 ] && [ "${#HOTSPOT_PASSWORD}" -le 63 ]; then
+                    break
+                fi
+                log_warn "Hotspot password must be 8-63 characters."
+            done
+        fi
+    else
+        run_wizard
+    fi
 
     if [ "$INSTALL_MODE" != "reconfigure" ]; then
+        if [ "$INSTALL_MODE" != "continue" ]; then
+            : > "$INSTALL_PROGRESS_FILE"
+        fi
         install_system_dependencies
         install_required_packages
         create_directories
@@ -1402,6 +1523,8 @@ main() {
     fi
 
     show_installation_summary
+    rm -f "$INSTALL_PROGRESS_FILE"
+    log_info "Install progress file removed (install complete)."
     reboot_system
 }
 
