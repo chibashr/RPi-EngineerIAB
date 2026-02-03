@@ -269,6 +269,7 @@ class UpdateManager:
         self._version_file = self._resolve_version_file()
         self._state_file = self._data_dir / "updates" / "state.json"
         self._state_file_fallback = repo_root / "data" / "updates" / "state.json"
+        self._state_file_temp = Path(tempfile.gettempdir()) / "rpi-engineer-updates" / "state.json"
         self._backups_dir = _safe_dir(self._data_dir / "backups", self._data_dir)
         self._staging_dir = _safe_dir(self._data_dir / "staging", self._data_dir)
 
@@ -662,16 +663,18 @@ class UpdateManager:
             "target_version": state.target_version,
         }
         text = json.dumps(payload, indent=2)
-        for path in (self._state_file, self._state_file_fallback):
+        for path in (self._state_file, self._state_file_fallback, self._state_file_temp):
             try:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(text)
                 self._state_file = path
+                if path == self._state_file_temp:
+                    logger.info("Update state written to temp dir (data dirs not writable): %s", path)
                 return
             except OSError as e:
-                if path == self._state_file_fallback:
+                if path == self._state_file_temp:
                     raise RuntimeError(
-                        f"Cannot write update state to {self._state_file} or {path}: {e}"
+                        f"Cannot write update state to {self._state_file}, {self._state_file_fallback}, or {path}: {e}"
                     ) from e
                 logger.warning("Cannot write update state to %s (%s), trying fallback", path, e)
 
@@ -719,7 +722,7 @@ class UpdateManager:
                 logger.warning("Could not apply web permissions fallback: %s", e)
 
     def _read_state(self) -> Optional[UpdateState]:
-        for path in (self._state_file, self._state_file_fallback):
+        for path in (self._state_file, self._state_file_fallback, self._state_file_temp):
             if not path.exists():
                 continue
             try:
@@ -732,7 +735,7 @@ class UpdateManager:
                     target_version=payload.get("target_version", ""),
                 )
             except (OSError, json.JSONDecodeError):
-                if path == self._state_file_fallback:
+                if path == self._state_file_temp:
                     return None
                 continue
         return None
