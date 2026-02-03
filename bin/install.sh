@@ -895,6 +895,31 @@ copy_path() {
     fi
 }
 
+get_source_git_hash() {
+    if ! command -v git >/dev/null 2>&1; then
+        return 0
+    fi
+    if [ -d "$SOURCE_DIR/.git" ]; then
+        git -C "$SOURCE_DIR" rev-parse HEAD 2>/dev/null || true
+        return 0
+    fi
+    if [ -d "$INSTALL_DIR/.git" ]; then
+        git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || true
+    fi
+}
+
+write_version_file() {
+    local git_hash
+    git_hash="$(get_source_git_hash | tr -d '[:space:]')"
+    if [[ "$git_hash" =~ ^[0-9a-f]{40}$ ]]; then
+        mkdir -p "$CONFIG_DIR"
+        echo "$git_hash" > "$CONFIG_DIR/version"
+        log_info "Version ref saved to $CONFIG_DIR/version"
+    else
+        log_warn "Version ref not written (git hash unavailable)."
+    fi
+}
+
 deploy_files() {
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "deploy"; then log_info "Step 'deploy' already completed; skipping."; APP_INSTALLED="yes"; return 0; fi
     log_step "Deploying application files"
@@ -964,6 +989,7 @@ deploy_files() {
         exit 1
     fi
     echo "Application files deployed."
+    write_version_file
     APP_INSTALLED="yes"
     mark_step_done "deploy"
 }
