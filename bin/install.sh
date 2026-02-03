@@ -977,6 +977,8 @@ css/pages/simple.css
 js/pages/simple.js
 js/api.js
 js/theme.js
+js/mode.js
+js/websocket.js
 advanced/index.html
 "
 

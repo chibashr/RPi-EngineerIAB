@@ -29,6 +29,8 @@ REQUIRED_WEB_ASSETS = [
     "js/pages/simple.js",
     "js/api.js",
     "js/theme.js",
+    "js/mode.js",
+    "js/websocket.js",
     "advanced/index.html",
 ]
 
