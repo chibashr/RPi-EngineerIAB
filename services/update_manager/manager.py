@@ -146,6 +146,11 @@ def _git_blob_sha(content: bytes) -> str:
     return hashlib.sha1(blob).hexdigest()
 
 
+def _git_safe_dir(repo_dir: Path) -> list[str]:
+    """Git 2.35.2+ dubious ownership: allow repo_dir when run by non-owner (e.g. service user)."""
+    return ["-c", f"safe.directory={repo_dir}"]
+
+
 def _check_updates_via_git(repo_dir: Path, repo: str, branch: str) -> Optional[tuple[str, str, list[str]]]:
     """Run a git-pull–style check: fetch origin, compare HEAD to origin/branch, list differing files.
     Returns (local_hash, remote_hash, files_changed) or None on failure.
@@ -153,10 +158,11 @@ def _check_updates_via_git(repo_dir: Path, repo: str, branch: str) -> Optional[t
     """
     if not repo_dir.is_dir() or not (repo_dir / ".git").is_dir():
         return None
+    safe = _git_safe_dir(repo_dir)
     try:
         # Ensure origin exists and points to the configured repo so fetch uses it
         r = subprocess.run(
-            ["git", "remote", "get-url", "origin"],
+            ["git", *safe, "remote", "get-url", "origin"],
             cwd=repo_dir,
             capture_output=True,
             text=True,
@@ -164,20 +170,20 @@ def _check_updates_via_git(repo_dir: Path, repo: str, branch: str) -> Optional[t
         )
         if r.returncode != 0:
             subprocess.run(
-                ["git", "remote", "add", "origin", repo],
+                ["git", *safe, "remote", "add", "origin", repo],
                 cwd=repo_dir,
                 capture_output=True,
                 check=False,
             )
         else:
             subprocess.run(
-                ["git", "remote", "set-url", "origin", repo],
+                ["git", *safe, "remote", "set-url", "origin", repo],
                 cwd=repo_dir,
                 capture_output=True,
                 check=False,
             )
         fetch = subprocess.run(
-            ["git", "fetch", "origin", branch],
+            ["git", *safe, "fetch", "origin", branch],
             cwd=repo_dir,
             capture_output=True,
             text=True,
@@ -187,7 +193,7 @@ def _check_updates_via_git(repo_dir: Path, repo: str, branch: str) -> Optional[t
         if fetch.returncode != 0:
             return None
         local_ref = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
+            ["git", *safe, "rev-parse", "HEAD"],
             cwd=repo_dir,
             capture_output=True,
             text=True,
@@ -199,7 +205,7 @@ def _check_updates_via_git(repo_dir: Path, repo: str, branch: str) -> Optional[t
         if not _is_hash(local_hash):
             return None
         remote_ref = subprocess.run(
-            ["git", "rev-parse", f"origin/{branch}"],
+            ["git", *safe, "rev-parse", f"origin/{branch}"],
             cwd=repo_dir,
             capture_output=True,
             text=True,
@@ -212,7 +218,7 @@ def _check_updates_via_git(repo_dir: Path, repo: str, branch: str) -> Optional[t
             return None
         # List files that differ between HEAD and origin/branch, under core trees only
         diff = subprocess.run(
-            ["git", "diff", "--name-only", "HEAD", f"origin/{branch}"],
+            ["git", *safe, "diff", "--name-only", "HEAD", f"origin/{branch}"],
             cwd=repo_dir,
             capture_output=True,
             text=True,
@@ -658,7 +664,7 @@ class UpdateManager:
             return None
         try:
             result = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
+                ["git", *_git_safe_dir(self._repo_root), "rev-parse", "HEAD"],
                 cwd=self._repo_root,
                 capture_output=True,
                 text=True,
@@ -864,10 +870,11 @@ class UpdateManager:
                     else:
                         raise RuntimeError(f"Git update failed: {exc}") from exc
             if not ran_sudo_ok:
+                safe_dir = _git_safe_dir(root_dir)
                 try:
                     emit("Setting remote origin...")
                     remote = subprocess.run(
-                        ["git", "remote", "get-url", "origin"],
+                        ["git", *safe_dir, "remote", "get-url", "origin"],
                         cwd=root_dir,
                         capture_output=True,
                         text=True,
@@ -875,7 +882,7 @@ class UpdateManager:
                     )
                     if remote.returncode != 0:
                         subprocess.run(
-                            ["git", "remote", "add", "origin", repo],
+                            ["git", *safe_dir, "remote", "add", "origin", repo],
                             cwd=root_dir,
                             capture_output=True,
                             text=True,
@@ -883,7 +890,7 @@ class UpdateManager:
                         )
                     else:
                         subprocess.run(
-                            ["git", "remote", "set-url", "origin", repo],
+                            ["git", *safe_dir, "remote", "set-url", "origin", repo],
                             cwd=root_dir,
                             capture_output=True,
                             text=True,
@@ -891,7 +898,7 @@ class UpdateManager:
                         )
                     emit("Fetching from origin...")
                     fetch = subprocess.run(
-                        ["git", "fetch", "origin", branch],
+                        ["git", *safe_dir, "fetch", "origin", branch],
                         cwd=root_dir,
                         capture_output=True,
                         text=True,
@@ -902,7 +909,7 @@ class UpdateManager:
                         raise RuntimeError(fetch.stderr.strip() or "git fetch failed")
                     emit("Resetting to origin/" + branch + "...")
                     reset = subprocess.run(
-                        ["git", "reset", "--hard", f"origin/{branch}"],
+                        ["git", *safe_dir, "reset", "--hard", f"origin/{branch}"],
                         cwd=root_dir,
                         capture_output=True,
                         text=True,

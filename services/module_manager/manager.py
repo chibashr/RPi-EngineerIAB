@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import urllib.parse
 import urllib.request
@@ -15,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import importlib.util
+import importlib
 
 # Same repo/branch as app updates (see services.update_manager.manager).
 DEFAULT_UPDATE_REPO = "https://github.com/chibashr/RPi-EngineerIAB.git"
@@ -110,10 +111,20 @@ class ModuleManager:
         self._state_file = self._data_dir / "modules" / "state.json"
         self._registry: Dict[str, ModuleRecord] = {}
         self._app = None
+        self._ensure_modules_on_path()
         self.discover_modules()
 
     def attach_app(self, app) -> None:  # type: ignore[no-untyped-def]
+        if getattr(self, "_app", None) is not app:
+            for record in self._registry.values():
+                record.routes_registered = False
         self._app = app
+
+    def _ensure_modules_on_path(self) -> None:
+        """Ensure the modules directory is on sys.path so import_module(module_id.api) resolves."""
+        modules_str = str(self._modules_dir.resolve())
+        if modules_str not in sys.path:
+            sys.path.insert(0, modules_str)
 
     def discover_modules(self) -> Dict[str, List[Dict[str, object]]]:
         self._registry.clear()
@@ -250,7 +261,7 @@ class ModuleManager:
         if not api_path.exists():
             return
         try:
-            module = self._load_python_module(f"{record.module_id}_api", api_path)
+            module = importlib.import_module(f"{record.module_id}.api")
         except Exception:
             record.state = "error"
             return
@@ -267,7 +278,7 @@ class ModuleManager:
         if not main_path.exists():
             return
         try:
-            module = self._load_python_module(record.module_id, main_path)
+            module = importlib.import_module(f"{record.module_id}.main")
         except Exception:
             record.state = "error"
             return
@@ -282,7 +293,7 @@ class ModuleManager:
         if not main_path.exists():
             return
         try:
-            module = self._load_python_module(record.module_id, main_path)
+            module = importlib.import_module(f"{record.module_id}.main")
         except Exception:
             record.state = "error"
             return
@@ -291,14 +302,6 @@ class ModuleManager:
                 module.shutdown()
             except Exception:
                 record.state = "error"
-
-    def _load_python_module(self, name: str, path: Path):
-        spec = importlib.util.spec_from_file_location(name, str(path))
-        if not spec or not spec.loader:
-            return None
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
 
     def _load_enabled_modules(self) -> List[str]:
         if not self._state_file.exists():

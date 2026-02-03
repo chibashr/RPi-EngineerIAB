@@ -19,6 +19,9 @@ if [ ! -d "$ROOT_DIR/.git" ]; then
     exit 1
 fi
 
+# Ensure git allows this repo (dubious ownership when run as root on root:group dir)
+git config --system --add safe.directory "$ROOT_DIR" 2>/dev/null || true
+
 cd "$ROOT_DIR"
 git remote get-url origin >/dev/null 2>&1 || git remote add origin "$REPO"
 git remote set-url origin "$REPO"

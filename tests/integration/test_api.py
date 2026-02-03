@@ -41,6 +41,14 @@ class TestApiResponseFormat:
             "/api/v1/remote/info",
             "/api/v1/modules/list",
             "/api/v1/modules/components",
+            "/api/v1/syslog/status",
+            "/api/v1/syslog/config",
+            "/api/v1/syslog/recent",
+            "/api/v1/syslog/stored",
+            "/api/v1/snmp_traps/status",
+            "/api/v1/snmp_traps/config",
+            "/api/v1/snmp_traps/recent",
+            "/api/v1/snmp_traps/stored",
         ],
     )
     def test_get_endpoint_returns_json_with_data_or_error(self, client, path):
@@ -135,3 +143,123 @@ class TestExampleModule:
         assert "data" in data
         assert "message" in data["data"]
         assert "Example" in data["data"]["message"]
+
+
+class TestSyslogModuleApi:
+    """Integration tests for syslog receiver module API."""
+
+    def test_syslog_status_returns_200_and_structure(self, client):
+        r = client.get("/api/v1/syslog/status")
+        assert r.status_code == 200
+        data = r.get_json()
+        assert "data" in data
+        assert "meta" in data
+        status = data["data"]
+        assert "enabled" in status
+        assert "running" in status
+        assert "received_count" in status
+        assert "stored_count" in status
+
+    def test_syslog_config_get_returns_200(self, client):
+        r = client.get("/api/v1/syslog/config")
+        assert r.status_code == 200
+        data = r.get_json()
+        assert "data" in data
+        config = data["data"]
+        assert "enabled" in config
+        assert "bind_address" in config
+        assert "port_udp" in config
+        assert "port_tcp" in config
+
+    def test_syslog_config_put_accepts_valid_payload(self, client):
+        r = client.put(
+            "/api/v1/syslog/config",
+            json={
+                "enabled": True,
+                "bind_address": "0.0.0.0",
+                "port_udp": 1514,
+                "port_tcp": 1514,
+                "persist": True,
+                "max_live": 1000,
+                "max_stored": 10000,
+            },
+            headers={"Content-Type": "application/json"},
+        )
+        assert r.status_code == 200
+        data = r.get_json()
+        assert "data" in data
+
+    def test_syslog_recent_returns_items_array(self, client):
+        r = client.get("/api/v1/syslog/recent?limit=10")
+        assert r.status_code == 200
+        data = r.get_json()
+        assert "data" in data
+        assert "items" in data["data"]
+        assert isinstance(data["data"]["items"], list)
+
+    def test_syslog_stored_returns_items_array(self, client):
+        r = client.get("/api/v1/syslog/stored?limit=10")
+        assert r.status_code == 200
+        data = r.get_json()
+        assert "data" in data
+        assert "items" in data["data"]
+        assert isinstance(data["data"]["items"], list)
+
+
+class TestSnmpModuleApi:
+    """Integration tests for SNMP trap receiver module API."""
+
+    def test_snmp_status_returns_200_and_structure(self, client):
+        r = client.get("/api/v1/snmp_traps/status")
+        assert r.status_code == 200
+        data = r.get_json()
+        assert "data" in data
+        assert "meta" in data
+        status = data["data"]
+        assert "enabled" in status
+        assert "running" in status
+        assert "received_count" in status
+        assert "stored_count" in status
+
+    def test_snmp_config_get_returns_200(self, client):
+        r = client.get("/api/v1/snmp_traps/config")
+        assert r.status_code == 200
+        data = r.get_json()
+        assert "data" in data
+        config = data["data"]
+        assert "enabled" in config
+        assert "bind_address" in config
+        assert "port" in config
+
+    def test_snmp_config_put_accepts_valid_payload(self, client):
+        r = client.put(
+            "/api/v1/snmp_traps/config",
+            json={
+                "enabled": True,
+                "bind_address": "0.0.0.0",
+                "port": 1162,
+                "persist": True,
+                "max_live": 500,
+                "max_stored": 10000,
+            },
+            headers={"Content-Type": "application/json"},
+        )
+        assert r.status_code == 200
+        data = r.get_json()
+        assert "data" in data
+
+    def test_snmp_recent_returns_items_array(self, client):
+        r = client.get("/api/v1/snmp_traps/recent?limit=10")
+        assert r.status_code == 200
+        data = r.get_json()
+        assert "data" in data
+        assert "items" in data["data"]
+        assert isinstance(data["data"]["items"], list)
+
+    def test_snmp_stored_returns_items_array(self, client):
+        r = client.get("/api/v1/snmp_traps/stored?limit=10")
+        assert r.status_code == 200
+        data = r.get_json()
+        assert "data" in data
+        assert "items" in data["data"]
+        assert isinstance(data["data"]["items"], list)

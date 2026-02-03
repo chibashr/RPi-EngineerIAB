@@ -2,6 +2,12 @@
 
 Manages module discovery, enable/disable, install, and registration.
 
+## Module loading
+
+- **Discovery**: On init, the manager ensures the configured modules directory (`RPI_ENGINEER_MODULES_DIR`, or repo `modules/`) is on `sys.path`, then scans it for subdirectories containing `module.json`.
+- **API and lifecycle**: Module API routes and services are loaded via `importlib.import_module(module_id.api)` and `importlib.import_module(module_id.main)`. This requires the modules directory to be a Python package path (each module is a subpackage: `syslog_receiver`, `snmp_trap_receiver`, etc.) so that modules can use relative imports (e.g. `from . import receiver`).
+- **App binding**: When the gateway calls `register_module_routes(app)`, the manager attaches the current Flask app. If the app instance changes (e.g. in tests with a new `create_app()`), `attach_app` clears `routes_registered` so routes are registered on the new app.
+
 ## Repo-based modules and updates
 
 - **Available modules**: The same Git repo and branch used for app updates (`RPI_ENGINEER_UPDATE_REPO`, `RPI_ENGINEER_UPDATE_BRANCH`) is used as the catalog. When the app runs from a git clone, modules under `modules/` are read from the local repo; otherwise the GitHub API is used to list `modules/` and each `module.json`.

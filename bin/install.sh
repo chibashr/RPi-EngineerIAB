@@ -1088,6 +1088,10 @@ setup_user_permissions() {
     if [ -d "$INSTALL_DIR/bin" ]; then
         chmod 750 "$INSTALL_DIR/bin/"* 2>/dev/null || true
     fi
+    # Allow git in install dir when run by root or service user (Git 2.35.2+ "dubious ownership")
+    if command -v git >/dev/null 2>&1 && [ -d "$INSTALL_DIR/.git" ]; then
+        git config --system --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+    fi
     usermod -a -G dialout "$SERVICE_USER" || true
     usermod -a -G netdev "$SERVICE_USER" || true
     echo "Permissions configured."

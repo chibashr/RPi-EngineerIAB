@@ -35,10 +35,19 @@ chmod o+x /opt /opt/rpi-engineer</pre>
 <p><strong>Cause:</strong> The pre-update config backup runs as the API user and cannot read root-owned config files (e.g. <code>remote_access.conf</code>).</p>
 <p><strong>Resolution:</strong> Re-run the installer so it can add the sudoers rule for <code>create-config-backup.sh</code> (the service user can then run that script as root with NOPASSWD to create the backup). From the repo: <code>sudo ./bin/install.sh</code>, choose Upgrade and use existing configuration. If you already ran the installer after this fix was added, the in-app update should work without a password.</p>
 
+<h2>Update failed: "dubious ownership" in repository</h2>
+<p><strong>Symptom:</strong> Update fails with <code>fatal: detected dubious ownership in repository at '/opt/rpi-engineer'</code> and suggests <code>git config --global --add safe.directory /opt/rpi-engineer</code>.</p>
+<p><strong>Cause:</strong> Git 2.35.2+ refuses to use a repo when the current user does not own the directory (e.g. API runs as <code>rpi-engineer</code>, repo is <code>root:rpi-engineer</code>).</p>
+<p><strong>Resolution:</strong> The app and installer now add <code>safe.directory</code> for the install path. Re-run the installer so it runs <code>git config --system --add safe.directory /opt/rpi-engineer</code>. Or run that command once as root. After that, in-app update should work without the error.</p>
+
 <h2>Update failed: "no new privileges" or sudo blocked in container</h2>
 <p><strong>Symptom:</strong> Applying an update shows <code>Update failed; rollback attempted: sudo: The "no new privileges" flag is set...</code> or similar.</p>
 <p><strong>Cause:</strong> The app is running in a container (or environment) where sudo cannot elevate to root (e.g. <code>no_new_privs</code> or restricted capabilities).</p>
 <p><strong>Resolution:</strong> The update logic now falls back to running <code>git fetch</code> and <code>git reset --hard</code> in-process when sudo fails with this error, so the update can complete without root. Ensure the repo directory (e.g. <code>/opt/rpi-engineer</code>) is writable by the API user. If you need apply-update.sh or web-permissions logic to run as root, run the container without the no-new-privileges flag or adjust the container configuration so sudo can run.</p>
+
+<h2>Why did it say "rollback attempted"?</h2>
+<p><strong>Symptom:</strong> You clicked Update and see <code>Update failed; rollback attempted: &lt;some error&gt;</code>. You only wanted to update, not roll back.</p>
+<p><strong>Explanation:</strong> When the <strong>apply</strong> step fails (e.g. git error, permission error), the app automatically tries to <strong>roll back</strong> to the previous version and config so the device is left in a known state. The message means: "The update failed because of &lt;error&gt;; we then attempted a rollback." If rollback succeeds, you are back at the version you had before clicking Update. Fix the underlying error (e.g. dubious ownership, permission denied) and try Update again.</p>
 
 <h2>Updates apply but nothing changes</h2>
 <p><strong>Symptom:</strong> You click <strong>Update (keep configuration)</strong> and receive a success message, but new UI or code changes never appear.</p>
