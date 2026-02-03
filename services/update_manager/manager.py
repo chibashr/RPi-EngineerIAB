@@ -1,8 +1,11 @@
 """Update Manager implementation for update and backup operations.
 
-Update checks compare repo refs (commit hashes) between the remote branch
-and the local install, not version numbers. The version file may store
-either a 40-char git hash (after an in-app update) or a fallback version string.
+Update checking is git-pull–style: when the app runs from a git clone, we
+look through the repo by fetching the remote branch and comparing HEAD to
+origin/<branch>, and list files that differ or are missing so everything is
+up to date or present. When not a git repo (e.g. tarball install), we
+compare remote tree blobs to the install directory. The version file may
+store a 40-char git hash (after an in-app update) or a fallback version string.
 """
 
 from __future__ import annotations
@@ -135,6 +138,92 @@ def _git_blob_sha(content: bytes) -> str:
     return hashlib.sha1(blob).hexdigest()
 
 
+def _check_updates_via_git(repo_dir: Path, repo: str, branch: str) -> Optional[tuple[str, str, list[str]]]:
+    """Run a git-pull–style check: fetch origin, compare HEAD to origin/branch, list differing files.
+    Returns (local_hash, remote_hash, files_changed) or None on failure.
+    files_changed is limited to paths under CORE_DIRS.
+    """
+    if not repo_dir.is_dir() or not (repo_dir / ".git").is_dir():
+        return None
+    try:
+        # Ensure origin exists and points to the configured repo so fetch uses it
+        r = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if r.returncode != 0:
+            subprocess.run(
+                ["git", "remote", "add", "origin", repo],
+                cwd=repo_dir,
+                capture_output=True,
+                check=False,
+            )
+        else:
+            subprocess.run(
+                ["git", "remote", "set-url", "origin", repo],
+                cwd=repo_dir,
+                capture_output=True,
+                check=False,
+            )
+        fetch = subprocess.run(
+            ["git", "fetch", "origin", branch],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        if fetch.returncode != 0:
+            return None
+        local_ref = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if local_ref.returncode != 0:
+            return None
+        local_hash = local_ref.stdout.strip()
+        if not _is_hash(local_hash):
+            return None
+        remote_ref = subprocess.run(
+            ["git", "rev-parse", f"origin/{branch}"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if remote_ref.returncode != 0:
+            return None
+        remote_hash = remote_ref.stdout.strip()
+        if not _is_hash(remote_hash):
+            return None
+        # List files that differ between HEAD and origin/branch, under core trees only
+        diff = subprocess.run(
+            ["git", "diff", "--name-only", "HEAD", f"origin/{branch}"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        files_changed: list[str] = []
+        if diff.returncode == 0 and diff.stdout:
+            for line in diff.stdout.strip().splitlines():
+                path = line.strip().replace("\\", "/")
+                if not path:
+                    continue
+                top = path.split("/")[0] if "/" in path else path
+                if top in CORE_DIRS:
+                    files_changed.append(path)
+        return (local_hash, remote_hash, files_changed)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
 def _safe_extract(archive: zipfile.ZipFile, destination: Path) -> None:
     destination = destination.resolve()
     for member in archive.infolist():
@@ -175,26 +264,61 @@ class UpdateManager:
         self._staging_dir = _safe_dir(self._data_dir / "staging", self._data_dir)
 
     def check_for_updates(self) -> Dict[str, object]:
-        """Check for repo changes by comparing remote branch ref to local ref (not version number)."""
+        """Check for updates by looking through the git repo and ensuring files are up to date or present.
+        When running from a git clone: fetch origin, compare HEAD to origin/branch, list differing files (git-pull–style).
+        When not a git repo: compare remote branch ref and tree blobs to the install directory.
+        """
         state = self._read_state()
         last_update = state.applied_at if state else None
-
         current_version = self._current_version()
         repo = os.getenv("RPI_ENGINEER_UPDATE_REPO", DEFAULT_UPDATE_REPO)
         branch = os.getenv("RPI_ENGINEER_UPDATE_BRANCH", DEFAULT_UPDATE_BRANCH)
+        root_dir = Path(os.getenv("RPI_ENGINEER_ROOT", "/opt/rpi-engineer"))
+
         if not _which("git"):
-            return {
-                "current_version": current_version,
-                "update_available": False,
-                "available_version": "",
-                "release_notes": "git not available on this system.",
-                "last_update": last_update,
-                "available_since": None,
-                "available_commit_message": None,
-                "available_commit_author": None,
-                "files_changed": [],
-                "update_branch": branch,
-            }
+            return self._check_response(
+                current_version=current_version,
+                update_available=False,
+                available_version="",
+                release_notes="git not available on this system.",
+                last_update=last_update,
+                files_changed=[],
+                branch=branch,
+            )
+
+        # Prefer git-pull–style check when the install (or running code) is a git repo
+        repo_dir = root_dir if (root_dir / ".git").is_dir() else (
+            self._repo_root if (self._repo_root / ".git").is_dir() else None
+        )
+        if repo_dir is not None:
+            git_result = _check_updates_via_git(repo_dir, repo, branch)
+            if git_result is not None:
+                local_hash, available_hash, files_changed = git_result
+                update_available = local_hash != available_hash or len(files_changed) > 0
+                available_since = None
+                available_commit_message = None
+                available_commit_author = None
+                slug = _github_repo_slug(repo)
+                if slug and update_available:
+                    commit_info = _github_commit_info(slug, available_hash)
+                    if commit_info:
+                        available_since = commit_info.get("date")
+                        available_commit_message = commit_info.get("message") or None
+                        available_commit_author = commit_info.get("author") or None
+                return self._check_response(
+                    current_version=local_hash,
+                    update_available=update_available,
+                    available_version=available_hash,
+                    release_notes="Release notes available after staging." if update_available else "",
+                    last_update=last_update,
+                    available_since=available_since,
+                    available_commit_message=available_commit_message,
+                    available_commit_author=available_commit_author,
+                    files_changed=files_changed[:200],
+                    branch=branch,
+                )
+
+        # Fallback: not a git repo; compare remote ref and tree blobs to install directory
         result = subprocess.run(
             ["git", "ls-remote", repo, branch],
             capture_output=True,
@@ -206,21 +330,17 @@ class UpdateManager:
         available = result.stdout.split()[0] if result.stdout.strip() else ""
         current_hash = current_version if _is_hash(current_version) else self._local_git_hash()
         if not current_hash:
-            return {
-                "current_version": current_version,
-                "update_available": False,
-                "available_version": "",
-                "release_notes": "Version comparison unavailable.",
-                "last_update": last_update,
-                "available_since": None,
-                "available_commit_message": None,
-                "available_commit_author": None,
-                "files_changed": [],
-                "update_branch": branch,
-            }
+            return self._check_response(
+                current_version=current_version,
+                update_available=False,
+                available_version="",
+                release_notes="Version comparison unavailable.",
+                last_update=last_update,
+                files_changed=[],
+                branch=branch,
+            )
         ref_differs = bool(available and available != current_hash)
-        root_dir = Path(os.getenv("RPI_ENGINEER_ROOT", "/opt/rpi-engineer"))
-        files_changed: list[str] = []
+        files_changed = []
         slug = _github_repo_slug(repo)
         if slug and available and _is_hash(available):
             blobs = _github_tree_blobs(slug, available)
@@ -245,16 +365,44 @@ class UpdateManager:
                 available_since = commit_info.get("date")
                 available_commit_message = commit_info.get("message") or None
                 available_commit_author = commit_info.get("author") or None
+        return self._check_response(
+            current_version=current_hash,
+            update_available=update_available,
+            available_version=available,
+            release_notes="Release notes available after staging." if update_available else "",
+            last_update=last_update,
+            available_since=available_since,
+            available_commit_message=available_commit_message,
+            available_commit_author=available_commit_author,
+            files_changed=files_changed[:200],
+            branch=branch,
+        )
+
+    def _check_response(
+        self,
+        *,
+        current_version: str,
+        update_available: bool,
+        available_version: str,
+        release_notes: str,
+        last_update: Optional[str],
+        files_changed: list[str],
+        branch: str,
+        available_since: Optional[str] = None,
+        available_commit_message: Optional[str] = None,
+        available_commit_author: Optional[str] = None,
+    ) -> Dict[str, object]:
+        """Build the standard check_for_updates response dict."""
         return {
-            "current_version": current_hash,
+            "current_version": current_version,
             "update_available": update_available,
-            "available_version": available,
-            "release_notes": "Release notes available after staging." if update_available else "",
+            "available_version": available_version,
+            "release_notes": release_notes,
             "last_update": last_update,
             "available_since": available_since,
             "available_commit_message": available_commit_message,
             "available_commit_author": available_commit_author,
-            "files_changed": files_changed[:200],
+            "files_changed": files_changed,
             "update_branch": branch,
         }
 
