@@ -1,0 +1,1 @@
+"""Syslog receiver module."""

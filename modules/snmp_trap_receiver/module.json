@@ -1,0 +1,83 @@
+{
+  "name": "snmp_trap_receiver",
+  "display_name": "SNMP Trap Receiver",
+  "version": "1.0.0",
+  "description": "Receives SNMP traps and provides detailed status and message history.",
+  "author": "chibashr",
+  "license": "MIT",
+  "type": "service",
+  "dependencies": {
+    "system": [],
+    "python": ["pysnmp"],
+    "modules": []
+  },
+  "api_routes": [
+    {
+      "path": "/api/v1/snmp_traps/status",
+      "methods": ["GET"],
+      "description": "Get SNMP trap receiver status"
+    },
+    {
+      "path": "/api/v1/snmp_traps/recent",
+      "methods": ["GET"],
+      "description": "Get recent SNMP traps"
+    },
+    {
+      "path": "/api/v1/snmp_traps/stored",
+      "methods": ["GET"],
+      "description": "Get stored SNMP traps"
+    },
+    {
+      "path": "/api/v1/snmp_traps/config",
+      "methods": ["GET", "PUT"],
+      "description": "Get or update SNMP trap receiver configuration"
+    },
+    {
+      "path": "/api/v1/snmp_traps/clear",
+      "methods": ["POST"],
+      "description": "Clear SNMP trap buffers"
+    }
+  ],
+  "web_components": [
+    {
+      "name": "SNMP Trap Receiver",
+      "path": "/modules/snmp_trap_receiver/component.html",
+      "menu": "Modules",
+      "menu_order": 20,
+      "icon": "puzzle"
+    }
+  ],
+  "config_schema": {
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable SNMP trap receiver"
+    },
+    "bind_address": {
+      "type": "string",
+      "default": "0.0.0.0",
+      "description": "Bind address"
+    },
+    "port": {
+      "type": "integer",
+      "default": 1162,
+      "description": "UDP port for SNMP traps"
+    },
+    "persist": {
+      "type": "boolean",
+      "default": true,
+      "description": "Persist traps to local storage"
+    },
+    "max_stored": {
+      "type": "integer",
+      "default": 10000,
+      "description": "Maximum stored traps"
+    },
+    "max_live": {
+      "type": "integer",
+      "default": 500,
+      "description": "Maximum live traps in memory"
+    }
+  },
+  "enabled_by_default": false
+}

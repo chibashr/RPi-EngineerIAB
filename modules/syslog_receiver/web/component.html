@@ -1,0 +1,76 @@
+<section class="module-panel" id="syslog-receiver">
+  <header class="module-header">
+    <h2>Syslog Receiver</h2>
+    <p class="module-subtitle">UDP and TCP syslog intake with history.</p>
+  </header>
+
+  <div class="module-status">
+    <div class="status-item">
+      <span class="status-label">State</span>
+      <span class="status-value" id="syslog-status-state">Loading...</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">Bind</span>
+      <span class="status-value" id="syslog-status-bind">--</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">UDP Port</span>
+      <span class="status-value" id="syslog-status-udp">--</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">TCP Port</span>
+      <span class="status-value" id="syslog-status-tcp">--</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">Received</span>
+      <span class="status-value" id="syslog-status-received">--</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">Stored</span>
+      <span class="status-value" id="syslog-status-stored">--</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">Last</span>
+      <span class="status-value" id="syslog-status-last">--</span>
+    </div>
+  </div>
+
+  <div class="module-section">
+    <h3>Recent Messages</h3>
+    <table class="module-table" id="syslog-recent-table">
+      <thead>
+        <tr>
+          <th>Received</th>
+          <th>Source</th>
+          <th>Host</th>
+          <th>Facility</th>
+          <th>Severity</th>
+          <th>App</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="module-section">
+    <h3>Stored Messages</h3>
+    <table class="module-table" id="syslog-stored-table">
+      <thead>
+        <tr>
+          <th>Received</th>
+          <th>Source</th>
+          <th>Host</th>
+          <th>Facility</th>
+          <th>Severity</th>
+          <th>App</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<script type="module" src="/modules/syslog_receiver/module.js"></script>
+<link rel="stylesheet" href="/modules/syslog_receiver/module.css" />

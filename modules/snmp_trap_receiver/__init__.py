@@ -1,0 +1,1 @@
+"""SNMP trap receiver module."""

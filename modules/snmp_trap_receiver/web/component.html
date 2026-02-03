@@ -1,0 +1,62 @@
+<section class="module-panel" id="snmp-trap-receiver">
+  <header class="module-header">
+    <h2>SNMP Trap Receiver</h2>
+    <p class="module-subtitle">Live and stored SNMP trap details.</p>
+  </header>
+
+  <div class="module-status">
+    <div class="status-item">
+      <span class="status-label">State</span>
+      <span class="status-value" id="snmp-status-state">Loading...</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">Bind</span>
+      <span class="status-value" id="snmp-status-bind">--</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">Received</span>
+      <span class="status-value" id="snmp-status-received">--</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">Stored</span>
+      <span class="status-value" id="snmp-status-stored">--</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">Last</span>
+      <span class="status-value" id="snmp-status-last">--</span>
+    </div>
+  </div>
+
+  <div class="module-section">
+    <h3>Recent Traps</h3>
+    <table class="module-table" id="snmp-recent-table">
+      <thead>
+        <tr>
+          <th>Received</th>
+          <th>Source</th>
+          <th>Trap OID</th>
+          <th>Varbinds</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="module-section">
+    <h3>Stored Traps</h3>
+    <table class="module-table" id="snmp-stored-table">
+      <thead>
+        <tr>
+          <th>Received</th>
+          <th>Source</th>
+          <th>Trap OID</th>
+          <th>Varbinds</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<script type="module" src="/modules/snmp_trap_receiver/module.js"></script>
+<link rel="stylesheet" href="/modules/snmp_trap_receiver/module.css" />

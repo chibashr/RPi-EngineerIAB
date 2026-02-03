@@ -1,0 +1,88 @@
+{
+  "name": "syslog_receiver",
+  "display_name": "Syslog Receiver",
+  "version": "1.0.0",
+  "description": "Receives syslog messages over UDP/TCP with detailed status and history.",
+  "author": "chibashr",
+  "license": "MIT",
+  "type": "service",
+  "dependencies": {
+    "system": [],
+    "python": [],
+    "modules": []
+  },
+  "api_routes": [
+    {
+      "path": "/api/v1/syslog/status",
+      "methods": ["GET"],
+      "description": "Get syslog receiver status"
+    },
+    {
+      "path": "/api/v1/syslog/recent",
+      "methods": ["GET"],
+      "description": "Get recent syslog messages"
+    },
+    {
+      "path": "/api/v1/syslog/stored",
+      "methods": ["GET"],
+      "description": "Get stored syslog messages"
+    },
+    {
+      "path": "/api/v1/syslog/config",
+      "methods": ["GET", "PUT"],
+      "description": "Get or update syslog receiver configuration"
+    },
+    {
+      "path": "/api/v1/syslog/clear",
+      "methods": ["POST"],
+      "description": "Clear syslog buffers"
+    }
+  ],
+  "web_components": [
+    {
+      "name": "Syslog Receiver",
+      "path": "/modules/syslog_receiver/component.html",
+      "menu": "Modules",
+      "menu_order": 30,
+      "icon": "puzzle"
+    }
+  ],
+  "config_schema": {
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable syslog receiver"
+    },
+    "bind_address": {
+      "type": "string",
+      "default": "0.0.0.0",
+      "description": "Bind address"
+    },
+    "port_udp": {
+      "type": "integer",
+      "default": 1514,
+      "description": "UDP port for syslog"
+    },
+    "port_tcp": {
+      "type": "integer",
+      "default": 1514,
+      "description": "TCP port for syslog"
+    },
+    "persist": {
+      "type": "boolean",
+      "default": true,
+      "description": "Persist messages to local storage"
+    },
+    "max_stored": {
+      "type": "integer",
+      "default": 10000,
+      "description": "Maximum stored messages"
+    },
+    "max_live": {
+      "type": "integer",
+      "default": 1000,
+      "description": "Maximum live messages in memory"
+    }
+  },
+  "enabled_by_default": false
+}

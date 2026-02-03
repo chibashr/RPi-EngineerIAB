@@ -1,0 +1,54 @@
+.module-panel {
+  padding: 1.5rem;
+}
+
+.module-header {
+  margin-bottom: 1.5rem;
+}
+
+.module-subtitle {
+  color: var(--muted-text, #6b7280);
+}
+
+.module-status {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  margin-bottom: 2rem;
+}
+
+.status-item {
+  background: var(--card-bg, #f3f4f6);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+
+.status-label {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-text, #6b7280);
+  margin-bottom: 0.25rem;
+}
+
+.status-value {
+  font-weight: 600;
+}
+
+.module-section {
+  margin-bottom: 2rem;
+}
+
+.module-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.module-table th,
+.module-table td {
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  padding: 0.75rem;
+  text-align: left;
+  font-size: 0.9rem;
+}
