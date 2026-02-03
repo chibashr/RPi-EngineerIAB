@@ -80,7 +80,140 @@
 .topbar-actions {
   display: flex;
   align-items: center;
+  gap: 0.5rem;
   flex-shrink: 0;
+}
+
+/* Notifications bell and dropdown */
+.notifications-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.notifications-bell {
+  position: relative;
+  padding: 0.5rem;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-muted);
+}
+
+.notifications-bell:hover {
+  color: var(--color-fg);
+}
+
+.notifications-bell-icon {
+  display: block;
+}
+
+.notifications-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  color: #fff;
+  background: var(--color-danger);
+  border-radius: 999px;
+  border: 2px solid var(--color-surface);
+}
+
+.notifications-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.35rem;
+  width: min(360px, calc(100vw - 2rem));
+  max-height: 70vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+  z-index: 30;
+}
+
+.notifications-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.notifications-dropdown-title {
+  font-weight: 600;
+  color: var(--color-fg);
+}
+
+.notifications-clear-all {
+  padding: 0.35rem 0.6rem;
+  min-height: 0;
+  font-size: 0.85rem;
+}
+
+.notifications-empty {
+  margin: 1rem;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.notifications-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0;
+  overflow-y: auto;
+  max-height: 50vh;
+}
+
+.notifications-item {
+  padding: 0.65rem 1rem;
+  border-left: 3px solid var(--color-info);
+  margin: 0 0.5rem;
+  margin-bottom: 0.25rem;
+  border-radius: 0 8px 8px 0;
+  background: rgba(90, 100, 114, 0.06);
+  font-size: 0.9rem;
+}
+
+.notifications-item:last-child {
+  margin-bottom: 0;
+}
+
+.notifications-item-title {
+  display: block;
+  font-weight: 600;
+  color: var(--color-fg);
+  margin-bottom: 0.2rem;
+}
+
+.notifications-item-message {
+  display: block;
+  color: var(--color-muted);
+}
+
+.notifications-item--success {
+  border-left-color: var(--color-success);
+}
+
+.notifications-item--warning {
+  border-left-color: var(--color-warning);
+}
+
+.notifications-item--error {
+  border-left-color: var(--color-danger);
 }
 
 .topbar .theme-field {

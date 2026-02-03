@@ -1,5 +1,6 @@
 import { applyStoredTheme, initThemeSelector } from "../theme.js";
 import { confirmModeSwitch, ensureAdvancedMode, setMode, goToSimpleMode } from "../mode.js";
+import { initNotifications } from "../notifications.js";
 
 function setActiveNav() {
   const path = window.location.pathname;
@@ -67,6 +68,7 @@ function setupModeSwitch() {
 function init() {
   ensureAdvancedMode();
   applyStoredTheme();
+  initNotifications();
   initThemeSelector(document.getElementById("theme-select"));
   setActiveNav();
   setupSidebarControls();
