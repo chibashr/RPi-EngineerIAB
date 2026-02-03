@@ -996,7 +996,7 @@ configure_services() {
 }
 
 configure_nginx() {
-    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "nginx"; then log_info "Step 'nginx' already completed; skipping."; return 0; fi
+    # Always re-apply nginx config so updates (e.g. 403 fix) take effect when install is re-run.
     log_step "Configuring nginx"
     echo "Writing nginx configuration..."
     if ! command -v nginx >/dev/null 2>&1; then
@@ -1009,6 +1009,9 @@ server {
     listen [::]:80 default_server;
 
     server_name _;
+
+    # Explicitly allow LAN and hotspot; avoids 403 from system-wide deny rules.
+    allow all;
 
     root /opt/rpi-engineer/web;
     index index.html;
@@ -1039,6 +1042,10 @@ server {
 EOF
     ln -sf /etc/nginx/sites-available/rpi-engineer /etc/nginx/sites-enabled/rpi-engineer
     rm -f /etc/nginx/sites-enabled/default
+    if [ -d "$INSTALL_DIR/web" ]; then
+        chmod -R o+rX "$INSTALL_DIR/web"
+        echo "Web root permissions set for nginx read access."
+    fi
     echo "Testing nginx configuration..."
     nginx -t 2>&1 | tee -a "$INSTALL_LOG"
     if [ -d /run/systemd/system ]; then

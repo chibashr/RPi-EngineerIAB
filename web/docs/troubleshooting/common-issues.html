@@ -8,6 +8,11 @@
 <p><strong>Common causes:</strong> Not connected to WiFi hotspot, device still booting.</p>
 <p><strong>Resolution:</strong> Reconnect to the hotspot and wait two minutes for full boot.</p>
 
+<h2>403 Forbidden when opening 192.168.50.1</h2>
+<p><strong>Symptom:</strong> Browser shows <strong>403 Forbidden</strong> when opening <strong>http://192.168.50.1</strong> (e.g. from hotspot or LAN).</p>
+<p><strong>Common causes:</strong> Nginx access rules blocking LAN/hotspot, or web root not readable by nginx.</p>
+<p><strong>Resolution:</strong> Re-run the installer so it applies the latest nginx config (allow LAN and hotspot) and web root permissions: <code>sudo /opt/rpi-engineer/bin/install.sh</code> (or your install path). Then <code>sudo systemctl restart nginx</code>. If you prefer to fix by hand, add <code>allow all;</code> inside the <code>server { ... }</code> block in <code>/etc/nginx/sites-available/rpi-engineer</code> and restart nginx.</p>
+
 <h2>No network access</h2>
 <p><strong>Symptom:</strong> WAN shows disconnected on the dashboard.</p>
 <p><strong>Common causes:</strong> Ethernet unplugged or USB modem not detected.</p>
