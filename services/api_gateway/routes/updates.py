@@ -1,11 +1,14 @@
 """Updates API routes."""
 
+import logging
+
 from flask import Blueprint
 
 from services.update_manager import update_manager
 
 from ..response import error_response, success_response
 
+logger = logging.getLogger(__name__)
 updates_bp = Blueprint("updates", __name__, url_prefix="/api/v1/updates")
 
 
@@ -23,8 +26,10 @@ def apply_update():
     try:
         payload = update_manager.apply_update()
     except RuntimeError as exc:
+        logger.exception("Updates apply failed: %s", exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Updates apply failed: %s", exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     return success_response(payload)
 
