@@ -220,8 +220,17 @@
   background: rgba(90, 100, 114, 0.12);
   color: var(--color-muted);
   margin-bottom: 1rem;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .connection-banner.is-visible {
-  display: block;
+  display: flex;
+}
+
+.connection-banner.api-error {
+  border-color: var(--color-danger);
+  background: rgba(200, 66, 66, 0.08);
+  color: var(--color-text);
 }

@@ -205,6 +205,7 @@ async function loadSystemStatusWithOptions(options) {
   try {
     const payload = await apiGet("/api/v1/system/status");
     const data = extractData(payload) || {};
+    clearApiConnectionError();
     setStatusIndicator(data.status);
     setMetric("cpu", data.resources?.cpu_percent, "%", elements.meters.cpu);
     setMetric(
@@ -231,6 +232,7 @@ async function loadSystemStatusWithOptions(options) {
     setStatusIndicator("Unknown");
     if (!options.suppressError) {
       showToast("Unable to load system status.", "error");
+      showApiConnectionError();
     }
   }
 }
@@ -243,6 +245,7 @@ async function loadNetworkInfoWithOptions(options) {
   try {
     const payload = await apiGet("/api/v1/network/interfaces");
     const data = extractData(payload) || {};
+    clearApiConnectionError();
     const interfaces = data.interfaces || [];
     renderInterfaces(interfaces);
     updateNetworkSummary(interfaces);
@@ -255,6 +258,7 @@ async function loadNetworkInfoWithOptions(options) {
     elements.networkSummary.textContent = "Network status unavailable.";
     if (!options.suppressError) {
       showToast("Unable to load network interfaces.", "error");
+      showApiConnectionError();
     }
   }
 }
@@ -267,6 +271,7 @@ async function loadSerialDevicesWithOptions(options) {
   try {
     const payload = await apiGet("/api/v1/serial/devices");
     const data = extractData(payload) || {};
+    clearApiConnectionError();
     const devices = data.devices || [];
     updateQuickActions(devices.length);
   } catch (error) {
@@ -285,11 +290,13 @@ async function loadRemoteStatusWithOptions(options) {
   try {
     const payload = await apiGet("/api/v1/remote/status");
     const data = extractData(payload) || {};
+    clearApiConnectionError();
     updateRemoteStatus(data.tools);
   } catch (error) {
     updateRemoteStatus([]);
     if (!options.suppressError) {
       showToast("Unable to load remote access status.", "error");
+      showApiConnectionError();
     }
   }
 }
@@ -360,6 +367,41 @@ function updateBanner(message, isVisible = true) {
   }
   elements.banner.textContent = message;
   elements.banner.classList.toggle("is-visible", isVisible);
+}
+
+let apiErrorBannerShown = false;
+
+function showApiConnectionError() {
+  if (!elements.banner || apiErrorBannerShown) {
+    return;
+  }
+  apiErrorBannerShown = true;
+  elements.banner.textContent = "";
+  elements.banner.classList.add("is-visible", "api-error");
+  const msg = document.createElement("span");
+  msg.textContent =
+    "Cannot connect to the API. Ensure the RPi Engineer API service is running (e.g. sudo systemctl status rpi-engineer-api). ";
+  elements.banner.appendChild(msg);
+  const retryBtn = document.createElement("button");
+  retryBtn.className = "btn btn-secondary btn-sm";
+  retryBtn.textContent = "Retry";
+  retryBtn.type = "button";
+  retryBtn.addEventListener("click", () => {
+    clearApiConnectionError();
+    loadSystemStatus();
+    loadNetworkInfo();
+    loadRemoteStatus();
+    loadSerialDevices();
+  });
+  elements.banner.appendChild(retryBtn);
+}
+
+function clearApiConnectionError() {
+  apiErrorBannerShown = false;
+  if (elements.banner) {
+    elements.banner.textContent = "";
+    elements.banner.classList.remove("is-visible", "api-error");
+  }
 }
 
 function startPolling() {

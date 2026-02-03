@@ -70,6 +70,26 @@ sudo ./bin/install.sh</pre>
 </ol>
 <p>After a complete install or update, all UI resources are present under <code>/opt/rpi-engineer/web/</code> and the interface works offline.</p>
 
+<h2>Dashboard statuses not loading (Loading status..., Unknown, --)</h2>
+<p><strong>Symptom:</strong> The Simple Mode dashboard shows "Loading status...", "Checking network status...", "Unknown" for WiFi/Remote, and placeholders (--%, --) for CPU, memory, temperature, and storage. The page may show a banner: "Cannot connect to the API."</p>
+<p><strong>Cause:</strong> The browser cannot reach the RPi Engineer API. Common causes: the API service (<code>rpi-engineer-api</code>) is not running, nginx is not proxying <code>/api/</code> to the API, or the API failed to start after a reboot (e.g. port in use or Python path issue).</p>
+<p><strong>Resolution:</strong></p>
+<ol>
+  <li>On the Raspberry Pi, check that the API service is running:
+    <pre>sudo systemctl status rpi-engineer-api</pre>
+    If it is <code>inactive</code> or <code>failed</code>, check logs: <code>journalctl -u rpi-engineer-api -n 50</code>. Restart it: <code>sudo systemctl start rpi-engineer-api</code>.
+  </li>
+  <li>Check that nginx is running and proxying to the API:
+    <pre>sudo systemctl status nginx
+curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/api/v1/system/status</pre>
+    You should see <code>200</code>. If you see <code>502</code>, the API is not running or not listening on port 5000. If you see <code>404</code>, nginx may not have the RPi Engineer site enabled: <code>ls -la /etc/nginx/sites-enabled/</code> should include <code>rpi-engineer</code>.
+  </li>
+  <li>Restart the full stack if needed:
+    <pre>sudo systemctl restart rpi-engineer-api nginx</pre>
+  </li>
+</ol>
+<p>After the API is running, reload the dashboard or click <strong>Retry</strong> in the red banner; the statuses should then load.</p>
+
 <h2>Service fails: can't open file .../manager.py (No such file or directory)</h2>
 <p><strong>Symptom:</strong> <code>journalctl -u rpi-engineer-logging.service</code> (or another rpi-engineer-* service) shows:</p>
 <pre>python: can't open file '/opt/rpi-engineer/services/logging_service/manager.py': [Errno 2] No such file or directory</pre>
