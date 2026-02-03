@@ -144,6 +144,10 @@
   z-index: 30;
 }
 
+.notifications-dropdown[hidden] {
+  display: none;
+}
+
 .notifications-dropdown-header {
   display: flex;
   align-items: center;
