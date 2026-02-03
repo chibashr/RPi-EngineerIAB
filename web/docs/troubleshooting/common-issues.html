@@ -25,6 +25,11 @@ chmod o+x /opt /opt/rpi-engineer</pre>
 </ol>
 <p>If <code>index.html</code> is missing under <code>/opt/rpi-engineer/web/</code>, re-deploy the <code>web</code> folder from the repo or re-run the full installer. To confirm the cause, check <code>/var/log/nginx/error.log</code> (e.g. <code>Permission denied</code> or <code>13</code> means file permissions).</p>
 
+<h2>Permission denied when applying update</h2>
+<p><strong>Symptom:</strong> Clicking <strong>Update (keep configuration)</strong> shows an error such as <code>[Errno 13] Permission denied: '/etc/rpi-engineer/remote_access.conf'</code>.</p>
+<p><strong>Cause:</strong> The pre-update config backup runs as the API user and cannot read root-owned config files (e.g. <code>remote_access.conf</code>).</p>
+<p><strong>Resolution:</strong> Re-run the installer so it can add the sudoers rule for <code>create-config-backup.sh</code> (the service user can then run that script as root with NOPASSWD to create the backup). From the repo: <code>sudo ./bin/install.sh</code>, choose Upgrade and use existing configuration. If you already ran the installer after this fix was added, the in-app update should work without a password.</p>
+
 <h2>Updates apply but nothing changes</h2>
 <p><strong>Symptom:</strong> You click <strong>Update (keep configuration)</strong> and receive a success message, but new UI or code changes never appear.</p>
 <p><strong>Common cause:</strong> The API is running with <code>RPI_ENGINEER_DRY_RUN=1</code>, which skips applying updates.</p>

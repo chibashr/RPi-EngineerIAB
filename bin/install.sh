@@ -1257,6 +1257,14 @@ EOF
         chmod 440 "$SUDOERS_UPDATE"
         echo "Sudoers rule added so in-app updates can apply via git."
     fi
+    CREATE_BACKUP_SCRIPT="$INSTALL_DIR/bin/create-config-backup.sh"
+    if [ -f "$CREATE_BACKUP_SCRIPT" ]; then
+        chmod 755 "$CREATE_BACKUP_SCRIPT"
+        SUDOERS_BACKUP="/etc/sudoers.d/rpi-engineer-create-config-backup"
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: $CREATE_BACKUP_SCRIPT" > "$SUDOERS_BACKUP"
+        chmod 440 "$SUDOERS_BACKUP"
+        echo "Sudoers rule added so in-app updates can create config backup (e.g. read remote_access.conf)."
+    fi
     mark_step_done "nginx"
 }
 

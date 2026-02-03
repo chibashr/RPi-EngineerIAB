@@ -538,6 +538,32 @@ class UpdateManager:
         backup_name = f"{label}-{timestamp}.zip"
         backup_path = self._backups_dir / backup_name
         excludes = ["captures", "serial_logs", "logs", "tmp", "backups", "exports"]
+
+        # Prefer sudo script so root can read all config (e.g. remote_access.conf); avoids [Errno 13] Permission denied
+        script = self._repo_root / "bin" / "create-config-backup.sh"
+        if script.exists():
+            try:
+                proc = subprocess.run(
+                    [
+                        "sudo",
+                        str(script),
+                        str(backup_path),
+                        str(self._config_dir),
+                        str(self._data_dir),
+                        label,
+                        self._current_version(),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    check=False,
+                )
+                if proc.returncode == 0 and backup_path.exists():
+                    return backup_path
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+
+        # Fallback: create backup in-process; skip unreadable files (e.g. root-only config)
         with zipfile.ZipFile(backup_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             manifest = {
                 "version": "1.0",
@@ -850,7 +876,10 @@ class UpdateManager:
             rel = path.relative_to(root)
             if rel.parts and rel.parts[0] in exclude_names:
                 continue
-            archive.write(path, prefix / rel)
+            try:
+                archive.write(path, prefix / rel)
+            except OSError as e:
+                logger.warning("Skipping unreadable file in backup: %s (%s)", path, e)
 
     def _restore_tree(
         self, source: Path, target_root: Path, skip_manifest: bool = False
