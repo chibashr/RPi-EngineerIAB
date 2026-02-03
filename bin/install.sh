@@ -320,6 +320,10 @@ determine_install_mode() {
         log_info "Install mode: reconfigure (from environment; will use existing install.conf)"
         return 0
     fi
+    if [ "${NONINTERACTIVE:-0}" = "1" ] && [ "$INSTALL_MODE" = "reinstall_from_scratch" ]; then
+        log_info "Install mode: reinstall from scratch (from environment; will use existing install.conf)"
+        return 0
+    fi
     if [ -d "$INSTALL_DIR" ] || [ -d "$CONFIG_DIR" ]; then
         log_warn "Existing installation detected."
         if [ "${NONINTERACTIVE:-0}" != "1" ]; then
@@ -1870,8 +1874,25 @@ main() {
         if [ "$TARGET_HOSTNAME" != "$(hostname)" ]; then
             hostnamectl set-hostname "$TARGET_HOSTNAME"
         fi
+    elif [ "$INSTALL_MODE" = "reinstall_from_scratch" ] && [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        load_install_conf
+        UPGRADE_SKIP_CONFIG="1"
+        log_info "Reinstall from scratch (non-interactive): using existing install.conf; app directory will be replaced."
+        write_install_conf
+        if [ "$TARGET_HOSTNAME" != "$(hostname)" ]; then
+            hostnamectl set-hostname "$TARGET_HOSTNAME"
+        fi
     else
         run_wizard
+    fi
+
+    if [ "$INSTALL_MODE" = "reinstall_from_scratch" ]; then
+        log_step "Reinstall from scratch: removing application directory"
+        if [ -d "$INSTALL_DIR" ]; then
+            log_warn "Removing $INSTALL_DIR for clean reinstall."
+            rm -rf "$INSTALL_DIR"
+        fi
+        mkdir -p "$INSTALL_DIR"
     fi
 
     progress_init

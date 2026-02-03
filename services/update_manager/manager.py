@@ -326,6 +326,39 @@ class UpdateManager:
             "message": "Configuration re-applied. Reboot recommended for hotspot changes.",
         }
 
+    def run_reinstall_from_scratch(self) -> Dict[str, object]:
+        """Run install script in reinstall_from_scratch mode: remove app dir, then full install using existing install.conf. Requires root."""
+        root_dir = Path(os.getenv("RPI_ENGINEER_ROOT", "/opt/rpi-engineer"))
+        install_script = root_dir / "bin" / "install.sh"
+        if not install_script.exists():
+            raise RuntimeError("Install script not found; run reinstall from the device where the app is installed.")
+        if os.getenv("RPI_ENGINEER_DRY_RUN", "1") == "1":
+            return {
+                "status": "reinstall_dry_run",
+                "message": "Reinstall from scratch would run install.sh with INSTALL_MODE=reinstall_from_scratch. Set RPI_ENGINEER_DRY_RUN=0 to run.",
+            }
+        env = {**os.environ, "NONINTERACTIVE": "1", "INSTALL_MODE": "reinstall_from_scratch"}
+        try:
+            result = subprocess.run(
+                ["sudo", str(install_script)],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=600,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("Reinstall from scratch timed out after 10 minutes.") from None
+        except FileNotFoundError:
+            raise RuntimeError("sudo or install script not found.") from None
+        if result.returncode != 0:
+            stderr = (result.stderr or "").strip() or (result.stdout or "").strip()
+            raise RuntimeError(f"Reinstall from scratch failed (exit {result.returncode}): {stderr[:500]}")
+        return {
+            "status": "reinstalled",
+            "message": "Reinstall from scratch complete. Reboot recommended.",
+        }
+
     def rollback_update(self) -> Dict[str, object]:
         state = self._read_state()
         if not state:

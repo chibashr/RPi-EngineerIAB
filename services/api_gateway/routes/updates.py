@@ -41,6 +41,18 @@ def reconfigure():
     return success_response(payload)
 
 
+@updates_bp.post("/reinstall")
+def reinstall_from_scratch():
+    """Run install script in reinstall_from_scratch mode (full reinstall using existing config). Requires sudo for install.sh."""
+    try:
+        payload = update_manager.run_reinstall_from_scratch()
+    except RuntimeError as exc:
+        return error_response("INTERNAL_ERROR", str(exc), status_code=500)
+    except Exception as exc:  # pragma: no cover - defensive
+        return error_response("INTERNAL_ERROR", str(exc), status_code=500)
+    return success_response(payload)
+
+
 @updates_bp.post("/rollback")
 def rollback_update():
     try:
