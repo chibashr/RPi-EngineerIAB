@@ -46,7 +46,7 @@ def test_control_service_runs_systemctl(monkeypatch):
     result = manager.control_service("api_gateway", "restart")
 
     assert result["status"] == "ok"
-    assert called["cmd"] == ["systemctl", "restart", "api_gateway.service"]
+    assert called["cmd"] == ["systemctl", "restart", "rpi-engineer-api.service"]
 
 
 @pytest.mark.unit

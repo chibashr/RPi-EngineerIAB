@@ -3,8 +3,10 @@ import { initTabs } from "../components.js";
 
 const elements = {
   current: document.getElementById("current-version"),
+  lastUpdate: document.getElementById("last-update"),
   available: document.getElementById("available-version"),
   isAvailable: document.getElementById("update-available"),
+  availableSince: document.getElementById("available-since"),
   notes: document.getElementById("release-notes"),
 };
 
@@ -20,13 +22,29 @@ function showToast(message, variant = "info") {
   setTimeout(() => toast.remove(), 4000);
 }
 
+function formatDateTime(iso) {
+  if (!iso) return "--";
+  try {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? "--" : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  } catch {
+    return "--";
+  }
+}
+
 function renderUpdateStatus(data) {
   if (!elements.current) {
     return;
   }
   elements.current.textContent = data?.current_version || "--";
+  if (elements.lastUpdate) {
+    elements.lastUpdate.textContent = formatDateTime(data?.last_update);
+  }
   elements.available.textContent = data?.available_version || "--";
   elements.isAvailable.textContent = data?.update_available ? "Yes" : "No";
+  if (elements.availableSince) {
+    elements.availableSince.textContent = formatDateTime(data?.available_since);
+  }
   elements.notes.textContent = data?.release_notes || "Release notes pending.";
 }
 

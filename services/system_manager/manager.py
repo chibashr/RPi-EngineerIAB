@@ -23,21 +23,25 @@ class ServiceStatus:
     status: str
 
 
+# Logical names (API/UI) -> systemd unit name (no .service suffix).
+# Must match units created by bin/install.sh configure_services().
+SERVICE_UNIT_MAP = {
+    "api_gateway": "rpi-engineer-api",
+    "system_manager": "rpi-engineer-system",
+    "network_manager": "rpi-engineer-network",
+    "serial_manager": "rpi-engineer-serial",
+    "capture_manager": "rpi-engineer-capture",
+    "update_manager": "rpi-engineer-update",
+    "logging_service": "rpi-engineer-logging",
+    "monitor_service": "rpi-engineer-monitor",
+}
+
+
 class SystemManager:
     """Collect system status, info, and basic controls."""
 
     def __init__(self) -> None:
-        self._service_names = [
-            "api_gateway",
-            "system_manager",
-            "network_manager",
-            "serial_manager",
-            "capture_manager",
-            "update_manager",
-            "module_manager",
-            "logging_service",
-            "monitor_service",
-        ]
+        self._service_names = list(SERVICE_UNIT_MAP.keys())
 
     def get_status(self) -> Dict[str, object]:
         services = {svc: self._get_service_state(svc) for svc in self._service_names}
@@ -139,7 +143,9 @@ class SystemManager:
         return platform.system().lower() != "windows" and _which("systemctl") is not None
 
     def _normalize_unit(self, service: str) -> str:
-        return service if service.endswith(".service") else f"{service}.service"
+        """Return systemd unit name (with .service). Resolves logical name to install unit."""
+        base = SERVICE_UNIT_MAP.get(service, service)
+        return base if base.endswith(".service") else f"{base}.service"
 
     def _get_service_state(self, service: str) -> str:
         if not self._systemctl_available():
@@ -152,8 +158,13 @@ class SystemManager:
         )
         if result.returncode == 0:
             return "running"
-        if result.stdout.strip() == "inactive":
+        out = (result.stdout or "").strip()
+        if out == "inactive":
             return "stopped"
+        if out == "failed":
+            return "failed"
+        if out == "activating":
+            return "starting"
         return "unknown"
 
     def _cpu_percent(self) -> float:

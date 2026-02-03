@@ -20,6 +20,8 @@ def test_check_for_updates_no_git(monkeypatch):
 
     assert result["update_available"] is False
     assert "git not available" in result["release_notes"]
+    assert "last_update" in result
+    assert "available_since" in result
 
 
 @pytest.mark.unit

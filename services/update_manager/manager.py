@@ -1,4 +1,9 @@
-"""Update Manager implementation for update and backup operations."""
+"""Update Manager implementation for update and backup operations.
+
+Update checks compare repo refs (commit hashes) between the remote branch
+and the local install, not version numbers. The version file may store
+either a 40-char git hash (after an in-app update) or a fallback version string.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +13,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import urllib.request
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -46,6 +52,38 @@ def _which(binary: str) -> Optional[str]:
 
 def _is_hash(value: str) -> bool:
     return bool(value) and len(value) == 40 and all(ch in "0123456789abcdef" for ch in value)
+
+
+def _github_repo_slug(repo_url: str) -> Optional[str]:
+    """Return 'owner/repo' for GitHub URLs, else None."""
+    if not repo_url or "github.com" not in repo_url:
+        return None
+    try:
+        path = urllib.parse.urlparse(repo_url.rstrip("/")).path.strip("/")
+        if path.endswith(".git"):
+            path = path[:-4]
+        parts = path.split("/")
+        if len(parts) >= 2:
+            return f"{parts[0]}/{parts[1]}"
+    except Exception:
+        pass
+    return None
+
+
+def _github_commit_date(repo_slug: str, commit_hash: str) -> Optional[str]:
+    """Fetch commit date (ISO) from GitHub API. Returns None on any failure."""
+    if not _is_hash(commit_hash):
+        return None
+    url = f"https://api.github.com/repos/{repo_slug}/commits/{commit_hash}"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+        commit = data.get("commit") or {}
+        author = commit.get("author") or {}
+        return author.get("date")  # ISO 8601
+    except Exception:
+        return None
 
 
 def _safe_extract(archive: zipfile.ZipFile, destination: Path) -> None:
@@ -88,6 +126,10 @@ class UpdateManager:
         self._staging_dir = _safe_dir(self._data_dir / "staging", self._data_dir)
 
     def check_for_updates(self) -> Dict[str, object]:
+        """Check for repo changes by comparing remote branch ref to local ref (not version number)."""
+        state = self._read_state()
+        last_update = state.applied_at if state else None
+
         current_version = self._current_version()
         repo = os.getenv("RPI_ENGINEER_UPDATE_REPO", DEFAULT_UPDATE_REPO)
         branch = os.getenv("RPI_ENGINEER_UPDATE_BRANCH", DEFAULT_UPDATE_BRANCH)
@@ -97,6 +139,8 @@ class UpdateManager:
                 "update_available": False,
                 "available_version": "",
                 "release_notes": "git not available on this system.",
+                "last_update": last_update,
+                "available_since": None,
             }
         result = subprocess.run(
             ["git", "ls-remote", repo, branch],
@@ -114,13 +158,22 @@ class UpdateManager:
                 "update_available": False,
                 "available_version": "",
                 "release_notes": "Version comparison unavailable.",
+                "last_update": last_update,
+                "available_since": None,
             }
         update_available = bool(available and available != current_hash)
+        available_since = None
+        if available and update_available:
+            slug = _github_repo_slug(repo)
+            if slug:
+                available_since = _github_commit_date(slug, available)
         return {
             "current_version": current_hash,
             "update_available": update_available,
             "available_version": available,
             "release_notes": "Release notes available after staging.",
+            "last_update": last_update,
+            "available_since": available_since,
         }
 
     def apply_update(self) -> Dict[str, object]:
