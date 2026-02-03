@@ -159,6 +159,43 @@
   font-size: 0.9rem;
 }
 
+.remote-tools-list {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.remote-tools-empty {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.remote-tool-entry {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  background: var(--color-surface);
+}
+
+.remote-tool-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.remote-tool-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.remote-tool-entry .connection-row {
+  margin-top: 0.5rem;
+}
+
 .connection-card.is-hidden .connection-grid {
   display: none;
 }

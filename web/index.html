@@ -176,19 +176,8 @@
                 >Checking</span
               >
             </div>
-            <div class="connection-row">
-              <span class="connection-label">Tool</span>
-              <span class="connection-value" id="remote-tool">--</span>
-            </div>
-            <div class="connection-row">
-              <span class="connection-label">Connection ID</span>
-              <span class="connection-value" id="remote-id">--</span>
-              <button
-                class="btn btn-ghost btn-copy"
-                data-copy-target="remote-id"
-              >
-                Copy
-              </button>
+            <div id="remote-tools-list" class="remote-tools-list" aria-live="polite">
+              <!-- Filled by JS: one entry per enabled tool (AnyDesk, TeamViewer, VNC, RPi Connect) -->
             </div>
           </div>
         </div>

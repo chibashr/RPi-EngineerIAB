@@ -28,8 +28,7 @@ const elements = {
   },
   remote: {
     status: document.getElementById("remote-status"),
-    tool: document.getElementById("remote-tool"),
-    id: document.getElementById("remote-id"),
+    list: document.getElementById("remote-tools-list"),
   },
   quick: {
     capture: document.getElementById("action-capture"),
@@ -136,26 +135,67 @@ const REMOTE_TOOL_DISPLAY = {
   rpi_connect: "Raspberry Pi Connect",
 };
 
+/** Show only tools that are enabled/available (have connection info or are running). */
+function getEnabledRemoteTools(tools) {
+  if (!tools || !Array.isArray(tools)) {
+    return [];
+  }
+  return tools.filter(
+    (t) =>
+      (t.connection_id && String(t.connection_id).trim() !== "") ||
+      t.status === "running"
+  );
+}
+
 function updateRemoteStatus(tools) {
-  if (!tools || tools.length === 0) {
-    elements.remote.status.textContent = "Unavailable";
-    elements.remote.status.className = "status-pill status-pill-warning";
-    elements.remote.tool.textContent = "Not configured";
-    elements.remote.id.textContent = "--";
+  const listEl = elements.remote.list;
+  if (!listEl) {
     return;
   }
 
-  const tool =
-    tools.find((t) => t.ready) || tools.find((t) => t.status === "running") || tools[0];
-  elements.remote.tool.textContent =
-    REMOTE_TOOL_DISPLAY[tool.name] || tool.name || "remote";
-  elements.remote.id.textContent = tool.connection_id || "--";
+  const enabled = getEnabledRemoteTools(tools);
+
+  if (enabled.length === 0) {
+    elements.remote.status.textContent = "None configured";
+    elements.remote.status.className = "status-pill status-pill-warning";
+    listEl.textContent = "";
+    const msg = document.createElement("p");
+    msg.className = "remote-tools-empty";
+    msg.textContent = "No remote access tools enabled. Configure in Advanced Mode.";
+    listEl.appendChild(msg);
+    return;
+  }
+
   elements.remote.status.textContent =
-    tool.status === "running" ? "Running" : "Stopped";
-  elements.remote.status.className =
-    tool.status === "running"
-      ? "status-pill status-pill-success"
-      : "status-pill status-pill-warning";
+    enabled.length === 1 ? "1 tool" : `${enabled.length} tools`;
+  elements.remote.status.className = "status-pill status-pill-success";
+  listEl.textContent = "";
+
+  enabled.forEach((tool) => {
+    const label = REMOTE_TOOL_DISPLAY[tool.name] || tool.name || "Remote";
+    const connectionId = tool.connection_id || "--";
+    const idAttr = `remote-id-${tool.name}`;
+    const entry = document.createElement("div");
+    entry.className = "remote-tool-entry";
+    entry.innerHTML = `
+      <div class="remote-tool-header">
+        <span class="remote-tool-name">${escapeHtml(label)}</span>
+        <span class="status-pill ${tool.status === "running" ? "status-pill-success" : "status-pill-warning"}">${tool.status === "running" ? "Running" : "Stopped"}</span>
+      </div>
+      <div class="connection-row">
+        <span class="connection-label">Connection</span>
+        <span class="connection-value" id="${idAttr}">${escapeHtml(connectionId)}</span>
+        <button class="btn btn-ghost btn-copy" type="button" data-copy-target="${idAttr}">Copy</button>
+      </div>
+    `;
+    listEl.appendChild(entry);
+  });
+}
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function updateWifiInfo(interfaces) {
@@ -343,21 +383,22 @@ function setupWifiPasswordToggle() {
 }
 
 function setupCopyButtons() {
-  const buttons = document.querySelectorAll("[data-copy-target]");
-  buttons.forEach((button) => {
-    button.addEventListener("click", async () => {
-      const targetId = button.dataset.copyTarget;
-      const target = document.getElementById(targetId);
-      if (!target) {
-        return;
-      }
-      try {
-        await navigator.clipboard.writeText(target.textContent.trim());
-        showToast("Copied to clipboard.", "success");
-      } catch (error) {
-        showToast("Copy failed. Select and copy manually.", "error");
-      }
-    });
+  document.body.addEventListener("click", async (e) => {
+    const button = e.target.closest("[data-copy-target]");
+    if (!button) {
+      return;
+    }
+    const targetId = button.dataset.copyTarget;
+    const target = document.getElementById(targetId);
+    if (!target) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(target.textContent.trim());
+      showToast("Copied to clipboard.", "success");
+    } catch (error) {
+      showToast("Copy failed. Select and copy manually.", "error");
+    }
   });
 }
 
