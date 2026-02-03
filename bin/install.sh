@@ -894,11 +894,21 @@ deploy_files() {
     fi
     backup_existing_install
     deploy_copy_from_source
-    # Verify critical files; if missing, clone and redeploy once (handles incomplete source or stale script).
+    # Verify critical files; if missing, try explicit copy from source (handles rsync quirks), then clone once if needed.
     local missing=""
     [ ! -f "$INSTALL_DIR/web/index.html" ] && missing="${missing} web/index.html"
     [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && missing="${missing} services/logging_service/manager.py"
     [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && missing="${missing} bin/apply-web-permissions.sh"
+    if [ -n "$missing" ] && [ -d "$SOURCE_DIR" ]; then
+        log_info "Copying critical files explicitly from source."
+        [ ! -f "$INSTALL_DIR/web/index.html" ] && [ -f "$SOURCE_DIR/web/index.html" ] && mkdir -p "$INSTALL_DIR/web" && cp -a "$SOURCE_DIR/web/index.html" "$INSTALL_DIR/web/"
+        [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && [ -f "$SOURCE_DIR/services/logging_service/manager.py" ] && mkdir -p "$INSTALL_DIR/services/logging_service" && cp -a "$SOURCE_DIR/services/logging_service/manager.py" "$INSTALL_DIR/services/logging_service/"
+        [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && [ -f "$SOURCE_DIR/bin/apply-web-permissions.sh" ] && mkdir -p "$INSTALL_DIR/bin" && cp -a "$SOURCE_DIR/bin/apply-web-permissions.sh" "$INSTALL_DIR/bin/"
+        missing=""
+        [ ! -f "$INSTALL_DIR/web/index.html" ] && missing="${missing} web/index.html"
+        [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && missing="${missing} services/logging_service/manager.py"
+        [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && missing="${missing} bin/apply-web-permissions.sh"
+    fi
     if [ -n "$missing" ]; then
         log_warn "Deploy incomplete after copy; missing:$missing"
         if command -v git >/dev/null 2>&1; then
@@ -918,6 +928,17 @@ deploy_files() {
             [ ! -f "$INSTALL_DIR/web/index.html" ] && missing="${missing} web/index.html"
             [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && missing="${missing} services/logging_service/manager.py"
             [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && missing="${missing} bin/apply-web-permissions.sh"
+            # If clone has the files but install dir still missing them (e.g. rsync quirk on target), copy explicitly.
+            if [ -n "$missing" ]; then
+                log_info "Copying critical files explicitly from source."
+                [ ! -f "$INSTALL_DIR/web/index.html" ] && [ -f "$SOURCE_DIR/web/index.html" ] && mkdir -p "$INSTALL_DIR/web" && cp -a "$SOURCE_DIR/web/index.html" "$INSTALL_DIR/web/"
+                [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && [ -f "$SOURCE_DIR/services/logging_service/manager.py" ] && mkdir -p "$INSTALL_DIR/services/logging_service" && cp -a "$SOURCE_DIR/services/logging_service/manager.py" "$INSTALL_DIR/services/logging_service/"
+                [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && [ -f "$SOURCE_DIR/bin/apply-web-permissions.sh" ] && mkdir -p "$INSTALL_DIR/bin" && cp -a "$SOURCE_DIR/bin/apply-web-permissions.sh" "$INSTALL_DIR/bin/"
+                missing=""
+                [ ! -f "$INSTALL_DIR/web/index.html" ] && missing="${missing} web/index.html"
+                [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && missing="${missing} services/logging_service/manager.py"
+                [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && missing="${missing} bin/apply-web-permissions.sh"
+            fi
         fi
     fi
     if [ -n "$missing" ]; then
