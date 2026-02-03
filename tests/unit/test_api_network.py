@@ -80,3 +80,19 @@ class TestNetworkStatus:
     def test_returns_200(self, client):
         r = client.get("/api/v1/network/status")
         assert r.status_code == 200
+
+
+class TestNetworkWanPriority:
+    """Tests for POST /api/v1/network/wan-priority."""
+
+    def test_returns_200(self, client):
+        r = client.post("/api/v1/network/wan-priority")
+        assert r.status_code == 200
+
+    def test_returns_wan_interface_and_applied(self, client):
+        r = client.post("/api/v1/network/wan-priority")
+        data = r.get_json()
+        assert "data" in data
+        assert "wan_interface" in data["data"]
+        assert "internet_capable" in data["data"]
+        assert "applied" in data["data"]

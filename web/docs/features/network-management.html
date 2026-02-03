@@ -25,6 +25,11 @@
   <li>Confirm WAN connectivity on the dashboard.</li>
 </ol>
 
+<h2>WAN priority and failover</h2>
+<p>
+  After a new connection is applied (e.g. DHCP or static on an interface), the device checks whether the connection is internet-capable. WAN preference is <strong>USB network adapter first</strong>, then ethernet. If the current WAN interface is lost or has no internet, the <strong>rpi-engineer-network</strong> service periodically re-evaluates and fails over to the next working interface. You can also trigger a check manually via <strong>POST /api/v1/network/wan-priority</strong>.
+</p>
+
 <h2>Related</h2>
 <ul>
   <li><a href="../troubleshooting/network-issues.html">Network issues</a></li>

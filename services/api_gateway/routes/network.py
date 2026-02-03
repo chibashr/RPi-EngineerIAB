@@ -88,6 +88,16 @@ def get_status():
     return success_response(_network_manager.get_status())
 
 
+@network_bp.post("/wan-priority")
+def ensure_wan_priority():
+    """Check internet capability and set WAN to preferred interface (USB then ethernet); failover if current is lost."""
+    try:
+        data = _network_manager.ensure_wan_priority()
+    except Exception as exc:  # pragma: no cover - defensive
+        return error_response("INTERNAL_ERROR", str(exc), status_code=500)
+    return success_response(data)
+
+
 @network_bp.post("/reset")
 def reset_network():
     payload = request.get_json(silent=True) or {}

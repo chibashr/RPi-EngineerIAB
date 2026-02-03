@@ -29,6 +29,12 @@
 </ul>
 <p>If you installed before this change, re-run the installer (upgrade) or manually add the NetworkManager/dhcpcd config and enable <code>rpi-engineer-wlan0.service</code>.</p>
 
+<h2>Hotspot password not working after reboot</h2>
+<p><strong>Symptom:</strong> The WiFi password you set during install (or in Advanced → Network → Hotspot) does not work after rebooting.</p>
+<p><strong>Cause:</strong> The hotspot SSID and password must be reapplied to <code>/etc/hostapd/hostapd.conf</code> at every boot; otherwise another service or package can overwrite that file.</p>
+<p><strong>What the installer does:</strong> Credentials are stored in <code>/etc/rpi-engineer/hotspot.secret</code> (mode 600). The <code>rpi-engineer-wlan0</code> service runs before hostapd and, if this file exists, writes the stored SSID and password into <code>/etc/hostapd/hostapd.conf</code>. So the password you set at install or via the web UI is applied on every boot.</p>
+<p>If the password still fails after a reboot, ensure <code>rpi-engineer-wlan0.service</code> is enabled and that <code>/etc/rpi-engineer/hotspot.secret</code> exists and contains the SSID on the first line and the password on the second line. Reconfiguring the hotspot from Advanced → Network → Hotspot will recreate this file.</p>
+
 <h2>Related</h2>
 <ul>
   <li><a href="../features/network-management.html">Network management</a></li>

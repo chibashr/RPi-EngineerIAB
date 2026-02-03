@@ -1065,10 +1065,8 @@ configure_hotspot_priority() {
 match-device=interface-name:wlan0
 managed=0
 NMEOF
-        if systemctl is-active NetworkManager >/dev/null 2>&1; then
-            systemctl restart NetworkManager >> "$INSTALL_LOG" 2>&1 || true
-        fi
-        log_info "NetworkManager: wlan0 set unmanaged."
+        # Do not restart NetworkManager during install; user may be on WiFi. Config applies on reboot.
+        log_info "NetworkManager: wlan0 will be unmanaged after reboot."
     fi
     if command -v dhcpcd >/dev/null 2>&1 && [ -f /etc/dhcpcd.conf ]; then
         if ! grep -q '^denyinterfaces wlan0' /etc/dhcpcd.conf 2>/dev/null; then
@@ -1081,9 +1079,12 @@ NMEOF
     cat > "$INSTALL_DIR/bin/setup-wlan0-hotspot.sh" <<'SETUPEOF'
 #!/bin/bash
 # Bring wlan0 under our control for hotspot; run before hostapd.
+# If hotspot.secret exists, apply SSID/password to hostapd.conf so credentials persist across reboots.
 set -e
 WLAN=wlan0
 IP="192.168.50.1/24"
+CONFIG_DIR=/etc/rpi-engineer
+HOTSPOT_SECRET="$CONFIG_DIR/hotspot.secret"
 [ ! -d /sys/class/net/"$WLAN" ] && exit 0
 systemctl stop wpa_supplicant@"$WLAN".service 2>/dev/null || true
 systemctl stop wpa_supplicant@"$WLAN" 2>/dev/null || true
@@ -1091,6 +1092,30 @@ ip link set "$WLAN" down 2>/dev/null || true
 ip link set "$WLAN" up
 if ! ip addr show "$WLAN" | grep -q "$IP"; then
     ip addr add "$IP" dev "$WLAN"
+fi
+# Apply persisted hotspot credentials so install/API-configured password survives reboot
+if [ -f "$HOTSPOT_SECRET" ]; then
+    HOTSPOT_SSID=$(sed -n '1p' "$HOTSPOT_SECRET")
+    HOTSPOT_PASSWORD=$(sed -n '2p' "$HOTSPOT_SECRET")
+    if [ -n "$HOTSPOT_SSID" ]; then
+        mkdir -p /etc/hostapd
+        {
+            echo "interface=wlan0"
+            echo "driver=nl80211"
+            echo "ssid=$HOTSPOT_SSID"
+            echo "hw_mode=g"
+            echo "channel=6"
+            echo "wmm_enabled=0"
+            echo "macaddr_acl=0"
+            echo "auth_algs=1"
+            echo "ignore_broadcast_ssid=0"
+            echo "wpa=2"
+            printf "wpa_passphrase=%s\n" "$HOTSPOT_PASSWORD"
+            echo "wpa_key_mgmt=WPA-PSK"
+            echo "wpa_pairwise=TKIP"
+            echo "rsn_pairwise=CCMP"
+        } > /etc/hostapd/hostapd.conf
+    fi
 fi
 exit 0
 SETUPEOF
@@ -1115,8 +1140,7 @@ EOF
 After=rpi-engineer-wlan0.service
 EOF
     systemctl daemon-reload
-    # Apply immediately so hostapd can start in this session
-    "$INSTALL_DIR/bin/setup-wlan0-hotspot.sh" >> "$INSTALL_LOG" 2>&1 || true
+    # Do not run setup-wlan0-hotspot.sh here; user may be using WiFi for the install. Hotspot activates after reboot.
 }
 
 create_network_priority_script() {
@@ -1162,8 +1186,7 @@ configure_hotspot() {
         configure_hotspot_priority
         echo 'DAEMON_CONF="/etc/hostapd/hostapd.conf"' > /etc/default/hostapd
         systemctl unmask hostapd >/dev/null 2>&1 || true
-        systemctl restart hostapd 2>/dev/null || true
-        systemctl restart dnsmasq 2>/dev/null || true
+        # Do not start hostapd/dnsmasq during install; user may be on WiFi. They start after reboot.
         create_network_priority_script
         HOTSPOT_CONFIGURED="yes"
         return 0
@@ -1184,6 +1207,11 @@ wpa_key_mgmt=WPA-PSK
 wpa_pairwise=TKIP
 rsn_pairwise=CCMP
 EOF
+    # Persist hotspot credentials so they survive reboot (applied by setup-wlan0-hotspot.sh at boot)
+    mkdir -p "$CONFIG_DIR"
+    printf '%s\n%s\n' "$HOTSPOT_SSID" "$HOTSPOT_PASSWORD" > "$CONFIG_DIR/hotspot.secret"
+    chmod 600 "$CONFIG_DIR/hotspot.secret"
+    log_info "Hotspot credentials saved to $CONFIG_DIR/hotspot.secret (used at boot)."
 
     cat > /etc/dnsmasq.d/rpi-engineer.conf <<EOF
 interface=wlan0
@@ -1203,8 +1231,7 @@ EOF
     configure_hotspot_priority
     echo 'DAEMON_CONF="/etc/hostapd/hostapd.conf"' > /etc/default/hostapd
     systemctl unmask hostapd >/dev/null 2>&1 || true
-    systemctl restart hostapd || true
-    systemctl restart dnsmasq || true
+    # Do not start hostapd/dnsmasq during install; user may be on WiFi. They start after reboot.
     create_network_priority_script
     echo "WiFi hotspot configured (SSID: $HOTSPOT_SSID)."
     HOTSPOT_CONFIGURED="yes"
@@ -1530,9 +1557,16 @@ enable_services() {
     for service in "${services[@]}"; do
         echo "  Enabling $service..."
         systemctl enable "$service" >> "$INSTALL_LOG" 2>&1 || true
-        systemctl restart "$service" >> "$INSTALL_LOG" 2>&1 || true
+        case "$service" in
+            rpi-engineer-wlan0|hostapd|dnsmasq)
+                # Hotspot services: enable only; do not start during install (user may be on WiFi). They start after reboot.
+                ;;
+            *)
+                systemctl restart "$service" >> "$INSTALL_LOG" 2>&1 || true
+                ;;
+        esac
     done
-    echo "Services enabled and started."
+    echo "Services enabled (hotspot services will start after reboot)."
     mark_step_done "enable_services"
 }
 
@@ -1587,7 +1621,7 @@ show_installation_summary() {
     fi
     echo
     echo "Next Steps:"
-    echo "  1. Reboot the system: sudo reboot"
+    echo "  1. Reboot the system: sudo reboot (hotspot and WiFi takeover activate after reboot)"
     echo "  2. After reboot, connect to WiFi: $HOTSPOT_SSID"
     echo "  3. Open web browser to: http://${DEFAULT_HOTSPOT_IP}"
     echo

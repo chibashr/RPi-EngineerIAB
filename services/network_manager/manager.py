@@ -20,6 +20,7 @@ except ImportError:  # pragma: no cover - optional dependency
 
 PROFILE_DIR = Path("/etc/rpi-engineer/network_profiles")
 CONFIG_DIR = Path("/etc/rpi-engineer/network_configs")
+HOTSPOT_SECRET_PATH = Path("/etc/rpi-engineer/hotspot.secret")
 
 
 @dataclass
@@ -54,6 +55,7 @@ class NetworkManager:
             self._apply_dhcp(interface_id)
         else:
             self._apply_static(interface_id, config)
+        self.ensure_wan_priority()
         return {"interface": interface_id, "mode": mode, "applied": True}
 
     def list_routes(self) -> Dict[str, List[Dict[str, str]]]:
@@ -206,6 +208,13 @@ wpa_passphrase={password or ""}
 wpa_key_mgmt=WPA-PSK
 """
         hostapd_config.write_text(config_content)
+        # Persist credentials so they survive reboot (applied by setup-wlan0-hotspot.sh at boot)
+        HOTSPOT_SECRET_PATH.parent.mkdir(parents=True, exist_ok=True)
+        HOTSPOT_SECRET_PATH.write_text(f"{ssid}\n{password or ''}\n")
+        try:
+            os.chmod(HOTSPOT_SECRET_PATH, 0o600)
+        except OSError:
+            pass
         subprocess.run(["systemctl", "restart", "hostapd"], check=False)
         return {"ssid": ssid, "channel": channel, "applied": True}
 
@@ -337,6 +346,60 @@ wpa_key_mgmt=WPA-PSK
         except OSError:
             return False
         return True
+
+    def _check_connectivity_via_interface(self, interface_id: str) -> bool:
+        """Return True if the given interface has internet (ping 8.8.8.8 via that interface)."""
+        if platform.system().lower() == "windows":
+            return False
+        if interface_id not in self._interface_names():
+            return False
+        ping = subprocess.run(
+            ["ping", "-c", "1", "-W", "2", "-I", interface_id, "8.8.8.8"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return ping.returncode == 0
+
+    def _ordered_wan_candidates(self) -> List[str]:
+        """Return interface names in WAN preference order: USB first, then ethernet. Excludes wlan (hotspot)."""
+        names = self._interface_names()
+        usb = sorted(n for n in names if n.startswith("usb"))
+        eth = sorted(n for n in names if n.startswith("eth"))
+        return usb + eth
+
+    def ensure_wan_priority(self) -> Dict[str, object]:
+        """
+        Prefer USB for WAN; if unavailable or no internet, fail over to ethernet.
+        Sets default route to the first internet-capable interface in preference order.
+        """
+        if platform.system().lower() == "windows":
+            return {"wan_interface": None, "internet_capable": False, "applied": False}
+        if not _which("ip"):
+            return {"wan_interface": None, "internet_capable": False, "applied": False}
+        for iface in self._ordered_wan_candidates():
+            gateway, _ = self._gateway_for(iface)
+            if not gateway:
+                continue
+            stats = self._interface_stats(iface)
+            if not stats.get("isup"):
+                continue
+            if not self._check_connectivity_via_interface(iface):
+                continue
+            metric = 100 if iface.startswith("usb") else 200
+            subprocess.run(
+                ["ip", "route", "replace", "default", "via", gateway, "dev", iface, "metric", str(metric)],
+                check=False,
+            )
+            return {
+                "wan_interface": iface,
+                "internet_capable": True,
+                "applied": True,
+            }
+        return {
+            "wan_interface": self._default_route_interface(),
+            "internet_capable": self._check_connectivity(),
+            "applied": False,
+        }
 
     def _hotspot_active(self) -> bool:
         if platform.system().lower() == "windows":
@@ -470,3 +533,26 @@ def _timestamp() -> str:
 
 def _which(binary: str) -> Optional[str]:
     return shutil.which(binary)
+
+
+def _main() -> None:
+    """Run periodic WAN priority check for failover when USB is lost (used by rpi-engineer-network service)."""
+    import signal
+    manager = NetworkManager()
+    interval = int(os.getenv("RPI_ENGINEER_WAN_CHECK_INTERVAL", "60"))
+    stop = False
+
+    def _sig(_signum: int, _frame: object) -> None:
+        nonlocal stop
+        stop = True
+
+    signal.signal(signal.SIGTERM, _sig)
+    signal.signal(signal.SIGINT, _sig)
+    while not stop:
+        if platform.system().lower() != "windows":
+            manager.ensure_wan_priority()
+        time.sleep(interval)
+
+
+if __name__ == "__main__":
+    _main()
