@@ -737,6 +737,56 @@ class UpdateManager:
         repo = os.getenv("RPI_ENGINEER_UPDATE_REPO", DEFAULT_UPDATE_REPO)
         branch = os.getenv("RPI_ENGINEER_UPDATE_BRANCH", DEFAULT_UPDATE_BRANCH)
         root_dir = Path(os.getenv("RPI_ENGINEER_ROOT", "/opt/rpi-engineer"))
+        if (root_dir / ".git").is_dir():
+            try:
+                remote = subprocess.run(
+                    ["git", "remote", "get-url", "origin"],
+                    cwd=root_dir,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if remote.returncode != 0:
+                    subprocess.run(
+                        ["git", "remote", "add", "origin", repo],
+                        cwd=root_dir,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                else:
+                    subprocess.run(
+                        ["git", "remote", "set-url", "origin", repo],
+                        cwd=root_dir,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                fetch = subprocess.run(
+                    ["git", "fetch", "origin", branch],
+                    cwd=root_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    check=False,
+                )
+                if fetch.returncode != 0:
+                    raise RuntimeError(fetch.stderr.strip() or "git fetch failed")
+                reset = subprocess.run(
+                    ["git", "reset", "--hard", f"origin/{branch}"],
+                    cwd=root_dir,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if reset.returncode != 0:
+                    raise RuntimeError(reset.stderr.strip() or "git reset failed")
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise RuntimeError(f"Git update failed: {exc}") from exc
+            self._write_version(target_version)
+            self._apply_web_permissions(root_dir)
+            return
+
         staging_dir = self._staging_dir / "update"
         if staging_dir.exists():
             shutil.rmtree(staging_dir, ignore_errors=True)

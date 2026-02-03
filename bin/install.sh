@@ -831,7 +831,6 @@ create_directories() {
     log_step "Creating directories"
     echo "Creating $INSTALL_DIR, $CONFIG_DIR, $DATA_DIR, $LOG_DIR..."
     mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$DATA_DIR" "$LOG_DIR"
-    mkdir -p "$INSTALL_DIR/bin" "$INSTALL_DIR/services" "$INSTALL_DIR/web" "$INSTALL_DIR/modules" "$INSTALL_DIR/lib"
     mkdir -p "$CONFIG_DIR/network_profiles" "$CONFIG_DIR/module_config"
     mkdir -p "$DATA_DIR/captures" "$DATA_DIR/serial_logs" "$DATA_DIR/backups" "$DATA_DIR/database"
     echo "Directories created."
@@ -899,10 +898,6 @@ get_source_git_hash() {
     if ! command -v git >/dev/null 2>&1; then
         return 0
     fi
-    if [ -d "$SOURCE_DIR/.git" ]; then
-        git -C "$SOURCE_DIR" rev-parse HEAD 2>/dev/null || true
-        return 0
-    fi
     if [ -d "$INSTALL_DIR/.git" ]; then
         git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || true
     fi
@@ -923,71 +918,56 @@ write_version_file() {
 deploy_files() {
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "deploy"; then log_info "Step 'deploy' already completed; skipping."; APP_INSTALLED="yes"; return 0; fi
     log_step "Deploying application files"
-    ensure_source_dir
-    # Upgrade/reinstall: always clone fresh so we deploy latest from remote (important when script was run via curl | bash).
-    if [ "$INSTALL_MODE" = "upgrade" ] || [ "$INSTALL_MODE" = "reinstall_from_scratch" ]; then
-        if command -v git >/dev/null 2>&1; then
-            log_info "Cloning repository for upgrade (ensuring latest files from $BRANCH)."
-            local clone_dir="/tmp/rpi-engineer-src-$(date +%s)"
-            if ! git clone --branch "$BRANCH" "$REPO_URL" "$clone_dir" >> "$INSTALL_LOG" 2>&1; then
-                log_error "git clone failed (check network and $INSTALL_LOG)."
-                exit 1
-            fi
-            SOURCE_DIR="$clone_dir"
-        fi
-    fi
-    if [ "$SOURCE_DIR" = "$INSTALL_DIR" ]; then
-        log_info "Source and install directory are the same; skipping copy."
-        return 0
-    fi
-    backup_existing_install
-    deploy_copy_from_source
-    # Verify all core files (web, services, lib, bin) present; if not, repair and optionally clone/retry.
-    if ! verify_and_repair_core_assets; then
-        missing="core (web/services/lib/bin)"
-    else
-        missing=""
-    fi
-    if [ -n "$missing" ] && [ -d "$SOURCE_DIR" ]; then
-        log_info "Re-verifying and repairing core assets from source."
-        verify_and_repair_core_assets || true
-        if ! verify_and_repair_core_assets; then
-            missing="core (web/services/lib/bin)"
-        else
-            missing=""
-        fi
-    fi
-    if [ -n "$missing" ]; then
-        log_warn "Deploy incomplete after copy; missing: $missing"
-        if command -v git >/dev/null 2>&1; then
-            log_info "Cloning repository and redeploying from fresh source."
-            local clone_dir="/tmp/rpi-engineer-src-$(date +%s)"
-            if ! git clone --branch "$BRANCH" "$REPO_URL" "$clone_dir" >> "$INSTALL_LOG" 2>&1; then
-                log_error "git clone failed (check network and $INSTALL_LOG)."
-                exit 1
-            fi
-            SOURCE_DIR="$clone_dir"
-            if [ ! -d "$SOURCE_DIR/web" ] || [ ! -d "$SOURCE_DIR/services" ]; then
-                log_error "Clone incomplete or wrong branch; missing web/ or services/."
-                exit 1
-            fi
-            deploy_copy_from_source
-            if ! verify_and_repair_core_assets; then
-                log_info "Re-verifying and repairing core assets after clone."
-                verify_and_repair_core_assets || true
-            fi
-            if ! verify_and_repair_core_assets; then
-                missing="core (web/services/lib/bin)"
-            else
-                missing=""
-            fi
-        fi
-    fi
-    if [ -n "$missing" ]; then
-        log_error "Deploy incomplete; $missing"
-        log_error "Re-run the installer from a complete repo clone, or ensure the source has full web, services, lib, and bin trees."
+    if ! command -v git >/dev/null 2>&1; then
+        log_error "git is required but not installed. Install git and re-run."
         exit 1
     fi
+
+    if [ "$INSTALL_MODE" = "reinstall_from_scratch" ]; then
+        if [ -d "$INSTALL_DIR" ]; then
+            log_warn "Removing $INSTALL_DIR for clean reinstall."
+            rm -rf "$INSTALL_DIR"
+        fi
+    fi
+
+    if [ -d "$INSTALL_DIR/.git" ]; then
+        if [ "$INSTALL_MODE" = "upgrade" ]; then
+            backup_existing_install
+        fi
+        log_info "Existing git repository found at $INSTALL_DIR; updating."
+        if git -C "$INSTALL_DIR" remote get-url origin >/dev/null 2>&1; then
+            git -C "$INSTALL_DIR" remote set-url origin "$REPO_URL" >> "$INSTALL_LOG" 2>&1 || true
+        else
+            git -C "$INSTALL_DIR" remote add origin "$REPO_URL" >> "$INSTALL_LOG" 2>&1 || true
+        fi
+        if ! git -C "$INSTALL_DIR" fetch origin "$BRANCH" >> "$INSTALL_LOG" 2>&1; then
+            log_error "git fetch failed (check network and $INSTALL_LOG)."
+            exit 1
+        fi
+        if ! git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH" >> "$INSTALL_LOG" 2>&1; then
+            log_error "git reset failed (check $INSTALL_LOG)."
+            exit 1
+        fi
+    else
+        if [ -d "$INSTALL_DIR" ] && [ "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
+            log_warn "Install directory exists but is not a git repo. Backing up and replacing."
+            backup_existing_install
+            rm -rf "$INSTALL_DIR"
+        fi
+        mkdir -p "$(dirname "$INSTALL_DIR")"
+        log_info "Cloning repository to $INSTALL_DIR (branch $BRANCH)."
+        if ! git clone --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR" >> "$INSTALL_LOG" 2>&1; then
+            log_error "git clone failed (check network and $INSTALL_LOG)."
+            exit 1
+        fi
+    fi
+
+    for dir in web services lib bin; do
+        if [ ! -d "$INSTALL_DIR/$dir" ]; then
+            log_error "Deploy incomplete; missing $INSTALL_DIR/$dir"
+            exit 1
+        fi
+    done
     echo "Application files deployed."
     write_version_file
     APP_INSTALLED="yes"
