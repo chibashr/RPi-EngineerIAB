@@ -176,7 +176,7 @@ async function loadUpdates() {
   }
 }
 
-/** Apply update with live CLI-style log via WebSocket (same interactivity as command line). */
+/** Apply update: try WebSocket stream first; on connection failure fall back to REST so update still runs. */
 function applyUpdateWithLog(applyButton, logWrapper, logPre) {
   if (!applyButton || !logWrapper || !logPre) return;
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -192,19 +192,73 @@ function applyUpdateWithLog(applyButton, logWrapper, logPre) {
     logPre.scrollTop = logPre.scrollHeight;
   };
 
+  let finished = false;
   const finish = (success, message) => {
+    if (finished) return;
+    finished = true;
     applyButton.disabled = false;
     applyButton.textContent = originalLabel;
     if (message) showToast(message, success ? "success" : "error");
     loadUpdates();
   };
 
+  /** Fallback when WebSocket is unavailable: apply via REST and show result in log. */
+  const applyViaRest = async () => {
+    appendLog("Stream unavailable. Applying update via REST...");
+    const timeoutMs = 150000;
+    const url = new URL("/api/v1/updates/apply", window.location.origin);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: "{}",
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const msg = payload?.error?.message || `Request failed (${response.status})`;
+        appendLog("Error: " + msg);
+        finish(false, msg);
+        return;
+      }
+      const data = extractData(payload) || {};
+      if (data.dry_run) {
+        appendLog("Dry run: update not applied. Set RPI_ENGINEER_DRY_RUN=0 to apply.");
+        finish(true, "Dry run: update not applied. Set RPI_ENGINEER_DRY_RUN=0 to apply.");
+      } else if (data.status === "applied") {
+        appendLog("Update applied successfully (configuration kept).");
+        finish(true, "Update applied successfully (configuration kept).");
+      } else if (data.status === "up_to_date") {
+        appendLog("Already up to date.");
+        finish(true, "System is already up to date.");
+      } else {
+        appendLog("Done: " + JSON.stringify(data));
+        finish(true, "Update completed.");
+      }
+    } catch (err) {
+      clearTimeout(timeoutId);
+      const msg = err?.name === "AbortError" ? "Request timed out (update may still be running)." : (err?.message || "Apply failed.");
+      appendLog("Error: " + msg);
+      finish(false, msg);
+    }
+  };
+
+  let fallbackStarted = false;
+  const maybeFallback = () => {
+    if (finished || fallbackStarted) return;
+    fallbackStarted = true;
+    applyViaRest();
+  };
+
   let ws;
   try {
     ws = new WebSocket(wsUrl);
   } catch (e) {
-    appendLog("Failed to open connection: " + e);
-    finish(false, "Unable to start update stream.");
+    appendLog("WebSocket failed: " + e);
+    maybeFallback();
     return;
   }
 
@@ -235,12 +289,16 @@ function applyUpdateWithLog(applyButton, logWrapper, logPre) {
   };
 
   ws.onerror = () => {
-    appendLog("Connection error.");
-    finish(false, "Update stream connection error.");
+    appendLog("Stream connection error. Falling back to REST...");
+    maybeFallback();
   };
 
-  ws.onclose = () => {
-    if (applyButton.disabled && applyButton.textContent === "Updating…") {
+  ws.onclose = (ev) => {
+    if (finished) return;
+    if (ev.code !== 1000 && !ev.wasClean) {
+      appendLog("Stream closed. Falling back to REST...");
+      maybeFallback();
+    } else {
       applyButton.disabled = false;
       applyButton.textContent = originalLabel;
     }

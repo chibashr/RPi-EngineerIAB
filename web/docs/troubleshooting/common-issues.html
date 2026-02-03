@@ -49,6 +49,11 @@ chmod o+x /opt /opt/rpi-engineer</pre>
 <p><strong>Symptom:</strong> You clicked Update and see <code>Update failed; rollback attempted: &lt;some error&gt;</code>. You only wanted to update, not roll back.</p>
 <p><strong>Explanation:</strong> When the <strong>apply</strong> step fails (e.g. git error, permission error), the app automatically tries to <strong>roll back</strong> to the previous version and config so the device is left in a known state. The message means: "The update failed because of &lt;error&gt;; we then attempted a rollback." If rollback succeeds, you are back at the version you had before clicking Update. Fix the underlying error (e.g. dubious ownership, permission denied) and try Update again.</p>
 
+<h2>"Update stream connection error" when clicking Update</h2>
+<p><strong>Symptom:</strong> You see a red toast <strong>Update stream connection error</strong> and the update log shows "Stream connection error. Falling back to REST...".</p>
+<p><strong>Cause:</strong> The live-update WebSocket (<code>/ws/updates/apply</code>) could not be established (e.g. proxy not upgrading WebSockets, or API not reachable on the WebSocket path).</p>
+<p><strong>Resolution:</strong> The UI now automatically falls back to the REST apply endpoint, so the update still runs and you should see "Applying update via REST..." then success or an error in the log. If the update then succeeds, no further action is needed. To get the live streaming log, ensure nginx (or your proxy) is configured to upgrade WebSocket for <code>/ws/</code> and the API is listening; the installer configures this by default.</p>
+
 <h2>Updates apply but nothing changes</h2>
 <p><strong>Symptom:</strong> You click <strong>Update (keep configuration)</strong> and receive a success message, but new UI or code changes never appear.</p>
 <p><strong>Common cause:</strong> The API is running with <code>RPI_ENGINEER_DRY_RUN=1</code>, which skips applying updates.</p>
