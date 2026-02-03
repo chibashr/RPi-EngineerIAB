@@ -18,6 +18,20 @@ from typing import Dict, Optional
 DEFAULT_UPDATE_REPO = "https://github.com/chibashr/RPi-EngineerIAB.git"
 DEFAULT_UPDATE_BRANCH = "main"
 
+# Required web assets (relative to web/) for offline UI. All must exist after update.
+REQUIRED_WEB_ASSETS = [
+    "index.html",
+    "css/base.css",
+    "css/theme.css",
+    "css/layout.css",
+    "css/components.css",
+    "css/pages/simple.css",
+    "js/pages/simple.js",
+    "js/api.js",
+    "js/theme.js",
+    "advanced/index.html",
+]
+
 logger = logging.getLogger(__name__)
 
 
@@ -331,6 +345,33 @@ class UpdateManager:
             target_version=payload.get("target_version", ""),
         )
 
+    def _verify_and_repair_web_assets(self, root_dir: Path, staging_dir: Path) -> None:
+        """Ensure required web assets exist under root_dir/web; copy from staging if missing."""
+        web_root = root_dir / "web"
+        staging_web = staging_dir / "web"
+        if not staging_web.is_dir():
+            return
+        missing = [p for p in REQUIRED_WEB_ASSETS if not (web_root / p).exists()]
+        if not missing:
+            return
+        logger.warning("Missing web assets after update: %s; repairing from staging.", missing)
+        for subdir in ("css", "js", "advanced", "docs"):
+            src = staging_web / subdir
+            dst = web_root / subdir
+            if src.is_dir():
+                if dst.exists():
+                    shutil.rmtree(dst, ignore_errors=True)
+                shutil.copytree(src, dst, dirs_exist_ok=True)
+        for path in missing:
+            src = staging_web / path
+            dst = web_root / path
+            if src.is_file():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+        still_missing = [p for p in REQUIRED_WEB_ASSETS if not (web_root / p).exists()]
+        if still_missing:
+            logger.error("Web assets still missing after repair: %s", still_missing)
+
     def _perform_update(self, target_version: str) -> None:
         repo = os.getenv("RPI_ENGINEER_UPDATE_REPO", DEFAULT_UPDATE_REPO)
         branch = os.getenv("RPI_ENGINEER_UPDATE_BRANCH", DEFAULT_UPDATE_BRANCH)
@@ -355,6 +396,7 @@ class UpdateManager:
             else:
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(item, destination)
+        self._verify_and_repair_web_assets(root_dir, staging_dir)
         self._write_version(target_version)
         self._apply_web_permissions(root_dir)
 

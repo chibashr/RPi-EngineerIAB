@@ -894,20 +894,30 @@ deploy_files() {
     fi
     backup_existing_install
     deploy_copy_from_source
-    # Verify critical files; if missing, try explicit copy from source (handles rsync quirks), then clone once if needed.
+    # Verify critical files and required web assets; if missing, try explicit copy then clone once if needed.
     local missing=""
     [ ! -f "$INSTALL_DIR/web/index.html" ] && missing="${missing} web/index.html"
     [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && missing="${missing} services/logging_service/manager.py"
     [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && missing="${missing} bin/apply-web-permissions.sh"
+    local path
+    for path in $REQUIRED_WEB_ASSETS; do
+        [ -z "$path" ] && continue
+        [ ! -e "$INSTALL_DIR/web/$path" ] && missing="${missing} web/$path"
+    done
     if [ -n "$missing" ] && [ -d "$SOURCE_DIR" ]; then
-        log_info "Copying critical files explicitly from source."
+        log_info "Copying critical files and web assets explicitly from source."
         [ ! -f "$INSTALL_DIR/web/index.html" ] && [ -f "$SOURCE_DIR/web/index.html" ] && mkdir -p "$INSTALL_DIR/web" && cp -a "$SOURCE_DIR/web/index.html" "$INSTALL_DIR/web/"
         [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && [ -f "$SOURCE_DIR/services/logging_service/manager.py" ] && mkdir -p "$INSTALL_DIR/services/logging_service" && cp -a "$SOURCE_DIR/services/logging_service/manager.py" "$INSTALL_DIR/services/logging_service/"
         [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && [ -f "$SOURCE_DIR/bin/apply-web-permissions.sh" ] && mkdir -p "$INSTALL_DIR/bin" && cp -a "$SOURCE_DIR/bin/apply-web-permissions.sh" "$INSTALL_DIR/bin/"
+        verify_and_repair_web_assets || true
         missing=""
         [ ! -f "$INSTALL_DIR/web/index.html" ] && missing="${missing} web/index.html"
         [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && missing="${missing} services/logging_service/manager.py"
         [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && missing="${missing} bin/apply-web-permissions.sh"
+        for path in $REQUIRED_WEB_ASSETS; do
+            [ -z "$path" ] && continue
+            [ ! -e "$INSTALL_DIR/web/$path" ] && missing="${missing} web/$path"
+        done
     fi
     if [ -n "$missing" ]; then
         log_warn "Deploy incomplete after copy; missing:$missing"
@@ -930,14 +940,19 @@ deploy_files() {
             [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && missing="${missing} bin/apply-web-permissions.sh"
             # If clone has the files but install dir still missing them (e.g. rsync quirk on target), copy explicitly.
             if [ -n "$missing" ]; then
-                log_info "Copying critical files explicitly from source."
+                log_info "Copying critical files and web assets explicitly from source."
                 [ ! -f "$INSTALL_DIR/web/index.html" ] && [ -f "$SOURCE_DIR/web/index.html" ] && mkdir -p "$INSTALL_DIR/web" && cp -a "$SOURCE_DIR/web/index.html" "$INSTALL_DIR/web/"
                 [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && [ -f "$SOURCE_DIR/services/logging_service/manager.py" ] && mkdir -p "$INSTALL_DIR/services/logging_service" && cp -a "$SOURCE_DIR/services/logging_service/manager.py" "$INSTALL_DIR/services/logging_service/"
                 [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && [ -f "$SOURCE_DIR/bin/apply-web-permissions.sh" ] && mkdir -p "$INSTALL_DIR/bin" && cp -a "$SOURCE_DIR/bin/apply-web-permissions.sh" "$INSTALL_DIR/bin/"
+                verify_and_repair_web_assets || true
                 missing=""
                 [ ! -f "$INSTALL_DIR/web/index.html" ] && missing="${missing} web/index.html"
                 [ ! -f "$INSTALL_DIR/services/logging_service/manager.py" ] && missing="${missing} services/logging_service/manager.py"
                 [ ! -f "$INSTALL_DIR/bin/apply-web-permissions.sh" ] && missing="${missing} bin/apply-web-permissions.sh"
+                for path in $REQUIRED_WEB_ASSETS; do
+                    [ -z "$path" ] && continue
+                    [ ! -e "$INSTALL_DIR/web/$path" ] && missing="${missing} web/$path"
+                done
             fi
         fi
     fi
@@ -951,12 +966,66 @@ deploy_files() {
     mark_step_done "deploy"
 }
 
+# Required web assets (relative to web/) for offline UI. All must exist after deploy/upgrade.
+REQUIRED_WEB_ASSETS="
+index.html
+css/base.css
+css/theme.css
+css/layout.css
+css/components.css
+css/pages/simple.css
+js/pages/simple.js
+js/api.js
+js/theme.js
+advanced/index.html
+"
+
+# Verify required web assets exist under INSTALL_DIR/web; if any missing, copy web tree from source.
+verify_and_repair_web_assets() {
+    local web_root="$INSTALL_DIR/web"
+    local missing=""
+    local path
+    for path in $REQUIRED_WEB_ASSETS; do
+        [ -z "$path" ] && continue
+        if [ ! -e "$web_root/$path" ]; then
+            missing="${missing} ${path}"
+        fi
+    done
+    if [ -z "$missing" ]; then
+        return 0
+    fi
+    log_warn "Missing web assets after deploy:${missing}. Repairing from source."
+    [ -d "$SOURCE_DIR/web/css" ] && copy_path "$SOURCE_DIR/web/css" "$web_root/css"
+    [ -d "$SOURCE_DIR/web/js" ] && copy_path "$SOURCE_DIR/web/js" "$web_root/js"
+    [ -d "$SOURCE_DIR/web/advanced" ] && copy_path "$SOURCE_DIR/web/advanced" "$web_root/advanced"
+    [ -d "$SOURCE_DIR/web/docs" ] && copy_path "$SOURCE_DIR/web/docs" "$web_root/docs"
+    for path in $REQUIRED_WEB_ASSETS; do
+        [ -z "$path" ] && continue
+        if [ ! -e "$web_root/$path" ] && [ -e "$SOURCE_DIR/web/$path" ]; then
+            mkdir -p "$(dirname "$web_root/$path")"
+            cp -a "$SOURCE_DIR/web/$path" "$web_root/$path"
+        fi
+    done
+    missing=""
+    for path in $REQUIRED_WEB_ASSETS; do
+        [ -z "$path" ] && continue
+        [ ! -e "$web_root/$path" ] && missing="${missing} ${path}"
+    done
+    if [ -n "$missing" ]; then
+        log_error "Web assets still missing after repair:${missing}. Ensure source has full web tree."
+        return 1
+    fi
+    log_info "Web assets repaired."
+    return 0
+}
+
 # Copy from current SOURCE_DIR to INSTALL_DIR (used by deploy_files).
 deploy_copy_from_source() {
     echo "Copying services..."
     copy_path "$SOURCE_DIR/services" "$INSTALL_DIR/services"
     echo "Copying web..."
     copy_path "$SOURCE_DIR/web" "$INSTALL_DIR/web"
+    verify_and_repair_web_assets || true
     echo "Copying lib..."
     copy_path "$SOURCE_DIR/lib" "$INSTALL_DIR/lib"
     echo "Copying modules..."

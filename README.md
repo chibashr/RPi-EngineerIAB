@@ -36,7 +36,9 @@ See [Installation Specification](.planning/INSTALLATION-SPECIFICATION.md) for de
 
 The web interface is served from the static `web/` directory by the API gateway.
 Simple Mode is the default landing page at `/`, with Advanced Mode under
-`/advanced/` as additional HTML pages.
+`/advanced/` as additional HTML pages. All CSS, JavaScript, and HTML are stored
+on the device so the UI works **offline**; the installer and in-app updater
+verify and repair required web assets so the deploy is complete.
 
 ## Documentation
 
