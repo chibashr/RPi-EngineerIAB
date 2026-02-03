@@ -121,13 +121,14 @@
   color: var(--color-muted);
 }
 
-/* Live update log (CLI-style output) */
+/* Live update log (CLI-style output, system theme colors) */
 .update-log-wrapper {
   margin: 1rem 0;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   overflow: hidden;
-  background: var(--color-bg-subtle, #1a1a1a);
+  background: var(--color-surface);
+  color: var(--color-fg);
 }
 
 .update-log-header {
@@ -135,8 +136,9 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.5rem 0.75rem;
-  background: var(--color-bg-muted, #2a2a2a);
+  background: var(--color-bg);
   border-bottom: 1px solid var(--color-border);
+  color: var(--color-fg);
 }
 
 .update-log-title {
@@ -154,13 +156,6 @@
   line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--color-text);
-}
-
-[data-theme="light"] .update-log-wrapper {
-  background: #f5f5f5;
-}
-
-[data-theme="light"] .update-log-header {
-  background: #e8e8e8;
+  background: var(--color-surface);
+  color: var(--color-fg);
 }
