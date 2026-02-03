@@ -2,6 +2,7 @@ import { apiGet, apiPost, apiUpload, extractData } from "../api.js";
 import { initTabs } from "../components.js";
 
 const elements = {
+  updateBranch: document.getElementById("update-branch"),
   current: document.getElementById("current-version"),
   lastUpdate: document.getElementById("last-update"),
   available: document.getElementById("available-version"),
@@ -41,6 +42,9 @@ function formatDateTime(iso) {
 function renderUpdateStatus(data) {
   if (!elements.current) {
     return;
+  }
+  if (elements.updateBranch) {
+    elements.updateBranch.textContent = data?.update_branch ?? "--";
   }
   elements.current.textContent = data?.current_version || "--";
   if (elements.lastUpdate) {
@@ -98,13 +102,49 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
+async function fetchCheckUpdates() {
+  const url = new URL("/api/v1/updates/check", window.location.origin);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    signal: controller.signal,
+  });
+  clearTimeout(timeoutId);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const msg = payload?.error?.message || `Request failed (${response.status})`;
+    throw new Error(msg);
+  }
+  return payload;
+}
+
 async function loadUpdates() {
+  const checkButton = document.getElementById("check-updates");
+  const originalLabel = checkButton?.textContent ?? "Check for Updates";
+
+  function setChecking(checking) {
+    if (checkButton) {
+      checkButton.disabled = checking;
+      checkButton.textContent = checking ? "Checking…" : originalLabel;
+    }
+  }
+
+  setChecking(true);
   try {
-    const payload = await apiGet("/api/v1/updates/check");
+    const payload = await fetchCheckUpdates();
     const data = extractData(payload) || {};
     renderUpdateStatus(data);
   } catch (error) {
-    showToast("Unable to check updates.", "error");
+    const message =
+      error?.name === "AbortError"
+        ? "Check timed out."
+        : (error?.message || "Unable to check updates.");
+    showToast(message, "error");
+    renderUpdateStatus({ release_notes: message });
+  } finally {
+    setChecking(false);
   }
 }
 

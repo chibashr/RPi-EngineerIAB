@@ -193,6 +193,7 @@ class UpdateManager:
                 "available_commit_message": None,
                 "available_commit_author": None,
                 "files_changed": [],
+                "update_branch": branch,
             }
         result = subprocess.run(
             ["git", "ls-remote", repo, branch],
@@ -215,6 +216,7 @@ class UpdateManager:
                 "available_commit_message": None,
                 "available_commit_author": None,
                 "files_changed": [],
+                "update_branch": branch,
             }
         ref_differs = bool(available and available != current_hash)
         root_dir = Path(os.getenv("RPI_ENGINEER_ROOT", "/opt/rpi-engineer"))
@@ -253,6 +255,7 @@ class UpdateManager:
             "available_commit_message": available_commit_message,
             "available_commit_author": available_commit_author,
             "files_changed": files_changed[:200],
+            "update_branch": branch,
         }
 
     def apply_update(self) -> Dict[str, object]:

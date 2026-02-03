@@ -26,6 +26,7 @@ def test_check_for_updates_no_git(monkeypatch):
     assert "available_commit_author" in result
     assert "files_changed" in result
     assert result["files_changed"] == []
+    assert "update_branch" in result
 
 
 @pytest.mark.unit

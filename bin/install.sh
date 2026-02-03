@@ -1557,9 +1557,8 @@ install_teamviewer() {
         else
             pkg_url="https://download.teamviewer.com/download/linux/teamviewer-host_arm64.deb"
         fi
-        echo "  Downloading TeamViewer package (may take several minutes on slow links)..."
-        wget -O /tmp/teamviewer.deb "$pkg_url" 2>&1 | tee -a "$INSTALL_LOG"
-        echo "  Installing TeamViewer..."
+        echo "  Downloading and installing TeamViewer..."
+        wget -q -O /tmp/teamviewer.deb "$pkg_url" >> "$INSTALL_LOG" 2>&1
         DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/teamviewer.deb >> "$INSTALL_LOG" 2>&1
     fi
     if [ -n "$REMOTE_ACCESS_PASSWORD" ]; then
