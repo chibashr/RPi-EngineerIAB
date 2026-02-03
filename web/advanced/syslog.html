@@ -113,6 +113,49 @@
             </div>
           </div>
 
+          <section class="card" id="syslog-config-section">
+            <div class="section-header">
+              <h2>Configuration</h2>
+              <button class="btn btn-primary" id="syslog-save-config" type="button">Save</button>
+            </div>
+            <form id="syslog-config-form" class="syslog-config-form">
+              <div class="form-row">
+                <label class="field" for="syslog-config-enabled">
+                  <span class="field-label">Enabled</span>
+                  <input type="checkbox" id="syslog-config-enabled" name="enabled" />
+                </label>
+                <label class="field" for="syslog-config-persist">
+                  <span class="field-label">Persist to storage</span>
+                  <input type="checkbox" id="syslog-config-persist" name="persist" />
+                </label>
+              </div>
+              <div class="form-row">
+                <label class="field" for="syslog-config-bind">
+                  <span class="field-label">Bind address</span>
+                  <input type="text" id="syslog-config-bind" name="bind_address" placeholder="0.0.0.0" />
+                </label>
+                <label class="field" for="syslog-config-port-udp">
+                  <span class="field-label">UDP port</span>
+                  <input type="number" id="syslog-config-port-udp" name="port_udp" min="1" max="65535" placeholder="1514" />
+                </label>
+                <label class="field" for="syslog-config-port-tcp">
+                  <span class="field-label">TCP port</span>
+                  <input type="number" id="syslog-config-port-tcp" name="port_tcp" min="1" max="65535" placeholder="1514" />
+                </label>
+              </div>
+              <div class="form-row">
+                <label class="field" for="syslog-config-max-live">
+                  <span class="field-label">Max live messages (memory)</span>
+                  <input type="number" id="syslog-config-max-live" name="max_live" min="1" max="100000" placeholder="1000" />
+                </label>
+                <label class="field" for="syslog-config-max-stored">
+                  <span class="field-label">Max stored messages</span>
+                  <input type="number" id="syslog-config-max-stored" name="max_stored" min="0" max="1000000" placeholder="10000" />
+                </label>
+              </div>
+            </form>
+          </section>
+
           <section class="card">
             <div class="section-header">
               <h2>Status</h2>

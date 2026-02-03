@@ -8,6 +8,68 @@ const statusEls = {
   last: document.getElementById("syslog-status-last"),
 };
 
+const configIds = {
+  enabled: "syslog-config-enabled",
+  bind_address: "syslog-config-bind",
+  port_udp: "syslog-config-port-udp",
+  port_tcp: "syslog-config-port-tcp",
+  persist: "syslog-config-persist",
+  max_live: "syslog-config-max-live",
+  max_stored: "syslog-config-max-stored",
+};
+
+function getConfigFormValues() {
+  return {
+    enabled: document.getElementById(configIds.enabled)?.checked ?? true,
+    bind_address: document.getElementById(configIds.bind_address)?.value?.trim() || "0.0.0.0",
+    port_udp: parseInt(document.getElementById(configIds.port_udp)?.value || "1514", 10),
+    port_tcp: parseInt(document.getElementById(configIds.port_tcp)?.value || "1514", 10),
+    persist: document.getElementById(configIds.persist)?.checked ?? true,
+    max_live: parseInt(document.getElementById(configIds.max_live)?.value || "1000", 10),
+    max_stored: parseInt(document.getElementById(configIds.max_stored)?.value || "10000", 10),
+  };
+}
+
+function setConfigFormValues(config) {
+  const el = (id) => document.getElementById(id);
+  if (el(configIds.enabled)) el(configIds.enabled).checked = !!config.enabled;
+  if (el(configIds.bind_address)) el(configIds.bind_address).value = config.bind_address ?? "0.0.0.0";
+  if (el(configIds.port_udp)) el(configIds.port_udp).value = String(config.port_udp ?? 1514);
+  if (el(configIds.port_tcp)) el(configIds.port_tcp).value = String(config.port_tcp ?? 1514);
+  if (el(configIds.persist)) el(configIds.persist).checked = !!config.persist;
+  if (el(configIds.max_live)) el(configIds.max_live).value = String(config.max_live ?? 1000);
+  if (el(configIds.max_stored)) el(configIds.max_stored).value = String(config.max_stored ?? 10000);
+}
+
+async function loadConfig() {
+  try {
+    const config = await fetchJson("/api/v1/syslog/config");
+    setConfigFormValues(config);
+  } catch (error) {
+    showToast("Failed to load configuration.", "error");
+  }
+}
+
+async function saveConfig() {
+  const payload = getConfigFormValues();
+  if (payload.port_udp < 1 || payload.port_udp > 65535 || payload.port_tcp < 1 || payload.port_tcp > 65535) {
+    showToast("Ports must be between 1 and 65535.", "error");
+    return;
+  }
+  try {
+    await fetch("/api/v1/syslog/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    showToast("Configuration saved. Receiver will restart if needed.", "success");
+    loadConfig();
+    refresh();
+  } catch (error) {
+    showToast("Failed to save configuration.", "error");
+  }
+}
+
 const recentTable = document.querySelector("#syslog-recent-table tbody");
 const storedTable = document.querySelector("#syslog-stored-table tbody");
 
@@ -130,6 +192,7 @@ async function clearBuffers() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  loadConfig();
   refresh();
   setInterval(refresh, 5000);
 
@@ -138,4 +201,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const clearBtn = document.getElementById("clear-syslog");
   if (clearBtn) clearBtn.addEventListener("click", clearBuffers);
+
+  const saveConfigBtn = document.getElementById("syslog-save-config");
+  if (saveConfigBtn) saveConfigBtn.addEventListener("click", saveConfig);
 });

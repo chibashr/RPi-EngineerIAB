@@ -25,6 +25,11 @@ chmod o+x /opt /opt/rpi-engineer</pre>
 </ol>
 <p>If <code>index.html</code> is missing under <code>/opt/rpi-engineer/web/</code>, re-deploy the <code>web</code> folder from the repo or re-run the full installer. To confirm the cause, check <code>/var/log/nginx/error.log</code> (e.g. <code>Permission denied</code> or <code>13</code> means file permissions).</p>
 
+<h2>Permission denied: /var/lib/rpi-engineer/updates/state.json</h2>
+<p><strong>Symptom:</strong> Update fails with <code>[Errno 13] Permission denied: '/var/lib/rpi-engineer/updates/state.json'</code>.</p>
+<p><strong>Cause:</strong> The API user cannot create or write the update state file under the data directory (e.g. directory missing or wrong ownership in a container).</p>
+<p><strong>Resolution:</strong> (1) On a normal install, re-run the installer so it creates <code>data/updates</code> and <code>data/staging</code> and sets ownership to <code>root:SERVICE_GROUP</code> with dirs 775. (2) The app now tries a fallback path under the repo <code>data/updates/state.json</code> when the primary path is not writable; ensure the process can write there (e.g. set <code>RPI_ENGINEER_DATA_DIR</code> to a writable directory, or run the API as a user that can write to <code>/var/lib/rpi-engineer</code>).</p>
+
 <h2>Permission denied when applying update</h2>
 <p><strong>Symptom:</strong> Clicking <strong>Update (keep configuration)</strong> shows an error such as <code>[Errno 13] Permission denied: '/etc/rpi-engineer/remote_access.conf'</code>.</p>
 <p><strong>Cause:</strong> The pre-update config backup runs as the API user and cannot read root-owned config files (e.g. <code>remote_access.conf</code>).</p>

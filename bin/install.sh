@@ -832,7 +832,7 @@ create_directories() {
     echo "Creating $INSTALL_DIR, $CONFIG_DIR, $DATA_DIR, $LOG_DIR..."
     mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$DATA_DIR" "$LOG_DIR"
     mkdir -p "$CONFIG_DIR/network_profiles" "$CONFIG_DIR/module_config"
-    mkdir -p "$DATA_DIR/captures" "$DATA_DIR/serial_logs" "$DATA_DIR/backups" "$DATA_DIR/database"
+    mkdir -p "$DATA_DIR/captures" "$DATA_DIR/serial_logs" "$DATA_DIR/backups" "$DATA_DIR/database" "$DATA_DIR/updates" "$DATA_DIR/staging"
     echo "Directories created."
     APP_INSTALLED="yes"
     mark_step_done "directories"

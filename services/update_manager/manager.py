@@ -268,6 +268,7 @@ class UpdateManager:
         )
         self._version_file = self._resolve_version_file()
         self._state_file = self._data_dir / "updates" / "state.json"
+        self._state_file_fallback = repo_root / "data" / "updates" / "state.json"
         self._backups_dir = _safe_dir(self._data_dir / "backups", self._data_dir)
         self._staging_dir = _safe_dir(self._data_dir / "staging", self._data_dir)
 
@@ -654,14 +655,25 @@ class UpdateManager:
         self._version_file.write_text(str(version).strip())
 
     def _write_state(self, state: UpdateState) -> None:
-        self._state_file.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "previous_version": state.previous_version,
             "backup_path": state.backup_path,
             "applied_at": state.applied_at,
             "target_version": state.target_version,
         }
-        self._state_file.write_text(json.dumps(payload, indent=2))
+        text = json.dumps(payload, indent=2)
+        for path in (self._state_file, self._state_file_fallback):
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text)
+                self._state_file = path
+                return
+            except OSError as e:
+                if path == self._state_file_fallback:
+                    raise RuntimeError(
+                        f"Cannot write update state to {self._state_file} or {path}: {e}"
+                    ) from e
+                logger.warning("Cannot write update state to %s (%s), trying fallback", path, e)
 
     def _apply_web_permissions(self, root_dir: Path) -> None:
         """Re-apply nginx config and web root permissions so 403 is fixed after update."""
@@ -707,18 +719,23 @@ class UpdateManager:
                 logger.warning("Could not apply web permissions fallback: %s", e)
 
     def _read_state(self) -> Optional[UpdateState]:
-        if not self._state_file.exists():
-            return None
-        try:
-            payload = json.loads(self._state_file.read_text())
-        except (OSError, json.JSONDecodeError):
-            return None
-        return UpdateState(
-            previous_version=payload.get("previous_version", ""),
-            backup_path=payload.get("backup_path", ""),
-            applied_at=payload.get("applied_at", ""),
-            target_version=payload.get("target_version", ""),
-        )
+        for path in (self._state_file, self._state_file_fallback):
+            if not path.exists():
+                continue
+            try:
+                payload = json.loads(path.read_text())
+                self._state_file = path
+                return UpdateState(
+                    previous_version=payload.get("previous_version", ""),
+                    backup_path=payload.get("backup_path", ""),
+                    applied_at=payload.get("applied_at", ""),
+                    target_version=payload.get("target_version", ""),
+                )
+            except (OSError, json.JSONDecodeError):
+                if path == self._state_file_fallback:
+                    return None
+                continue
+        return None
 
     def _list_core_files(self, base: Path) -> list[str]:
         """Return relative paths of all files under base, excluding __pycache__, .git, .pyc."""
