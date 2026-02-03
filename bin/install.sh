@@ -1244,6 +1244,14 @@ EOF
         chmod 440 "$SUDOERS_FILE"
         echo "Sudoers rule added so updates can re-apply web permissions."
     fi
+    APPLY_UPDATE_SCRIPT="$INSTALL_DIR/bin/apply-update.sh"
+    if [ -f "$APPLY_UPDATE_SCRIPT" ]; then
+        chmod 755 "$APPLY_UPDATE_SCRIPT"
+        SUDOERS_UPDATE="/etc/sudoers.d/rpi-engineer-apply-update"
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: $APPLY_UPDATE_SCRIPT" > "$SUDOERS_UPDATE"
+        chmod 440 "$SUDOERS_UPDATE"
+        echo "Sudoers rule added so in-app updates can apply via git."
+    fi
     mark_step_done "nginx"
 }
 

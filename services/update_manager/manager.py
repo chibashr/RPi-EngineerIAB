@@ -738,6 +738,32 @@ class UpdateManager:
         branch = os.getenv("RPI_ENGINEER_UPDATE_BRANCH", DEFAULT_UPDATE_BRANCH)
         root_dir = Path(os.getenv("RPI_ENGINEER_ROOT", "/opt/rpi-engineer"))
         if (root_dir / ".git").is_dir():
+            script = root_dir / "bin" / "apply-update.sh"
+            if script.exists():
+                try:
+                    proc = subprocess.run(
+                        [
+                            "sudo",
+                            str(script),
+                            repo,
+                            branch,
+                            str(root_dir),
+                            str(self._version_file),
+                            target_version,
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                        check=False,
+                    )
+                    if proc.returncode != 0:
+                        raise RuntimeError(
+                            proc.stderr.strip() or proc.stdout.strip() or "apply-update.sh failed"
+                        )
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    raise RuntimeError(f"Git update failed: {exc}") from exc
+                self._apply_web_permissions(root_dir)
+                return
             try:
                 remote = subprocess.run(
                     ["git", "remote", "get-url", "origin"],
