@@ -18,21 +18,11 @@ from typing import Dict, Optional
 DEFAULT_UPDATE_REPO = "https://github.com/chibashr/RPi-EngineerIAB.git"
 DEFAULT_UPDATE_BRANCH = "main"
 
-# Required web assets (relative to web/) for offline UI. All must exist after update.
-REQUIRED_WEB_ASSETS = [
-    "index.html",
-    "css/base.css",
-    "css/theme.css",
-    "css/layout.css",
-    "css/components.css",
-    "css/pages/simple.css",
-    "js/pages/simple.js",
-    "js/api.js",
-    "js/theme.js",
-    "js/mode.js",
-    "js/websocket.js",
-    "advanced/index.html",
-]
+# Core trees to verify on update: every file under these is required and checked.
+CORE_DIRS = ("web", "services", "lib", "bin")
+
+# Exclude patterns when discovering core files (path segments or names).
+CORE_EXCLUDE = ("__pycache__", ".git", ".pyc")
 
 logger = logging.getLogger(__name__)
 
@@ -347,32 +337,52 @@ class UpdateManager:
             target_version=payload.get("target_version", ""),
         )
 
-    def _verify_and_repair_web_assets(self, root_dir: Path, staging_dir: Path) -> None:
-        """Ensure required web assets exist under root_dir/web; copy from staging if missing."""
-        web_root = root_dir / "web"
-        staging_web = staging_dir / "web"
-        if not staging_web.is_dir():
-            return
-        missing = [p for p in REQUIRED_WEB_ASSETS if not (web_root / p).exists()]
-        if not missing:
-            return
-        logger.warning("Missing web assets after update: %s; repairing from staging.", missing)
-        for subdir in ("css", "js", "advanced", "docs"):
-            src = staging_web / subdir
-            dst = web_root / subdir
-            if src.is_dir():
-                if dst.exists():
-                    shutil.rmtree(dst, ignore_errors=True)
-                shutil.copytree(src, dst, dirs_exist_ok=True)
-        for path in missing:
-            src = staging_web / path
-            dst = web_root / path
-            if src.is_file():
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dst)
-        still_missing = [p for p in REQUIRED_WEB_ASSETS if not (web_root / p).exists()]
-        if still_missing:
-            logger.error("Web assets still missing after repair: %s", still_missing)
+    def _list_core_files(self, base: Path) -> list[str]:
+        """Return relative paths of all files under base, excluding __pycache__, .git, .pyc."""
+        out: list[str] = []
+        for path in base.rglob("*"):
+            if not path.is_file():
+                continue
+            if any(part in path.parts for part in CORE_EXCLUDE):
+                continue
+            if path.suffix == ".pyc":
+                continue
+            try:
+                rel = path.relative_to(base)
+                out.append(str(rel).replace("\\", "/"))
+            except ValueError:
+                continue
+        return out
+
+    def _verify_and_repair_core_assets(self, root_dir: Path, staging_dir: Path) -> None:
+        """Ensure every file under web, services, lib, bin exists at root_dir; copy from staging if missing."""
+        for dir_name in CORE_DIRS:
+            staging_base = staging_dir / dir_name
+            root_base = root_dir / dir_name
+            if not staging_base.is_dir():
+                continue
+            expected = self._list_core_files(staging_base)
+            missing = [p for p in expected if not (root_base / p).exists()]
+            if not missing:
+                continue
+            logger.warning(
+                "Missing %s files after update (%d): repairing from staging.",
+                dir_name,
+                len(missing),
+            )
+            if root_base.exists():
+                shutil.rmtree(root_base, ignore_errors=True)
+            shutil.copytree(staging_base, root_base, dirs_exist_ok=True)
+            still_missing = [p for p in expected if not (root_base / p).exists()]
+            for p in still_missing:
+                src = staging_base / p
+                dst = root_base / p
+                if src.is_file():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dst)
+            still_missing = [p for p in expected if not (root_base / p).exists()]
+            if still_missing:
+                logger.error("%s still missing after repair: %s", dir_name, still_missing[:20])
 
     def _perform_update(self, target_version: str) -> None:
         repo = os.getenv("RPI_ENGINEER_UPDATE_REPO", DEFAULT_UPDATE_REPO)
@@ -398,7 +408,7 @@ class UpdateManager:
             else:
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(item, destination)
-        self._verify_and_repair_web_assets(root_dir, staging_dir)
+        self._verify_and_repair_core_assets(root_dir, staging_dir)
         self._write_version(target_version)
         self._apply_web_permissions(root_dir)
 
