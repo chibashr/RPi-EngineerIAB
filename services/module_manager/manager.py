@@ -195,7 +195,9 @@ class ModuleManager:
         record.enabled = True
         record.state = "enabled"
         self._save_enabled_modules()
-        self._load_module(record)
+        if not record.routes_registered:
+            self._register_module_api_routes(record)
+        self._start_module(record)
         return {"enabled": True, "module_id": module_id}
 
     def disable_module(self, module_id: str) -> Dict[str, object]:
@@ -209,10 +211,13 @@ class ModuleManager:
         return {"enabled": False, "module_id": module_id}
 
     def register_module_routes(self, app) -> None:  # type: ignore[no-untyped-def]
+        """Register API routes for all installed modules, then start only enabled ones."""
         self.attach_app(app)
         for record in self._registry.values():
+            self._register_module_api_routes(record)
+        for record in self._registry.values():
             if record.enabled:
-                self._load_module(record)
+                self._start_module(record)
 
     def get_web_components(self) -> List[Dict[str, object]]:
         components: List[Dict[str, object]] = []
@@ -237,32 +242,40 @@ class ModuleManager:
             return candidate
         return None
 
-    def _load_module(self, record: ModuleRecord) -> None:
-        main_path = record.path / "main.py"
-        if main_path.exists():
-            try:
-                module = self._load_python_module(record.module_id, main_path)
-            except Exception:
-                record.state = "error"
-                return
-            if module and hasattr(module, "initialize"):
-                try:
-                    module.initialize()
-                except Exception:
-                    record.state = "error"
+    def _register_module_api_routes(self, record: ModuleRecord) -> None:
+        """Register a module's API blueprint only (no service start)."""
+        if record.routes_registered or not self._app:
+            return
         api_path = record.path / "api.py"
-        if api_path.exists() and self._app and not record.routes_registered:
+        if not api_path.exists():
+            return
+        try:
+            module = self._load_python_module(f"{record.module_id}_api", api_path)
+        except Exception:
+            record.state = "error"
+            return
+        if module and hasattr(module, "register_routes"):
             try:
-                module = self._load_python_module(f"{record.module_id}_api", api_path)
+                module.register_routes(self._app)
+                record.routes_registered = True
             except Exception:
                 record.state = "error"
-                return
-            if module and hasattr(module, "register_routes"):
-                try:
-                    module.register_routes(self._app)
-                    record.routes_registered = True
-                except Exception:
-                    record.state = "error"
+
+    def _start_module(self, record: ModuleRecord) -> None:
+        """Start a module's service (main.initialize()); API routes must already be registered."""
+        main_path = record.path / "main.py"
+        if not main_path.exists():
+            return
+        try:
+            module = self._load_python_module(record.module_id, main_path)
+        except Exception:
+            record.state = "error"
+            return
+        if module and hasattr(module, "initialize"):
+            try:
+                module.initialize()
+            except Exception:
+                record.state = "error"
 
     def _shutdown_module(self, record: ModuleRecord) -> None:
         main_path = record.path / "main.py"
