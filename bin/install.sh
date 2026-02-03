@@ -1514,10 +1514,11 @@ install_module() {
             done <<< "$sys_deps"
         fi
         if [ -n "$py_deps" ] && [ -x "$INSTALL_DIR/venv/bin/pip" ]; then
+            export PIP_NO_INPUT=1
             while IFS= read -r dep; do
                 [ -z "$dep" ] && continue
-                if ! "$INSTALL_DIR/venv/bin/pip" install "$dep" >> "$INSTALL_LOG" 2>&1; then
-                    log_error "Failed to install Python dependency '$dep' for module $module_name"
+                if ! "$INSTALL_DIR/venv/bin/pip" install --no-input "$dep" >> "$INSTALL_LOG" 2>&1; then
+                    log_error "Failed to install Python dependency '$dep' for module $module_name (see $INSTALL_LOG)"
                 fi
             done <<< "$py_deps"
         fi
