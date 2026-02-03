@@ -34,6 +34,14 @@
   font-weight: 600;
 }
 
+/* Short refs (git commit hashes) in monospace */
+#current-version,
+#available-version {
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  letter-spacing: 0.02em;
+}
+
 .section-muted {
   color: var(--color-muted);
   margin-top: 0.75rem;

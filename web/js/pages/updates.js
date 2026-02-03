@@ -39,6 +39,14 @@ function formatDateTime(iso) {
   }
 }
 
+/** Shorten a 40-char git ref for display; pass-through for short or non-hex strings. */
+function formatRef(ref) {
+  if (!ref || typeof ref !== "string") return "--";
+  const s = ref.trim();
+  if (/^[0-9a-f]{40}$/i.test(s)) return s.slice(0, 7);
+  return s;
+}
+
 function renderUpdateStatus(data) {
   if (!elements.current) {
     return;
@@ -46,11 +54,19 @@ function renderUpdateStatus(data) {
   if (elements.updateBranch) {
     elements.updateBranch.textContent = data?.update_branch ?? "--";
   }
-  elements.current.textContent = data?.current_version || "--";
+  const currentVer = data?.current_version || "--";
+  const availableVer = data?.available_version || "--";
+  if (elements.current) {
+    elements.current.textContent = formatRef(currentVer);
+    elements.current.title = currentVer.length > 10 ? currentVer : "";
+  }
   if (elements.lastUpdate) {
     elements.lastUpdate.textContent = formatDateTime(data?.last_update);
   }
-  elements.available.textContent = data?.available_version || "--";
+  if (elements.available) {
+    elements.available.textContent = formatRef(availableVer);
+    elements.available.title = availableVer.length > 10 ? availableVer : "";
+  }
   elements.isAvailable.textContent = data?.update_available ? "Yes" : "No";
   if (elements.availableSince) {
     elements.availableSince.textContent = formatDateTime(data?.available_since);
