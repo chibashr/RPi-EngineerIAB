@@ -51,6 +51,25 @@
   margin-top: 0.75rem;
 }
 
+.module-update-note {
+  font-size: 0.85rem;
+  color: var(--color-primary);
+  margin-top: 0.25rem;
+}
+
+.module-description {
+  font-size: 0.9rem;
+  color: var(--color-muted);
+  margin: 0.5rem 0 0;
+  line-height: 1.35;
+}
+
+.section-muted {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+}
+
 .empty-state {
   border: 1px dashed var(--color-border);
   border-radius: 12px;

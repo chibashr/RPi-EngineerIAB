@@ -125,6 +125,9 @@
           <section class="card" data-tab-panel="installed">
             <div class="section-header">
               <h2>Installed Modules</h2>
+              <button class="btn btn-secondary" id="check-module-updates">
+                Check for module updates
+              </button>
             </div>
             <ul class="module-grid" id="installed-modules"></ul>
           </section>
@@ -132,10 +135,16 @@
           <section class="card" data-tab-panel="available" hidden>
             <div class="section-header">
               <h2>Available Modules</h2>
+              <button class="btn btn-secondary" id="refresh-available">
+                Refresh
+              </button>
             </div>
-            <div class="empty-state">
-              Module catalog will be populated once modules are installed and
-              configured.
+            <p class="section-muted">
+              Modules from the app update repo. Install to add, or update if already installed.
+            </p>
+            <ul class="module-grid" id="available-modules"></ul>
+            <div class="empty-state" id="available-empty" hidden>
+              No modules found in the repo, or repo is not reachable.
             </div>
           </section>
         </main>

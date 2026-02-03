@@ -2,16 +2,25 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
+import re
 import shutil
 import tempfile
+import urllib.parse
+import urllib.request
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import importlib.util
+
+# Same repo/branch as app updates (see services.update_manager.manager).
+DEFAULT_UPDATE_REPO = "https://github.com/chibashr/RPi-EngineerIAB.git"
+DEFAULT_UPDATE_BRANCH = "main"
+MODULES_SUBDIR = "modules"
 
 
 def _safe_dir(primary: Path, fallback: Path) -> Path:
@@ -35,6 +44,38 @@ def _safe_extract(archive: zipfile.ZipFile, destination: Path) -> None:
         archive.extract(member, destination)
 
 
+def _github_repo_slug(repo_url: str) -> Optional[str]:
+    """Return 'owner/repo' for GitHub URLs, else None."""
+    if not repo_url or "github.com" not in repo_url:
+        return None
+    try:
+        path = urllib.parse.urlparse(repo_url.rstrip("/")).path.strip("/")
+        if path.endswith(".git"):
+            path = path[:-4]
+        parts = path.split("/")
+        if len(parts) >= 2:
+            return f"{parts[0]}/{parts[1]}"
+    except Exception:
+        pass
+    return None
+
+
+def _parse_version(version: str) -> Tuple[int, ...]:
+    """Parse semver-like string into comparable tuple; non-numeric segments become 0."""
+    if not version or not isinstance(version, str):
+        return (0,)
+    parts = re.sub(r"[^0-9.]", "", version).strip(".").split(".") or ["0"]
+    try:
+        return tuple(int(p) for p in parts[: 4])
+    except ValueError:
+        return (0,)
+
+
+def _version_gt(remote: str, local: str) -> bool:
+    """True if remote version is strictly greater than local (semver-like)."""
+    return _parse_version(remote) > _parse_version(local)
+
+
 @dataclass
 class ModuleRecord:
     module_id: str
@@ -53,6 +94,7 @@ class ModuleManager:
 
     def __init__(self) -> None:
         repo_root = Path(__file__).resolve().parents[2]
+        self._repo_root = repo_root
         default_modules = Path("/opt/rpi-engineer/modules")
         self._modules_dir = Path(
             os.getenv(
@@ -184,12 +226,12 @@ class ModuleManager:
         return components
 
     def resolve_web_asset(self, module_id: str, asset_path: str) -> Optional[Path]:
+        """Resolve a module web asset path. Tries registry first, then modules dir on disk."""
         record = self._registry.get(module_id)
-        if not record:
-            return None
-        web_root = record.path / "web"
+        web_root: Path = record.path / "web" if record else self._modules_dir / module_id / "web"
         candidate = (web_root / asset_path).resolve()
-        if not str(candidate).startswith(str(web_root.resolve())):
+        web_root_resolved = web_root.resolve()
+        if not str(candidate).startswith(str(web_root_resolved)):
             return None
         if candidate.exists() and candidate.is_file():
             return candidate
@@ -258,6 +300,188 @@ class ModuleManager:
         enabled = [mid for mid, record in self._registry.items() if record.enabled]
         self._state_file.parent.mkdir(parents=True, exist_ok=True)
         self._state_file.write_text(json.dumps({"enabled_modules": enabled}, indent=2))
+
+    def _list_repo_modules_from_local(self) -> List[Dict[str, object]]:
+        """List modules from repo when running from a clone (modules/ under repo root)."""
+        repo_modules = self._repo_root / MODULES_SUBDIR
+        if not repo_modules.is_dir():
+            return []
+        out: List[Dict[str, object]] = []
+        for module_dir in sorted(repo_modules.iterdir()):
+            if not module_dir.is_dir():
+                continue
+            meta_path = module_dir / "module.json"
+            if not meta_path.exists():
+                continue
+            try:
+                metadata = json.loads(meta_path.read_text())
+            except (OSError, json.JSONDecodeError):
+                continue
+            module_id = metadata.get("name") or module_dir.name
+            out.append({
+                "id": module_id,
+                "name": metadata.get("display_name") or metadata.get("name") or module_id,
+                "version": metadata.get("version", "0.0.0"),
+                "description": metadata.get("description", ""),
+            })
+        return out
+
+    def _list_repo_modules_from_github(self, repo_slug: str, branch: str) -> List[Dict[str, object]]:
+        """List modules from GitHub API (contents/modules, then each module.json)."""
+        out: List[Dict[str, object]] = []
+        try:
+            url = f"https://api.github.com/repos/{repo_slug}/contents/{MODULES_SUBDIR}?ref={urllib.parse.quote(branch)}"
+            req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode())
+        except Exception:
+            return []
+        if not isinstance(data, list):
+            return []
+        for item in data:
+            if not isinstance(item, dict) or item.get("type") != "dir":
+                continue
+            name = item.get("name")
+            if not name or name.startswith("."):
+                continue
+            try:
+                meta_url = f"https://api.github.com/repos/{repo_slug}/contents/{MODULES_SUBDIR}/{name}/module.json?ref={urllib.parse.quote(branch)}"
+                req2 = urllib.request.Request(meta_url, headers={"Accept": "application/vnd.github.v3+json"})
+                with urllib.request.urlopen(req2, timeout=10) as resp2:
+                    meta_data = json.loads(resp2.read().decode())
+                content_b64 = meta_data.get("content") if isinstance(meta_data, dict) else None
+                if not content_b64:
+                    continue
+                meta_json = json.loads(base64.b64decode(content_b64).decode())
+            except Exception:
+                continue
+            module_id = meta_json.get("name") or name
+            out.append({
+                "id": module_id,
+                "name": meta_json.get("display_name") or meta_json.get("name") or module_id,
+                "version": meta_json.get("version", "0.0.0"),
+                "description": meta_json.get("description", ""),
+            })
+        return out
+
+    def list_available_from_repo(self) -> Dict[str, object]:
+        """List modules available in the app update repo; mark installed and update availability."""
+        repo = os.getenv("RPI_ENGINEER_UPDATE_REPO", DEFAULT_UPDATE_REPO)
+        branch = os.getenv("RPI_ENGINEER_UPDATE_BRANCH", DEFAULT_UPDATE_BRANCH)
+        repo_modules_dir = self._repo_root / MODULES_SUBDIR
+        from_local = repo_modules_dir.is_dir() and (self._repo_root / ".git").is_dir()
+        if from_local:
+            raw = self._list_repo_modules_from_local()
+        else:
+            slug = _github_repo_slug(repo)
+            if not slug:
+                return {"available": [], "message": "Repo URL is not a GitHub repo."}
+            raw = self._list_repo_modules_from_github(slug, branch)
+        installed = {r.module_id: r for r in self._registry.values()}
+        available: List[Dict[str, object]] = []
+        for m in raw:
+            mid = m.get("id") or m.get("name")
+            if not mid:
+                continue
+            rec = installed.get(mid)
+            repo_version = str(m.get("version", "0.0.0"))
+            entry = dict(m)
+            entry["installed"] = rec is not None
+            entry["installed_version"] = rec.version if rec else None
+            entry["update_available"] = bool(
+                rec and _version_gt(repo_version, rec.version)
+            )
+            available.append(entry)
+        return {"available": available}
+
+    def _download_repo_module(self, module_id: str) -> Path:
+        """Fetch module from repo (GitHub archive or local) and copy into _modules_dir. Returns destination path."""
+        repo = os.getenv("RPI_ENGINEER_UPDATE_REPO", DEFAULT_UPDATE_REPO)
+        branch = os.getenv("RPI_ENGINEER_UPDATE_BRANCH", DEFAULT_UPDATE_BRANCH)
+        repo_modules_dir = self._repo_root / MODULES_SUBDIR
+        from_local = repo_modules_dir.is_dir() and (self._repo_root / ".git").is_dir()
+        if from_local:
+            source = repo_modules_dir / module_id
+            if not source.is_dir() or not (source / "module.json").exists():
+                raise KeyError(f"Module {module_id!r} not found in repo.")
+            destination = self._modules_dir / module_id
+            if destination.exists():
+                shutil.rmtree(destination, ignore_errors=True)
+            shutil.copytree(source, destination)
+            return destination
+        slug = _github_repo_slug(repo)
+        if not slug:
+            raise RuntimeError("Repo URL is not a GitHub repo; cannot fetch module.")
+        archive_url = f"https://github.com/{slug}/archive/refs/heads/{urllib.parse.quote(branch)}.zip"
+        extract_root: Optional[Path] = None
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as f:
+            try:
+                req = urllib.request.Request(archive_url, headers={"Accept": "application/zip"})
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    f.write(resp.read())
+                f.close()
+                with zipfile.ZipFile(f.name, "r") as archive:
+                    extract_root = Path(f.name).parent / "repo_extract"
+                    extract_root.mkdir(exist_ok=True)
+                    try:
+                        _safe_extract(archive, extract_root)
+                    except Exception:
+                        shutil.rmtree(extract_root, ignore_errors=True)
+                        raise
+                top = next(extract_root.iterdir(), None)
+                if not top or not top.is_dir():
+                    shutil.rmtree(extract_root, ignore_errors=True)
+                    raise RuntimeError("Invalid repo archive layout.")
+                source = top / MODULES_SUBDIR / module_id
+                if not source.is_dir() or not (source / "module.json").exists():
+                    shutil.rmtree(extract_root, ignore_errors=True)
+                    raise KeyError(f"Module {module_id!r} not found in repo.")
+                destination = self._modules_dir / module_id
+                if destination.exists():
+                    shutil.rmtree(destination, ignore_errors=True)
+                shutil.copytree(source, destination)
+                return destination
+            finally:
+                try:
+                    os.unlink(f.name)
+                except OSError:
+                    pass
+                if extract_root is not None and extract_root.exists():
+                    shutil.rmtree(extract_root, ignore_errors=True)
+
+    def install_module_from_repo(self, module_id: str) -> Dict[str, object]:
+        """Install a module from the app update repo (same repo/branch as app updates)."""
+        if not module_id or not isinstance(module_id, str):
+            raise ValueError("module_id is required")
+        self._download_repo_module(module_id.strip())
+        self.discover_modules()
+        return {"installed": True, "module_id": module_id.strip()}
+
+    def check_module_updates(self) -> Dict[str, object]:
+        """For each installed module, report if a newer version is available in the repo."""
+        payload = self.list_available_from_repo()
+        available_list = payload.get("available") or []
+        updates: List[Dict[str, object]] = []
+        for m in available_list:
+            if not m.get("installed"):
+                continue
+            if m.get("update_available"):
+                updates.append({
+                    "module_id": m.get("id"),
+                    "name": m.get("name"),
+                    "current_version": m.get("installed_version"),
+                    "available_version": m.get("version"),
+                })
+        return {"updates": updates}
+
+    def update_module(self, module_id: str) -> Dict[str, object]:
+        """Update an installed module from the repo (overwrites files; enabled state preserved)."""
+        record = self._registry.get(module_id)
+        if not record:
+            raise KeyError("Module not found")
+        self._download_repo_module(module_id)
+        self.discover_modules()
+        return {"updated": True, "module_id": module_id}
 
     def _install_from_archive(self, module_url: str) -> Path:
         path = Path(module_url.replace("file://", ""))

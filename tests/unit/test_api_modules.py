@@ -52,3 +52,53 @@ class TestModulesUninstall:
     def test_unknown_module_returns_404(self, client):
         r = client.delete("/api/v1/modules/uninstall/nonexistent_module")
         assert r.status_code == 404
+
+
+class TestModulesAvailable:
+    """Tests for GET /api/v1/modules/available."""
+
+    def test_returns_200(self, client):
+        r = client.get("/api/v1/modules/available")
+        assert r.status_code == 200
+
+    def test_returns_available_list(self, client):
+        r = client.get("/api/v1/modules/available")
+        data = r.get_json()
+        assert "data" in data
+        assert "available" in data["data"]
+        assert isinstance(data["data"]["available"], list)
+
+
+class TestModulesInstallFromRepo:
+    """Tests for POST /api/v1/modules/install-from-repo."""
+
+    def test_missing_module_id_returns_400(self, client):
+        r = client.post(
+            "/api/v1/modules/install-from-repo",
+            json={},
+            content_type="application/json",
+        )
+        assert r.status_code == 400
+
+
+class TestModulesUpdates:
+    """Tests for GET /api/v1/modules/updates."""
+
+    def test_returns_200(self, client):
+        r = client.get("/api/v1/modules/updates")
+        assert r.status_code == 200
+
+    def test_returns_updates_list(self, client):
+        r = client.get("/api/v1/modules/updates")
+        data = r.get_json()
+        assert "data" in data
+        assert "updates" in data["data"]
+        assert isinstance(data["data"]["updates"], list)
+
+
+class TestModulesUpdate:
+    """Tests for POST /api/v1/modules/update/<module_id>."""
+
+    def test_unknown_module_returns_404(self, client):
+        r = client.post("/api/v1/modules/update/nonexistent_module", json={})
+        assert r.status_code == 404

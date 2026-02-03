@@ -20,7 +20,9 @@ from services.api_gateway.websockets import register_websockets  # noqa: E402
 
 def create_app() -> Flask:
     web_root = REPO_ROOT / "web"
-    app = Flask(__name__, static_folder=str(web_root), static_url_path="")
+    # Disable default static route so /modules/<id>/<path> is handled by our route,
+    # not by a catch-all that would 404 for module assets. We serve web/ explicitly below.
+    app = Flask(__name__, static_folder=None)
     sock = Sock(app)
 
     # Allow local and LAN access: hotspot (192.168.50.x), other LAN subnets, localhost.
@@ -77,6 +79,26 @@ def create_app() -> Flask:
         from flask import send_file
 
         return send_file(web_root / "advanced" / "index.html")
+
+    @app.get("/<path:path>")
+    def serve_web_asset(path: str):
+        """Serve files from web/ (CSS, JS, HTML). Registered after /modules/ so module assets use that route."""
+        from flask import send_file
+
+        if path.startswith("modules/"):
+            from flask import abort
+
+            abort(404)
+        target = (web_root / path).resolve()
+        if not str(target).startswith(str(web_root.resolve())):
+            from flask import abort
+
+            abort(404)
+        if not target.is_file():
+            from flask import abort
+
+            abort(404)
+        return send_file(target)
 
     return app
 
