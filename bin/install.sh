@@ -1557,7 +1557,11 @@ install_teamviewer() {
 
 install_vnc() {
     log_step "Installing TigerVNC"
-    apt-get install -y tigervnc-standalone-server tigervnc-common lxde-core >> "$INSTALL_LOG" 2>&1
+    if dpkg -s tigervnc-standalone-server >/dev/null 2>&1; then
+        log_info "TigerVNC already installed; skipping package install."
+    else
+        apt-get install -y tigervnc-standalone-server tigervnc-common lxde-core >> "$INSTALL_LOG" 2>&1
+    fi
     mkdir -p "$INSTALL_DIR/.vnc"
     if [ -n "$REMOTE_ACCESS_PASSWORD" ]; then
         echo "$REMOTE_ACCESS_PASSWORD" | vncpasswd -f > "$INSTALL_DIR/.vnc/passwd"
@@ -1598,7 +1602,11 @@ install_rpi_connect() {
         log_warn "Raspberry Pi Connect is only supported on Raspberry Pi OS."
         return 0
     fi
-    apt-get install -y rpi-connect >> "$INSTALL_LOG" 2>&1
+    if dpkg -s rpi-connect >/dev/null 2>&1; then
+        log_info "Raspberry Pi Connect already installed; skipping package install."
+    else
+        apt-get install -y rpi-connect >> "$INSTALL_LOG" 2>&1
+    fi
     rpi-connect on >> "$INSTALL_LOG" 2>&1 || true
     RPI_CONNECT_URL="connect.raspberrypi.com"
 }
