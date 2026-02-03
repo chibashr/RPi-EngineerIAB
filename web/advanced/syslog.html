@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RPi Engineer-in-a-Box - Serial Console</title>
-    <meta name="description" content="Serial console management." />
+    <title>RPi Engineer-in-a-Box - Syslog</title>
+    <meta name="description" content="Syslog receiver status and history." />
     <script>
       (function () {
         try {
@@ -22,7 +22,6 @@
     <link rel="stylesheet" href="/css/layout.css" />
     <link rel="stylesheet" href="/css/components.css" />
     <link rel="stylesheet" href="/css/pages/advanced.css" />
-    <link rel="stylesheet" href="/css/pages/serial.css" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to main content</a>
@@ -82,7 +81,7 @@
       <div class="shell-content">
         <header class="topbar">
           <button class="btn btn-ghost" id="sidebar-toggle" aria-expanded="false" aria-controls="sidebar">Menu</button>
-          <div class="breadcrumb" id="breadcrumb">Serial</div>
+          <div class="breadcrumb" id="breadcrumb">Syslog</div>
           <div class="topbar-actions">
             <label class="field theme-field" for="theme-select">
               <span class="field-label">Theme</span>
@@ -96,76 +95,93 @@
         </header>
 
         <main id="main-content" class="main-content">
-          <div
-            class="connection-banner"
-            id="serial-connection-banner"
-            role="status"
-          ></div>
           <div class="page-header">
             <div>
-              <h1>Serial Console</h1>
+              <h1>Syslog Receiver</h1>
               <p class="page-subtitle">
-                Detect devices, manage sessions, and open live consoles.
+                Review incoming UDP/TCP syslog messages with live and stored history. Enable and configure the module from the Modules page.
               </p>
-            </div>
-            <div class="toolbar">
-              <button class="btn btn-secondary" id="refresh-serial">
-                Refresh
-              </button>
-              <button class="btn btn-primary" id="open-console">
-                Open Console
-              </button>
             </div>
           </div>
 
           <section class="card">
             <div class="section-header">
-              <h2>Detected Devices</h2>
-              <button class="btn btn-secondary" id="configure-serial">
-                Configure Settings
-              </button>
+              <h2>Receiver Details</h2>
             </div>
-            <ul class="status-list" id="serial-device-list"></ul>
-          </section>
+            <div class="card-body">
+              <section class="module-panel" id="syslog-receiver">
+                <header class="module-header">
+                  <h2>Syslog Receiver</h2>
+                  <p class="module-subtitle">UDP and TCP syslog intake with history.</p>
+                </header>
 
-          <section class="card console-card">
-            <div class="section-header">
-              <h2>Console</h2>
-              <div class="console-controls">
-                <button class="btn btn-ghost" id="serial-connect">
-                  Connect
-                </button>
-                <button class="btn btn-ghost" id="serial-disconnect">
-                  Disconnect
-                </button>
-                <button class="btn btn-ghost" id="serial-clear">Clear</button>
-                <button class="btn btn-ghost" id="serial-save-log">
-                  Save Log
-                </button>
-              </div>
-            </div>
-            <div class="console-status" id="serial-status">Disconnected</div>
-            <div class="console-window" id="terminal-placeholder">
-              Click here to focus, then type to send data.
-            </div>
-          </section>
+                <div class="module-status">
+                  <div class="status-item">
+                    <span class="status-label">State</span>
+                    <span class="status-value" id="syslog-status-state">Loading...</span>
+                  </div>
+                  <div class="status-item">
+                    <span class="status-label">Bind</span>
+                    <span class="status-value" id="syslog-status-bind">--</span>
+                  </div>
+                  <div class="status-item">
+                    <span class="status-label">UDP Port</span>
+                    <span class="status-value" id="syslog-status-udp">--</span>
+                  </div>
+                  <div class="status-item">
+                    <span class="status-label">TCP Port</span>
+                    <span class="status-value" id="syslog-status-tcp">--</span>
+                  </div>
+                  <div class="status-item">
+                    <span class="status-label">Received</span>
+                    <span class="status-value" id="syslog-status-received">--</span>
+                  </div>
+                  <div class="status-item">
+                    <span class="status-label">Stored</span>
+                    <span class="status-value" id="syslog-status-stored">--</span>
+                  </div>
+                  <div class="status-item">
+                    <span class="status-label">Last</span>
+                    <span class="status-value" id="syslog-status-last">--</span>
+                  </div>
+                </div>
 
-          <section class="card">
-            <div class="section-header">
-              <h2>Active Sessions</h2>
-            </div>
-            <ul class="status-list" id="serial-session-list"></ul>
-          </section>
+                <div class="module-section">
+                  <h3>Recent Messages</h3>
+                  <table class="module-table" id="syslog-recent-table">
+                    <thead>
+                      <tr>
+                        <th>Received</th>
+                        <th>Source</th>
+                        <th>Host</th>
+                        <th>Facility</th>
+                        <th>Severity</th>
+                        <th>App</th>
+                        <th>Message</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
 
-          <section class="card">
-            <div class="section-header">
-              <h2>Session Logs</h2>
-              <button class="btn btn-ghost" id="export-serial-logs">
-                Export Logs
-              </button>
-            </div>
-            <div class="empty-state">
-              Log export will be available once sessions are recorded.
+                <div class="module-section">
+                  <h3>Stored Messages</h3>
+                  <table class="module-table" id="syslog-stored-table">
+                    <thead>
+                      <tr>
+                        <th>Received</th>
+                        <th>Source</th>
+                        <th>Host</th>
+                        <th>Facility</th>
+                        <th>Severity</th>
+                        <th>App</th>
+                        <th>Message</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </section>
             </div>
           </section>
         </main>
@@ -174,7 +190,8 @@
 
     <div class="toast-region" id="toast-region" aria-live="polite"></div>
 
+    <script type="module" src="/modules/syslog_receiver/module.js"></script>
+    <link rel="stylesheet" href="/modules/syslog_receiver/module.css" />
     <script type="module" src="/js/pages/advanced.js" defer></script>
-    <script type="module" src="/js/pages/serial.js" defer></script>
   </body>
 </html>
