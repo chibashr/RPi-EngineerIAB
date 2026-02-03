@@ -41,7 +41,8 @@ HOTSPOT_CONFIGURED="no"
 REMOTE_CONFIGURED="no"
 MODULES_INSTALLED="no"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# When run via 'curl | bash', BASH_SOURCE[0] is unset; use $0 so dirname yields current directory.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 log_info() {
