@@ -851,10 +851,15 @@ ensure_source_dir() {
         echo "Repository cloned to $clone_dir"
         return 0
     fi
+    # Require source to have critical files; otherwise clone so we do not deploy incomplete trees.
     if [ -d "$SOURCE_DIR/services" ] && [ -d "$SOURCE_DIR/web" ]; then
-        return 0
+        if [ -f "$SOURCE_DIR/web/index.html" ] && [ -f "$SOURCE_DIR/services/logging_service/manager.py" ] && [ -f "$SOURCE_DIR/bin/apply-web-permissions.sh" ]; then
+            return 0
+        fi
+        log_warn "Source directory missing critical files; cloning repository for deploy."
+    else
+        log_warn "Source directory not found; cloning repository."
     fi
-    log_warn "Source directory not found; cloning repository."
     local clone_dir="/tmp/rpi-engineer-src-$(date +%s)"
     echo "Cloning $REPO_URL (branch $BRANCH)..."
     git clone --branch "$BRANCH" "$REPO_URL" "$clone_dir" 2>&1 | tee -a "$INSTALL_LOG"
