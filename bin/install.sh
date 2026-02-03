@@ -896,6 +896,18 @@ deploy_files() {
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "deploy"; then log_info "Step 'deploy' already completed; skipping."; APP_INSTALLED="yes"; return 0; fi
     log_step "Deploying application files"
     ensure_source_dir
+    # Upgrade/reinstall: always clone fresh so we deploy latest from remote (important when script was run via curl | bash).
+    if [ "$INSTALL_MODE" = "upgrade" ] || [ "$INSTALL_MODE" = "reinstall_from_scratch" ]; then
+        if command -v git >/dev/null 2>&1; then
+            log_info "Cloning repository for upgrade (ensuring latest files from $BRANCH)."
+            local clone_dir="/tmp/rpi-engineer-src-$(date +%s)"
+            if ! git clone --branch "$BRANCH" "$REPO_URL" "$clone_dir" >> "$INSTALL_LOG" 2>&1; then
+                log_error "git clone failed (check network and $INSTALL_LOG)."
+                exit 1
+            fi
+            SOURCE_DIR="$clone_dir"
+        fi
+    fi
     if [ "$SOURCE_DIR" = "$INSTALL_DIR" ]; then
         log_info "Source and install directory are the same; skipping copy."
         return 0
