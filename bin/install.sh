@@ -1050,6 +1050,75 @@ EOF
     mark_step_done "nginx"
 }
 
+# Ensure wlan0 is dedicated to hotspot: unmanage in NetworkManager, deny in dhcpcd,
+# and run a script at boot that brings wlan0 up with 192.168.50.1 before hostapd.
+configure_hotspot_priority() {
+    if [ ! -d /sys/class/net/wlan0 ]; then
+        return 0
+    fi
+    log_info "Configuring hotspot priority over WiFi client (Ubuntu / Raspberry Pi OS)."
+    if systemctl is-active NetworkManager >/dev/null 2>&1 || [ -d /etc/NetworkManager/conf.d ]; then
+        mkdir -p /etc/NetworkManager/conf.d
+        cat > /etc/NetworkManager/conf.d/rpi-engineer-wlan0-unmanaged.conf <<'NMEOF'
+# RPi Engineer-in-a-Box: use wlan0 for hotspot only; do not manage as WiFi client
+[device-wlan0-unmanaged]
+match-device=interface-name:wlan0
+managed=0
+NMEOF
+        if systemctl is-active NetworkManager >/dev/null 2>&1; then
+            systemctl restart NetworkManager >> "$INSTALL_LOG" 2>&1 || true
+        fi
+        log_info "NetworkManager: wlan0 set unmanaged."
+    fi
+    if command -v dhcpcd >/dev/null 2>&1 && [ -f /etc/dhcpcd.conf ]; then
+        if ! grep -q '^denyinterfaces wlan0' /etc/dhcpcd.conf 2>/dev/null; then
+            echo "" >> /etc/dhcpcd.conf
+            echo "# RPi Engineer-in-a-Box: do not manage wlan0 (used for hotspot)" >> /etc/dhcpcd.conf
+            echo "denyinterfaces wlan0" >> /etc/dhcpcd.conf
+            log_info "dhcpcd: denyinterfaces wlan0 added."
+        fi
+    fi
+    cat > "$INSTALL_DIR/bin/setup-wlan0-hotspot.sh" <<'SETUPEOF'
+#!/bin/bash
+# Bring wlan0 under our control for hotspot; run before hostapd.
+set -e
+WLAN=wlan0
+IP="192.168.50.1/24"
+[ ! -d /sys/class/net/"$WLAN" ] && exit 0
+systemctl stop wpa_supplicant@"$WLAN".service 2>/dev/null || true
+systemctl stop wpa_supplicant@"$WLAN" 2>/dev/null || true
+ip link set "$WLAN" down 2>/dev/null || true
+ip link set "$WLAN" up
+if ! ip addr show "$WLAN" | grep -q "$IP"; then
+    ip addr add "$IP" dev "$WLAN"
+fi
+exit 0
+SETUPEOF
+    chmod +x "$INSTALL_DIR/bin/setup-wlan0-hotspot.sh"
+    cat > /etc/systemd/system/rpi-engineer-wlan0.service <<EOF
+[Unit]
+Description=RPi Engineer wlan0 hotspot setup (prefer hotspot over WiFi client)
+Before=hostapd.service
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=$INSTALL_DIR/bin/setup-wlan0-hotspot.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    mkdir -p /etc/systemd/system/hostapd.service.d
+    cat > /etc/systemd/system/hostapd.service.d/after-wlan0.conf <<'EOF'
+[Unit]
+After=rpi-engineer-wlan0.service
+EOF
+    systemctl daemon-reload
+    # Apply immediately so hostapd can start in this session
+    "$INSTALL_DIR/bin/setup-wlan0-hotspot.sh" >> "$INSTALL_LOG" 2>&1 || true
+}
+
 create_network_priority_script() {
     cat > "$INSTALL_DIR/bin/network-priority.sh" <<'EOF'
 #!/bin/bash
@@ -1090,6 +1159,7 @@ configure_hotspot() {
     fi
     if [ "$UPGRADE_SKIP_CONFIG" = "1" ]; then
         log_info "Using existing hotspot configuration (upgrade skip-config)."
+        configure_hotspot_priority
         echo 'DAEMON_CONF="/etc/hostapd/hostapd.conf"' > /etc/default/hostapd
         systemctl unmask hostapd >/dev/null 2>&1 || true
         systemctl restart hostapd 2>/dev/null || true
@@ -1130,6 +1200,7 @@ iface wlan0 inet static
     netmask 255.255.255.0
 EOF
 
+    configure_hotspot_priority
     echo 'DAEMON_CONF="/etc/hostapd/hostapd.conf"' > /etc/default/hostapd
     systemctl unmask hostapd >/dev/null 2>&1 || true
     systemctl restart hostapd || true
@@ -1452,6 +1523,7 @@ enable_services() {
         rpi-engineer-update
         rpi-engineer-logging
         nginx
+        rpi-engineer-wlan0
         hostapd
         dnsmasq
     )

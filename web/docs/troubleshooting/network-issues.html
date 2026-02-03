@@ -18,6 +18,17 @@
 <p><strong>Common causes:</strong> Hostapd not running or WiFi disabled.</p>
 <p><strong>Resolution:</strong> Reboot the device and retry after two minutes.</p>
 
+<h2>WiFi client overwrites hotspot after reboot</h2>
+<p><strong>Symptom:</strong> After reboot, wlan0 connects to a saved WiFi network (client mode) instead of acting as the RPi Engineer hotspot (192.168.50.1).</p>
+<p><strong>Cause:</strong> Ubuntu (NetworkManager) or Raspberry Pi OS (dhcpcd / wpa_supplicant) manages wlan0 for client WiFi and overrides the hotspot configuration.</p>
+<p><strong>What the installer does:</strong> The installer configures hotspot priority so the hotspot wins:</p>
+<ul>
+  <li><strong>NetworkManager (Ubuntu / RPi OS with NM):</strong> Adds <code>/etc/NetworkManager/conf.d/rpi-engineer-wlan0-unmanaged.conf</code> so wlan0 is unmanaged (not used as a WiFi client).</li>
+  <li><strong>dhcpcd (Raspberry Pi OS):</strong> Appends <code>denyinterfaces wlan0</code> to <code>/etc/dhcpcd.conf</code> so dhcpcd does not manage wlan0.</li>
+  <li><strong>Boot order:</strong> The <code>rpi-engineer-wlan0</code> service runs before hostapd: it stops wpa_supplicant on wlan0, brings the interface up, and assigns 192.168.50.1. Then hostapd starts and runs the hotspot.</li>
+</ul>
+<p>If you installed before this change, re-run the installer (upgrade) or manually add the NetworkManager/dhcpcd config and enable <code>rpi-engineer-wlan0.service</code>.</p>
+
 <h2>Related</h2>
 <ul>
   <li><a href="../features/network-management.html">Network management</a></li>
