@@ -47,6 +47,14 @@ sudo ./bin/install.sh</pre>
 <p><strong>Symptom:</strong> Errors about “parsing file …/status” or “unknown characters” when running apt or the installer.</p>
 <p><strong>Resolution:</strong> Backup and fix <code>/var/lib/dpkg/status</code> (remove corrupt lines or restore from backup), then run <code>sudo dpkg --configure -a</code> and <code>sudo apt-get install -f</code>. See the installer’s pre-flight error message for exact steps.</p>
 
+<h2>Upgrade: skip configuration (use existing settings)</h2>
+<p>When you run the installer on a system that already has RPi Engineer installed, you get <strong>Upgrade</strong> mode. You can then choose:</p>
+<ul>
+  <li><strong>Use existing configuration (only choose modules)</strong> – Keeps hostname, WiFi hotspot, and remote access settings from the previous install. You are only asked to select modules (module selection is shown on every upgrade so you can add or remove modules).</li>
+  <li><strong>Re-run full configuration wizard</strong> – Runs the full wizard again (remote access, hotspot, hostname, modules, summary).</li>
+</ul>
+<p>In non-interactive mode (<code>NONINTERACTIVE=1</code>), upgrade defaults to using existing configuration and keeping previously configured modules.</p>
+
 <h2>Interrupted installation: repair / continue</h2>
 <p><strong>Symptom:</strong> The installer was stopped partway through (power loss, Ctrl+C, or a step failed and you fixed the cause).</p>
 <p><strong>What the installer does:</strong> It records progress in <code>/tmp/rpi-engineer-install.progress</code>. If you run the installer again and that file is present, you will see:</p>

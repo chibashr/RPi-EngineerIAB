@@ -32,6 +32,7 @@ HOTSPOT_SSID=""
 TARGET_HOSTNAME=""
 MODULE_SELECTIONS=()
 INSTALL_MODE="fresh"
+UPGRADE_SKIP_CONFIG="0"
 
 DEPS_INSTALLED="no"
 APP_INSTALLED="no"
@@ -330,6 +331,22 @@ determine_install_mode() {
             3) log_error "Installation aborted by user."; exit 1 ;;
             *) INSTALL_MODE="upgrade" ;;
         esac
+        if [ "$INSTALL_MODE" = "upgrade" ]; then
+            if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+                UPGRADE_SKIP_CONFIG="1"
+                log_info "Non-interactive upgrade: using existing configuration."
+            else
+                echo "Upgrade configuration:"
+                echo "  1) Use existing configuration (only choose modules)"
+                echo "  2) Re-run full configuration wizard"
+                interactive_read -r -p "Enter choice (1-2) [1]: " upgrade_choice
+                case "${upgrade_choice:-1}" in
+                    1) UPGRADE_SKIP_CONFIG="1"; log_info "Upgrade: using existing configuration; module selection will be shown." ;;
+                    2) UPGRADE_SKIP_CONFIG="0"; log_info "Upgrade: re-running full wizard." ;;
+                    *) UPGRADE_SKIP_CONFIG="1" ;;
+                esac
+            fi
+        fi
     else
         INSTALL_MODE="fresh"
     fi
@@ -589,7 +606,12 @@ confirm_summary() {
 write_install_conf() {
     mkdir -p "$CONFIG_DIR"
     local password_hash
-    password_hash="$(openssl passwd -6 "$HOTSPOT_PASSWORD")"
+    if [ "$UPGRADE_SKIP_CONFIG" = "1" ] && [ -f "$CONFIG_DIR/install.conf" ]; then
+        password_hash="$(awk -F= '/^hotspot_password_hash=/ {print $2; exit}' "$CONFIG_DIR/install.conf")"
+        [ -z "$password_hash" ] && password_hash="$(openssl passwd -6 "${HOTSPOT_PASSWORD:-rpi-engineer-default-password}")"
+    else
+        password_hash="$(openssl passwd -6 "$HOTSPOT_PASSWORD")"
+    fi
     cat > "$CONFIG_DIR/install.conf" <<EOF
 [general]
 version=$VERSION
@@ -1066,6 +1088,16 @@ configure_hotspot() {
         log_warn "wlan0 not found; skipping hotspot configuration."
         return 0
     fi
+    if [ "$UPGRADE_SKIP_CONFIG" = "1" ]; then
+        log_info "Using existing hotspot configuration (upgrade skip-config)."
+        echo 'DAEMON_CONF="/etc/hostapd/hostapd.conf"' > /etc/default/hostapd
+        systemctl unmask hostapd >/dev/null 2>&1 || true
+        systemctl restart hostapd 2>/dev/null || true
+        systemctl restart dnsmasq 2>/dev/null || true
+        create_network_priority_script
+        HOTSPOT_CONFIGURED="yes"
+        return 0
+    fi
     cat > /etc/hostapd/hostapd.conf <<EOF
 interface=wlan0
 driver=nl80211
@@ -1536,6 +1568,17 @@ main() {
                 fi
                 log_warn "Hotspot password must be 8-63 characters."
             done
+        fi
+    elif [ "$INSTALL_MODE" = "upgrade" ] && [ "$UPGRADE_SKIP_CONFIG" = "1" ]; then
+        load_install_conf
+        if [ "${NONINTERACTIVE:-0}" != "1" ]; then
+            prompt_modules
+        else
+            log_info "Non-interactive: keeping previously configured modules."
+        fi
+        write_install_conf
+        if [ "$TARGET_HOSTNAME" != "$(hostname)" ]; then
+            hostnamectl set-hostname "$TARGET_HOSTNAME"
         fi
     else
         run_wizard
