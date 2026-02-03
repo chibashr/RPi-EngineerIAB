@@ -330,13 +330,15 @@ determine_install_mode() {
             echo "Select install mode:"
             echo "  1) Upgrade (update files and services)"
             echo "  2) Reconfigure (wizard and config only)"
-            echo "  3) Abort"
-            interactive_read -r -p "Enter choice (1-3) [1]: " choice
+            echo "  3) Wipe and reinstall (remove app directory, re-clone repo, reinstall using existing config)"
+            echo "  4) Abort"
+            interactive_read -r -p "Enter choice (1-4) [1]: " choice
         fi
         case "${choice:-1}" in
             1) INSTALL_MODE="upgrade" ;;
             2) INSTALL_MODE="reconfigure" ;;
-            3) log_error "Installation aborted by user."; exit 1 ;;
+            3) INSTALL_MODE="reinstall_from_scratch" ;;
+            4) log_error "Installation aborted by user."; exit 1 ;;
             *) INSTALL_MODE="upgrade" ;;
         esac
         if [ "$INSTALL_MODE" = "upgrade" ]; then
@@ -1885,10 +1887,20 @@ main() {
         if [ "$TARGET_HOSTNAME" != "$(hostname)" ]; then
             hostnamectl set-hostname "$TARGET_HOSTNAME"
         fi
-    elif [ "$INSTALL_MODE" = "reinstall_from_scratch" ] && [ "${NONINTERACTIVE:-0}" = "1" ]; then
+    elif [ "$INSTALL_MODE" = "reinstall_from_scratch" ]; then
         load_install_conf
         UPGRADE_SKIP_CONFIG="1"
-        log_info "Reinstall from scratch (non-interactive): using existing install.conf; app directory will be replaced."
+        if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+            log_info "Reinstall from scratch (non-interactive): using existing install.conf; app directory will be replaced."
+        else
+            log_info "Wipe and reinstall: will remove app directory and reinstall from repo using existing config."
+            echo "This will remove $INSTALL_DIR and re-clone the repository, then reinstall with your current config."
+            interactive_read -r -p "Continue? (y/n): " confirm
+            if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+                log_error "Installation aborted by user."
+                exit 1
+            fi
+        fi
         write_install_conf
         if [ "$TARGET_HOSTNAME" != "$(hostname)" ]; then
             hostnamectl set-hostname "$TARGET_HOSTNAME"
@@ -1898,7 +1910,7 @@ main() {
     fi
 
     if [ "$INSTALL_MODE" = "reinstall_from_scratch" ]; then
-        log_step "Reinstall from scratch: removing application directory"
+        log_step "Wipe and reinstall: removing application directory"
         if [ -d "$INSTALL_DIR" ]; then
             log_warn "Removing $INSTALL_DIR for clean reinstall."
             rm -rf "$INSTALL_DIR"
