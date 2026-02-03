@@ -26,6 +26,27 @@ def test_get_status_uses_metrics(monkeypatch):
 
 
 @pytest.mark.unit
+def test_get_service_state_uses_systemctl_show(monkeypatch):
+    """Service state is read via systemctl show ActiveState for reliability."""
+    manager = SystemManager()
+    monkeypatch.setattr(manager, "_systemctl_available", lambda: True)
+    called = {}
+
+    def capture_run(args, **kwargs):
+        called["args"] = args
+        # Simulate systemctl show --property=ActiveState --value <unit>
+        if "rpi-engineer-api" in str(args):
+            return subprocess.CompletedProcess(args, 0, stdout="active\n", stderr="")
+        return subprocess.CompletedProcess(args, 0, stdout="inactive\n", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", capture_run)
+    assert manager._get_service_state("api_gateway") == "running"
+    assert "show" in called["args"]
+    assert "--property=ActiveState" in called["args"]
+    assert "rpi-engineer-api.service" in called["args"]
+
+
+@pytest.mark.unit
 def test_control_service_rejects_invalid_action():
     manager = SystemManager()
     with pytest.raises(ValueError):

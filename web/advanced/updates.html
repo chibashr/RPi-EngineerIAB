@@ -121,7 +121,7 @@
               <div>
                 <h2>Software Updates</h2>
                 <p class="section-muted" style="margin-top: 0.25rem;">
-                  Check for differences between the repo and files on this device. Update with existing config or re-run configuration (like the install script).
+                  Check for differences between the repo and files on this device. Update with existing config, or rollback configuration and version.
                 </p>
               </div>
               <div class="button-row">
@@ -131,17 +131,14 @@
                 <button class="btn btn-primary" id="apply-update" title="Deploy repo files and keep current configuration">
                   Update (keep configuration)
                 </button>
-                <button class="btn btn-secondary" id="reconfigure-update" title="Re-apply configuration from existing install.conf">
-                  Reconfigure
-                </button>
-                <button class="btn btn-secondary" id="reinstall-from-scratch" title="Remove app directory and run full install using existing config">
-                  Reinstall from scratch
-                </button>
                 <button class="btn btn-ghost" id="rollback-update">
                   Rollback
                 </button>
               </div>
             </div>
+            <p class="section-muted" style="margin-top: 0;">
+              Rollback restores configuration and the version ref; it does not restore application code.
+            </p>
             <div class="info-grid">
               <div>
                 <div class="info-label">Update Branch</div>

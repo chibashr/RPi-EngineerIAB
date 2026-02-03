@@ -151,20 +151,25 @@ class SystemManager:
         if not self._systemctl_available():
             return "unknown"
         unit = self._normalize_unit(service)
+        # Use show ActiveState for reliable, machine-parseable state (avoids
+        # is-active exit-code quirks and "unknown" on some systems when inactive).
         result = subprocess.run(
-            ["systemctl", "is-active", unit],
+            ["systemctl", "show", "--property=ActiveState", "--value", unit],
             capture_output=True,
             text=True,
+            timeout=5,
         )
-        if result.returncode == 0:
+        out = (result.stdout or "").strip().lower()
+        if out == "active":
             return "running"
-        out = (result.stdout or "").strip()
         if out == "inactive":
             return "stopped"
         if out == "failed":
             return "failed"
         if out == "activating":
             return "starting"
+        if out == "deactivating":
+            return "stopping"
         return "unknown"
 
     def _cpu_percent(self) -> float:

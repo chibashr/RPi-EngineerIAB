@@ -1107,6 +1107,7 @@ create_service_unit() {
     local description="$2"
     local exec_start="$3"
     local run_user="$4"
+    local extra_env="${5:-}"
     cat > "/etc/systemd/system/${name}.service" <<EOF
 [Unit]
 Description=$description
@@ -1122,6 +1123,7 @@ RestartSec=5
 User=$run_user
 Group=$SERVICE_GROUP
 Environment=PYTHONUNBUFFERED=1
+${extra_env}
 UMask=027
 NoNewPrivileges=yes
 PrivateTmp=yes
@@ -1136,7 +1138,9 @@ configure_services() {
     log_step "Configuring systemd services"
     echo "Creating systemd service units..."
     create_master_service
-    create_service_unit "rpi-engineer-api" "RPi Engineer API Gateway" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/api_gateway/main.py" "$SERVICE_USER"
+    local api_env="Environment=RPI_ENGINEER_ROOT=${INSTALL_DIR}
+Environment=RPI_ENGINEER_DRY_RUN=0"
+    create_service_unit "rpi-engineer-api" "RPi Engineer API Gateway" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/api_gateway/main.py" "$SERVICE_USER" "$api_env"
     create_service_unit "rpi-engineer-network" "RPi Engineer Network Manager" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/network_manager/manager.py" "root"
     create_service_unit "rpi-engineer-serial" "RPi Engineer Serial Manager" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/serial_manager/manager.py" "$SERVICE_USER"
     create_service_unit "rpi-engineer-capture" "RPi Engineer Capture Manager" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/capture_manager/manager.py" "root"

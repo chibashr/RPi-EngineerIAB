@@ -25,6 +25,11 @@ chmod o+x /opt /opt/rpi-engineer</pre>
 </ol>
 <p>If <code>index.html</code> is missing under <code>/opt/rpi-engineer/web/</code>, re-deploy the <code>web</code> folder from the repo or re-run the full installer. To confirm the cause, check <code>/var/log/nginx/error.log</code> (e.g. <code>Permission denied</code> or <code>13</code> means file permissions).</p>
 
+<h2>Updates apply but nothing changes</h2>
+<p><strong>Symptom:</strong> You click <strong>Update (keep configuration)</strong> and receive a success message, but new UI or code changes never appear.</p>
+<p><strong>Common cause:</strong> The API is running with <code>RPI_ENGINEER_DRY_RUN=1</code>, which skips applying updates.</p>
+<p><strong>Resolution:</strong> Ensure the API systemd unit includes <code>Environment=RPI_ENGINEER_DRY_RUN=0</code> and <code>Environment=RPI_ENGINEER_ROOT=/opt/rpi-engineer</code>. The installer writes these automatically; re-run the installer or update the unit and restart <code>rpi-engineer-api</code>.</p>
+
 <h2>No network access</h2>
 <p><strong>Symptom:</strong> WAN shows disconnected on the dashboard.</p>
 <p><strong>Common causes:</strong> Ethernet unplugged or USB modem not detected.</p>
@@ -35,6 +40,11 @@ chmod o+x /opt /opt/rpi-engineer</pre>
 <p><strong>Common causes:</strong> Poor ventilation or high workload.</p>
 <p><strong>Resolution:</strong> Improve airflow and pause heavy captures.</p>
 
+<h2>Dashboard shows services as stopped but systemctl says running</h2>
+<p><strong>Symptom:</strong> Service Status on the dashboard shows some services as <strong>stopped</strong> while <code>systemctl status rpi-engineer</code> lists them as active.</p>
+<p><strong>Cause:</strong> The dashboard reads state from systemd via <code>systemctl show --property=ActiveState --value &lt;unit&gt;</code>. If the API cannot query systemd (e.g. different user context or timeout), or if units were briefly inactive when the check ran, the display can disagree.</p>
+<p><strong>Resolution:</strong> On the device, verify each unit’s state with <code>systemctl is-active rpi-engineer-api</code> (and similarly for <code>rpi-engineer-system</code>, <code>rpi-engineer-serial</code>, <code>rpi-engineer-logging</code>, <code>rpi-engineer-update</code>, etc.). If they report <code>active</code>, refresh the dashboard or wait for the next poll/WebSocket update. If the mismatch persists, ensure the API service runs with access to systemd (e.g. not in a restricted container that cannot see system units).</p>
+
 <h2>Related</h2>
 <ul>
   <li><a href="install-issues.html">Installation issues</a></li>
@@ -42,4 +52,4 @@ chmod o+x /opt /opt/rpi-engineer</pre>
   <li><a href="serial-issues.html">Serial issues</a></li>
 </ul>
 
-<p><strong>Last updated:</strong> 2026-02-02</p>
+<p><strong>Last updated:</strong> 2026-02-03</p>

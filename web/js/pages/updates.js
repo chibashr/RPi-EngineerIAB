@@ -186,56 +186,13 @@ function setupActions() {
     });
   }
 
-  const reconfigureButton = document.getElementById("reconfigure-update");
-  if (reconfigureButton) {
-    reconfigureButton.addEventListener("click", async () => {
-      try {
-        const payload = await apiPost("/api/v1/updates/reconfigure", {});
-        const data = extractData(payload) || {};
-        if (data.status === "reconfigure_dry_run") {
-          showToast(data.message || "Reconfigure dry run. Set RPI_ENGINEER_DRY_RUN=0 to run.", "info");
-        } else if (data.status === "reconfigured") {
-          showToast(data.message || "Configuration re-applied. Reboot recommended for hotspot.", "success");
-        } else {
-          showToast("Reconfigure completed.", "success");
-        }
-        await loadUpdates();
-      } catch (error) {
-        showToast("Reconfigure failed. You may need to run the install script as root.", "error");
-      }
-    });
-  }
-
-  const reinstallButton = document.getElementById("reinstall-from-scratch");
-  if (reinstallButton) {
-    reinstallButton.addEventListener("click", async () => {
-      if (!window.confirm("Reinstall from scratch will remove the application directory and run a full install using your existing config. This may take several minutes. Continue?")) {
-        return;
-      }
-      try {
-        const payload = await apiPost("/api/v1/updates/reinstall", {});
-        const data = extractData(payload) || {};
-        if (data.status === "reinstall_dry_run") {
-          showToast(data.message || "Reinstall dry run. Set RPI_ENGINEER_DRY_RUN=0 to run.", "info");
-        } else if (data.status === "reinstalled") {
-          showToast(data.message || "Reinstall from scratch complete. Reboot recommended.", "success");
-        } else {
-          showToast("Reinstall completed.", "success");
-        }
-        await loadUpdates();
-      } catch (error) {
-        showToast("Reinstall from scratch failed. You may need to run the install script as root.", "error");
-      }
-    });
-  }
-
   const rollbackButton = document.getElementById("rollback-update");
   if (rollbackButton) {
     rollbackButton.addEventListener("click", async () => {
       try {
         const payload = await apiPost("/api/v1/updates/rollback", {});
         const data = extractData(payload) || {};
-        showToast("Rollback completed.", "success");
+        showToast("Rollback completed (configuration and version restored).", "success");
         await loadUpdates();
       } catch (error) {
         showToast("Unable to rollback update.", "error");
