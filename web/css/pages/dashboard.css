@@ -90,3 +90,53 @@
   color: var(--color-muted);
   font-size: 0.9rem;
 }
+
+/* Remote Access panel (AnyDesk, TeamViewer, VNC, RPi Connect) */
+.remote-tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.remote-tools-empty {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.remote-tool-entry {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  background: rgba(90, 100, 114, 0.04);
+}
+
+.remote-tool-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.remote-tool-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.remote-connection-row {
+  display: grid;
+  grid-template-columns: 90px 1fr auto;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.remote-connection-row .connection-label {
+  color: var(--color-muted);
+}
+
+.remote-connection-row .connection-value {
+  font-weight: 600;
+}

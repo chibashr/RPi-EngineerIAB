@@ -49,3 +49,8 @@ export function confirmModeSwitch(targetMode) {
     "Advanced Mode exposes system configuration and diagnostic tools. Continue?"
   );
 }
+
+/** Used by advanced pages to redirect to simple dashboard. Call after setMode("simple"). */
+export function goToSimpleMode() {
+  window.location.assign("/");
+}

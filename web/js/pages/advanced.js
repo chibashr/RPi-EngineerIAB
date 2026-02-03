@@ -1,5 +1,5 @@
 import { applyStoredTheme, initThemeSelector } from "../theme.js";
-import { confirmModeSwitch, ensureAdvancedMode, setMode } from "../mode.js";
+import { confirmModeSwitch, ensureAdvancedMode, setMode, goToSimpleMode } from "../mode.js";
 
 function setActiveNav() {
   const path = window.location.pathname;
@@ -60,7 +60,7 @@ function setupModeSwitch() {
       return;
     }
     setMode("simple");
-    window.location.assign("/");
+    goToSimpleMode();
   });
 }
 

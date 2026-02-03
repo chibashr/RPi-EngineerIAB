@@ -36,6 +36,10 @@ const elements = {
     summary: document.getElementById("alert-summary"),
     list: document.getElementById("alert-list"),
   },
+  remote: {
+    summary: document.getElementById("remote-summary"),
+    list: document.getElementById("remote-tools-list"),
+  },
   banner: document.getElementById("dashboard-connection-banner"),
 };
 
@@ -196,6 +200,87 @@ function renderAlerts(alerts) {
   });
 }
 
+const REMOTE_TOOL_DISPLAY = {
+  anydesk: "AnyDesk",
+  teamviewer: "TeamViewer",
+  vnc: "VNC",
+  rpi_connect: "Raspberry Pi Connect",
+};
+
+function getEnabledRemoteTools(tools) {
+  if (!tools || !Array.isArray(tools)) {
+    return [];
+  }
+  return tools.filter(
+    (t) =>
+      (t.connection_id && String(t.connection_id).trim() !== "") ||
+      t.status === "running"
+  );
+}
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function renderRemoteTools(tools) {
+  if (!elements.remote.list || !elements.remote.summary) {
+    return;
+  }
+  elements.remote.list.textContent = "";
+  const enabled = getEnabledRemoteTools(tools);
+
+  if (enabled.length === 0) {
+    elements.remote.summary.textContent = "None configured";
+    const msg = document.createElement("p");
+    msg.className = "remote-tools-empty";
+    msg.textContent = "No remote access tools enabled.";
+    elements.remote.list.appendChild(msg);
+    return;
+  }
+
+  elements.remote.summary.textContent =
+    enabled.length === 1 ? "1 tool" : `${enabled.length} tools`;
+  enabled.forEach((tool) => {
+    const label = REMOTE_TOOL_DISPLAY[tool.name] || tool.name || "Remote";
+    const connectionId = tool.connection_id || "--";
+    const idAttr = `remote-id-${tool.name}`;
+    const entry = document.createElement("div");
+    entry.className = "remote-tool-entry";
+    entry.innerHTML = `
+      <div class="remote-tool-header">
+        <span class="remote-tool-name">${escapeHtml(label)}</span>
+        <span class="status-pill ${tool.status === "running" ? "status-pill-success" : "status-pill-warning"}">${tool.status === "running" ? "Running" : "Stopped"}</span>
+      </div>
+      <div class="remote-connection-row">
+        <span class="connection-label">Connection</span>
+        <span class="connection-value" id="${idAttr}">${escapeHtml(connectionId)}</span>
+        <button class="btn btn-ghost btn-copy" type="button" data-copy-target="${idAttr}">Copy</button>
+      </div>
+    `;
+    elements.remote.list.appendChild(entry);
+  });
+}
+
+function setupRemoteCopyDelegation() {
+  document.body.addEventListener("click", async (e) => {
+    const button = e.target.closest("[data-copy-target]");
+    if (!button || !elements.remote.list?.contains(button)) {
+      return;
+    }
+    const targetId = button.dataset.copyTarget;
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    try {
+      await navigator.clipboard.writeText(target.textContent.trim());
+      showToast("Copied to clipboard.", "success");
+    } catch (err) {
+      showToast("Copy failed. Select and copy manually.", "error");
+    }
+  });
+}
+
 async function loadSystemStatus() {
   return loadSystemStatusWithOptions({});
 }
@@ -267,6 +352,24 @@ async function loadAlertsWithOptions(options) {
   }
 }
 
+async function loadRemoteStatus() {
+  return loadRemoteStatusWithOptions({});
+}
+
+async function loadRemoteStatusWithOptions(options) {
+  try {
+    const payload = await apiGet("/api/v1/remote/status");
+    const data = extractData(payload) || {};
+    renderRemoteTools(data.tools);
+  } catch (error) {
+    if (elements.remote.summary) elements.remote.summary.textContent = "Unavailable";
+    if (elements.remote.list) elements.remote.list.textContent = "";
+    if (!options.suppressError) {
+      showToast("Unable to load remote access status.", "error");
+    }
+  }
+}
+
 function updateBanner(message, isVisible = true) {
   if (!elements.banner) {
     return;
@@ -287,6 +390,7 @@ function startPolling() {
     loadNetworkStatusWithOptions({ suppressError: true });
     loadCapturesWithOptions({ suppressError: true });
     loadAlertsWithOptions({ suppressError: true });
+    loadRemoteStatusWithOptions({ suppressError: true });
   }, MAX_POLL_INTERVAL);
 }
 
@@ -337,10 +441,12 @@ function initStatusWebSocket() {
 }
 
 function init() {
+  setupRemoteCopyDelegation();
   loadSystemStatus();
   loadNetworkStatus();
   loadCaptures();
   loadAlerts();
+  loadRemoteStatus();
   initStatusWebSocket();
 }
 
