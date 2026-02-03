@@ -74,6 +74,12 @@ def _github_repo_slug(repo_url: str) -> Optional[str]:
 
 def _github_commit_date(repo_slug: str, commit_hash: str) -> Optional[str]:
     """Fetch commit date (ISO) from GitHub API. Returns None on any failure."""
+    info = _github_commit_info(repo_slug, commit_hash)
+    return info.get("date") if info else None
+
+
+def _github_commit_info(repo_slug: str, commit_hash: str) -> Optional[Dict[str, str]]:
+    """Fetch commit date, message, and author from GitHub API. Returns None on any failure."""
     if not _is_hash(commit_hash):
         return None
     url = f"https://api.github.com/repos/{repo_slug}/commits/{commit_hash}"
@@ -83,7 +89,11 @@ def _github_commit_date(repo_slug: str, commit_hash: str) -> Optional[str]:
             data = json.loads(resp.read().decode())
         commit = data.get("commit") or {}
         author = commit.get("author") or {}
-        return author.get("date")  # ISO 8601
+        return {
+            "date": author.get("date") or "",
+            "message": (commit.get("message") or "").strip(),
+            "author": author.get("name") or commit.get("author", {}).get("name") or "",
+        }
     except Exception:
         return None
 
@@ -180,6 +190,8 @@ class UpdateManager:
                 "release_notes": "git not available on this system.",
                 "last_update": last_update,
                 "available_since": None,
+                "available_commit_message": None,
+                "available_commit_author": None,
                 "files_changed": [],
             }
         result = subprocess.run(
@@ -200,6 +212,8 @@ class UpdateManager:
                 "release_notes": "Version comparison unavailable.",
                 "last_update": last_update,
                 "available_since": None,
+                "available_commit_message": None,
+                "available_commit_author": None,
                 "files_changed": [],
             }
         ref_differs = bool(available and available != current_hash)
@@ -221,8 +235,14 @@ class UpdateManager:
                         files_changed.append(path)
         update_available = ref_differs or len(files_changed) > 0
         available_since = None
+        available_commit_message = None
+        available_commit_author = None
         if available and update_available and slug:
-            available_since = _github_commit_date(slug, available)
+            commit_info = _github_commit_info(slug, available)
+            if commit_info:
+                available_since = commit_info.get("date")
+                available_commit_message = commit_info.get("message") or None
+                available_commit_author = commit_info.get("author") or None
         return {
             "current_version": current_hash,
             "update_available": update_available,
@@ -230,6 +250,8 @@ class UpdateManager:
             "release_notes": "Release notes available after staging." if update_available else "",
             "last_update": last_update,
             "available_since": available_since,
+            "available_commit_message": available_commit_message,
+            "available_commit_author": available_commit_author,
             "files_changed": files_changed[:200],
         }
 

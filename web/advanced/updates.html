@@ -161,10 +161,23 @@
                 <div class="info-value" id="available-since">--</div>
               </div>
             </div>
-            <div class="files-changed-section" id="files-changed-section" hidden>
-              <div class="info-label">Files differing from repo</div>
-              <ul class="files-changed-list" id="files-changed-list" aria-label="Paths that differ from the remote repository"></ul>
-            </div>
+            <details class="update-details" id="update-details">
+              <summary class="update-details-summary">More details</summary>
+              <div class="update-details-content">
+                <div class="update-details-commit" id="update-details-commit" hidden>
+                  <div class="info-label">Commit message (why this update)</div>
+                  <div class="update-commit-message" id="update-commit-message"></div>
+                  <div class="update-commit-meta section-muted" id="update-commit-meta"></div>
+                </div>
+                <div class="files-changed-section" id="files-changed-section" hidden>
+                  <div class="info-label">Files that would be updated</div>
+                  <ul class="files-changed-list" id="files-changed-list" aria-label="Paths that would be updated from the repository"></ul>
+                </div>
+                <div class="update-details-empty section-muted" id="update-details-empty">
+                  Check for updates to see commit message and file list.
+                </div>
+              </div>
+            </details>
             <p class="section-muted" id="release-notes">Release notes pending.</p>
           </section>
 

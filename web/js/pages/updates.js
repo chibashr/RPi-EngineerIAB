@@ -8,8 +8,12 @@ const elements = {
   isAvailable: document.getElementById("update-available"),
   availableSince: document.getElementById("available-since"),
   notes: document.getElementById("release-notes"),
+  detailsCommit: document.getElementById("update-details-commit"),
+  commitMessage: document.getElementById("update-commit-message"),
+  commitMeta: document.getElementById("update-commit-meta"),
   filesChangedSection: document.getElementById("files-changed-section"),
   filesChangedList: document.getElementById("files-changed-list"),
+  detailsEmpty: document.getElementById("update-details-empty"),
 };
 
 function showToast(message, variant = "info") {
@@ -49,6 +53,22 @@ function renderUpdateStatus(data) {
   }
   elements.notes.textContent = data?.release_notes || "Release notes pending.";
 
+  const hasCommitInfo = data?.available_commit_message || data?.available_commit_author;
+  if (elements.detailsCommit && elements.commitMessage && elements.commitMeta) {
+    if (hasCommitInfo) {
+      elements.detailsCommit.hidden = false;
+      elements.commitMessage.textContent = data.available_commit_message || "(no message)";
+      const metaParts = [];
+      if (data.available_commit_author) metaParts.push(data.available_commit_author);
+      if (data.available_since) metaParts.push(formatDateTime(data.available_since));
+      elements.commitMeta.textContent = metaParts.length ? metaParts.join(" · ") : "";
+    } else {
+      elements.detailsCommit.hidden = true;
+      elements.commitMessage.textContent = "";
+      elements.commitMeta.textContent = "";
+    }
+  }
+
   const filesChanged = Array.isArray(data?.files_changed) ? data.files_changed : [];
   if (elements.filesChangedSection && elements.filesChangedList) {
     if (filesChanged.length === 0) {
@@ -64,6 +84,11 @@ function renderUpdateStatus(data) {
         elements.filesChangedList.innerHTML += `<li class="section-muted">… and ${filesChanged.length - 100} more</li>`;
       }
     }
+  }
+
+  const hasDetails = hasCommitInfo || filesChanged.length > 0;
+  if (elements.detailsEmpty) {
+    elements.detailsEmpty.hidden = hasDetails;
   }
 }
 

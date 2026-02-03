@@ -22,6 +22,8 @@ def test_check_for_updates_no_git(monkeypatch):
     assert "git not available" in result["release_notes"]
     assert "last_update" in result
     assert "available_since" in result
+    assert "available_commit_message" in result
+    assert "available_commit_author" in result
     assert "files_changed" in result
     assert result["files_changed"] == []
 

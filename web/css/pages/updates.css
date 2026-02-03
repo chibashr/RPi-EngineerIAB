@@ -39,6 +39,56 @@
   margin-top: 0.75rem;
 }
 
+.update-details {
+  margin-top: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.update-details-summary {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+  user-select: none;
+}
+
+.update-details-summary::-webkit-details-marker {
+  display: none;
+}
+
+.update-details-summary::before {
+  content: "▶ ";
+  display: inline-block;
+  transition: transform 0.2s;
+  margin-right: 0.25rem;
+}
+
+.update-details[open] .update-details-summary::before {
+  transform: rotate(90deg);
+}
+
+.update-details-content {
+  padding: 0 1rem 1rem;
+}
+
+.update-details-commit + .files-changed-section {
+  margin-top: 1rem;
+}
+
+.update-commit-message {
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 0.5rem 0;
+  font-size: 0.95rem;
+}
+
+.update-commit-meta {
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+
 .files-changed-section {
   margin-top: 1rem;
 }
