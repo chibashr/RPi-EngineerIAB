@@ -45,6 +45,11 @@
   gap: 0.35rem;
 }
 
+.status-pill-muted {
+  background: rgba(90, 100, 114, 0.15);
+  color: var(--color-muted);
+}
+
 .status-list {
   list-style: none;
   padding: 0;
@@ -58,8 +63,21 @@
 }
 
 .console-status {
-  color: var(--color-muted);
   margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.console-status.status-connected {
+  color: var(--color-success);
+}
+
+.console-status.status-connecting {
+  color: var(--color-info);
+}
+
+.console-status.status-disconnected,
+.console-status.status-error {
+  color: var(--color-muted);
 }
 
 .console-controls {

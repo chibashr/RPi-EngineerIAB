@@ -353,10 +353,13 @@ class SerialManager:
 
     def _port_to_device(self, path: str, description: str, vid: Optional[int]) -> Dict[str, object]:
         chipset = _chipset_from_vid(vid)
+        friendly = (description or "").strip()
+        if not friendly or friendly.lower() == "n/a":
+            friendly = path or "Serial Device"
         return {
             "id": path,
             "path": path,
-            "friendly_name": description or "Serial Device",
+            "friendly_name": friendly,
             "chipset": chipset,
         }
 

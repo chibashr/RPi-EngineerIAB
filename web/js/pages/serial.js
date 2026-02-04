@@ -33,12 +33,23 @@ function getSessionForDevice(deviceId) {
   return activeSessions.find((s) => s.device_id === deviceId);
 }
 
+function deviceDisplayName(device) {
+  const name = device.friendly_name || device.path || device.id || "";
+  if (!name || name.toLowerCase() === "n/a") {
+    return device.path || device.id || "Serial Device";
+  }
+  return name;
+}
+
 function renderDevices(devices) {
   if (!elements.deviceTable) return;
-  deviceCache = devices;
+  const validDevices = (devices || []).filter(
+    (d) => d && (d.id || d.path) && String(d.id || d.path).trim()
+  );
+  deviceCache = validDevices;
   elements.deviceTable.textContent = "";
 
-  if (!devices.length) {
+  if (!validDevices.length) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.colSpan = 5;
@@ -48,49 +59,81 @@ function renderDevices(devices) {
     return;
   }
 
-  devices.forEach((device) => {
+  validDevices.forEach((device) => {
     const session = getSessionForDevice(device.id);
+    const isWsConnected =
+      session && currentSessionId === session.session_id && wsClient;
+    const deviceStatus = device.status || "unknown";
     const row = document.createElement("tr");
-    const name = device.friendly_name || device.path || device.id;
-    const status = device.status || "unknown";
-    const chipset = device.chipset || "--";
+    const name = deviceDisplayName(device);
+    const chipset = device.chipset || "Unknown";
     const sessionInfo = session
-      ? `${session.session_id.slice(0, 8)}... (${session.status || "active"})`
+      ? `${session.session_id.slice(0, 8)}...`
       : "--";
 
-    [name, status, chipset, sessionInfo].forEach((value) => {
-      const cell = document.createElement("td");
-      cell.textContent = value || "--";
-      row.appendChild(cell);
-    });
+    const nameCell = document.createElement("td");
+    nameCell.textContent = name;
+    row.appendChild(nameCell);
+
+    const statusCell = document.createElement("td");
+    const statusSpan = document.createElement("span");
+    statusSpan.className = "status-pill status-pill-" + statusPillClass(deviceStatus, !!session, isWsConnected);
+    statusSpan.textContent = statusLabel(deviceStatus, !!session, isWsConnected);
+    statusCell.appendChild(statusSpan);
+    row.appendChild(statusCell);
+
+    const chipsetCell = document.createElement("td");
+    chipsetCell.textContent = chipset;
+    row.appendChild(chipsetCell);
+
+    const sessionCell = document.createElement("td");
+    sessionCell.textContent = sessionInfo;
+    row.appendChild(sessionCell);
 
     const actionCell = document.createElement("td");
     actionCell.className = "device-actions";
 
-    const connectBtn = document.createElement("button");
-    connectBtn.className = "btn btn-primary btn-sm";
-    connectBtn.textContent = "Connect";
-    connectBtn.type = "button";
-    connectBtn.disabled = !!session || status === "in_use";
-    connectBtn.addEventListener("click", () => connectDevice(device.id));
-
-    const disconnectBtn = document.createElement("button");
-    disconnectBtn.className = "btn btn-secondary btn-sm";
-    disconnectBtn.textContent = "Disconnect";
-    disconnectBtn.type = "button";
-    disconnectBtn.disabled = !session;
-    disconnectBtn.addEventListener("click", () => disconnectDevice(session?.session_id));
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.dataset.deviceId = device.id;
+    if (session) {
+      toggleBtn.className = "btn btn-secondary btn-sm";
+      toggleBtn.textContent = "Disconnect";
+      toggleBtn.addEventListener("click", () => disconnectDevice(session.session_id));
+    } else {
+      toggleBtn.className = "btn btn-primary btn-sm";
+      toggleBtn.textContent = "Connect";
+      toggleBtn.disabled = deviceStatus === "in_use";
+      toggleBtn.addEventListener("click", () => connectDevice(device.id));
+    }
+    actionCell.appendChild(toggleBtn);
 
     const configBtn = document.createElement("button");
     configBtn.className = "btn btn-ghost btn-sm";
     configBtn.textContent = "Configure";
     configBtn.type = "button";
     configBtn.addEventListener("click", () => configureSerial(device.id));
+    actionCell.appendChild(configBtn);
 
-    actionCell.append(connectBtn, disconnectBtn, configBtn);
     row.appendChild(actionCell);
     elements.deviceTable.appendChild(row);
   });
+}
+
+function statusLabel(deviceStatus, hasSession, isWsConnected) {
+  if (isWsConnected) return "Connected";
+  if (hasSession) return "Session active";
+  if (deviceStatus === "in_use") return "In use";
+  if (deviceStatus === "available") return "Available";
+  return "Disconnected";
+}
+
+function statusPillClass(deviceStatus, hasSession, isWsConnected) {
+  if (isWsConnected) return "success";
+  if (hasSession) return "info";
+  if (deviceStatus === "in_use") return "warning";
+  if (deviceStatus === "available") return "success";
+  return "muted";
 }
 
 function renderSessionSelect() {
@@ -152,15 +195,19 @@ function connectWebSocket(sessionId) {
   wsClient.onStatus((status) => {
     if (elements.status) {
       elements.status.textContent = status;
+      elements.status.className = "console-status status-" + status;
     }
     if (status === "connected") {
       updateBanner("Serial console connected.", false);
+      renderDevices(deviceCache);
     } else if (status === "disconnected") {
-      updateBanner("Serial console disconnected. Reconnecting...");
+      updateBanner("Serial console disconnected.");
+      renderDevices(deviceCache);
     } else if (status === "connecting") {
       updateBanner("Connecting to serial console...");
     } else if (status === "error") {
       updateBanner("Serial console connection error.");
+      renderDevices(deviceCache);
     }
   });
   wsClient.on("data", (message) => {
@@ -181,8 +228,12 @@ function disconnectWebSocket() {
     wsClient = null;
   }
   currentSessionId = null;
-  if (elements.status) elements.status.textContent = "Disconnected";
+  if (elements.status) {
+    elements.status.textContent = "Disconnected";
+    elements.status.className = "console-status status-disconnected";
+  }
   updateBanner("Serial console disconnected.", true);
+  renderDevices(deviceCache);
 }
 
 async function connectDevice(deviceId) {
