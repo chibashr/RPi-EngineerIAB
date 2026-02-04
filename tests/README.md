@@ -15,7 +15,8 @@ pytest
 | Directory | Purpose |
 |-----------|---------|
 | `unit/` | Unit tests for response helpers, BPF parsing, API routes |
-| `integration/` | Integration tests for full API and static file serving |
+| `integration/` | Integration tests for full API, static file serving, serial WebSocket |
+| `scripts/` | Manual test scripts (e.g. serial connection) |
 
 ## Running Tests
 
@@ -37,6 +38,28 @@ pytest tests/unit/test_api_system.py
 
 # Specific test class
 pytest tests/unit/test_api_system.py::TestSystemStatus
+
+# Serial WebSocket integration (mocked serial port)
+pytest tests/integration/test_serial_websocket.py -v
+```
+
+## Serial Connection Testing
+
+To test the serial console WebSocket flow without hardware:
+
+```bash
+pytest tests/integration/test_serial_websocket.py -v
+```
+
+To test with a real serial device:
+
+```bash
+# Option A: script starts API and tests (replace COM3 with your device)
+python tests/scripts/test_serial_connection.py --serve --device COM3
+
+# Option B: API already running in another terminal
+python services/api_gateway/main.py   # terminal 1
+python tests/scripts/test_serial_connection.py --device COM3  # terminal 2
 ```
 
 ## Environment
