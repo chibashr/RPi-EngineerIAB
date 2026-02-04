@@ -45,13 +45,23 @@ pytest tests/integration/test_serial_websocket.py -v
 
 ## Serial Connection Testing
 
-To test the serial console WebSocket flow without hardware:
+### Automated Tx/Rx test (no hardware)
+
+An echo-loopback test verifies both transmit and receive paths:
+
+```bash
+pytest tests/integration/test_serial_websocket.py::test_serial_tx_and_rx_echo_loopback -v
+```
+
+Uses `EchoMockSerialPort`: data written to the mock is echoed back to `read()`, so the test sends via WebSocket, the backend writes to serial, the mock echoes, the backend reads and forwards to WebSocket, and the test verifies the received data matches.
+
+### All serial WebSocket tests (mocked)
 
 ```bash
 pytest tests/integration/test_serial_websocket.py -v
 ```
 
-To test with a real serial device:
+### Manual test with real hardware
 
 ```bash
 # Option A: script starts API and tests (replace COM3 with your device)
@@ -61,6 +71,8 @@ python tests/scripts/test_serial_connection.py --serve --device COM3
 python services/api_gateway/main.py   # terminal 1
 python tests/scripts/test_serial_connection.py --device COM3  # terminal 2
 ```
+
+For Rx verification with real hardware: use a loopback (TX and RX shorted) or a device that echoes (e.g. a router console).
 
 ## Environment
 

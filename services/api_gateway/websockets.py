@@ -154,12 +154,18 @@ def register_websockets(sock: Sock) -> None:
         session.websocket_connected = True
         stop_event = threading.Event()
         send_lock = threading.Lock()
+        read_poll_interval = 0.05  # 50ms between polls when idle (RasPi-NetPal-style)
 
         def reader() -> None:
             last_status = time.time()
             while not stop_event.is_set():
                 try:
-                    data = ser.read(ser.in_waiting or 1)
+                    n = ser.in_waiting
+                    if n > 0:
+                        data = ser.read(n)
+                    else:
+                        time.sleep(read_poll_interval)
+                        continue
                 except Exception as read_exc:
                     logger.warning("serial_console: reader error on %s: %s", session.device_id, read_exc)
                     break
@@ -214,8 +220,14 @@ def register_websockets(sock: Sock) -> None:
                     action = payload.get("action")
                     if action == "pause_logging":
                         serial_manager.update_session(session_id, {"logging_paused": True})
-                    if action == "resume_logging":
+                    elif action == "resume_logging":
                         serial_manager.update_session(session_id, {"logging_paused": False})
+                    elif action == "break":
+                        try:
+                            ser.send_break(duration=payload.get("duration", 0.25))
+                            logger.debug("serial_console: sent break to %s", session.device_id)
+                        except Exception as brk_exc:
+                            logger.warning("serial_console: break failed %s: %s", session.device_id, brk_exc)
         except Exception as exc:
             logger.info("serial_console: main loop exited session=%s: %s", session_id[:8], exc)
         finally:

@@ -339,6 +339,10 @@ function setupActions() {
         }
       },
     },
+    {
+      id: "serial-break",
+      action: sendBreak,
+    },
     { id: "serial-save-log", action: saveSerialLog },
   ];
 
@@ -365,6 +369,16 @@ function charFromKeyEvent(event) {
   if (event.key === "Tab") return "\t";
   if (event.key.length === 1) return event.key;
   return null;
+}
+
+function sendBreak() {
+  if (!wsClient || !wsClient.send) return;
+  const sent = wsClient.send({ type: "control", action: "break", duration: 0.25 });
+  if (sent) {
+    showToast("Break signal sent.", "info");
+  } else {
+    showToast("Not connected. Select a session and connect.", "error");
+  }
 }
 
 function sendToSerial(data) {
