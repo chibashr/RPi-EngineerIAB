@@ -44,6 +44,12 @@
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.panel-header-actions {
+  display: flex;
+  gap: 0.75rem;
 }
 
 .panel-meta {
@@ -72,6 +78,61 @@
   gap: 0.5rem;
 }
 
+/* Limit service/serial list height (~6 items) with scrollbar for compact dashboard */
+.panel-body-scroll {
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.panel-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.panel-link:hover {
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-md);
+}
+
+.panel-link .panel-header h2 {
+  color: var(--color-fg);
+}
+
+.panel-link:hover .panel-header h2 {
+  color: var(--color-accent);
+}
+
+.panel-action {
+  font-size: 0.85rem;
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.panel-action:hover {
+  text-decoration: underline;
+}
+
+.logs-type-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.logs-type-link {
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(90, 100, 114, 0.08);
+  color: var(--color-accent);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.logs-type-link:hover {
+  background: rgba(47, 111, 237, 0.12);
+}
+
 .status-item {
   display: flex;
   align-items: center;
@@ -89,6 +150,35 @@
 .status-item .status-value {
   color: var(--color-muted);
   font-size: 0.9rem;
+}
+
+.status-item-with-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.status-item-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.status-item-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.status-item-actions .btn-sm {
+  padding: 0.3rem 0.6rem;
+  min-height: 0;
+  min-width: 0;
+  font-size: 0.8rem;
 }
 
 /* Remote Access panel (AnyDesk, TeamViewer, VNC, RPi Connect) */

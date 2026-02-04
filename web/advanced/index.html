@@ -114,20 +114,6 @@
                 System health, network status, and active tasks at a glance.
               </p>
             </div>
-            <div class="toolbar">
-              <a class="btn btn-primary" href="/advanced/capture.html"
-                >Start Capture</a
-              >
-              <a class="btn btn-secondary" href="/advanced/serial.html"
-                >Open Serial</a
-              >
-              <a class="btn btn-secondary" href="/advanced/updates.html"
-                >Check Updates</a
-              >
-              <a class="btn btn-ghost" href="/advanced/logs.html"
-                >View Logs</a
-              >
-            </div>
           </div>
 
           <section class="metrics-row">
@@ -162,7 +148,7 @@
           </section>
 
           <section class="dashboard-grid">
-            <div class="panel">
+            <a class="panel panel-link" href="/advanced/network.html" data-panel="network">
               <div class="panel-header">
                 <h2>Network Status</h2>
                 <span class="panel-meta" id="network-summary">Loading...</span>
@@ -184,39 +170,57 @@
                   </tbody>
                 </table>
               </div>
-            </div>
+            </a>
 
-            <div class="panel">
+            <a class="panel panel-link" href="/advanced/system.html" data-panel="services">
               <div class="panel-header">
                 <h2>Service Status</h2>
                 <span class="panel-meta" id="service-summary">Loading...</span>
               </div>
-              <div class="panel-body">
+              <div class="panel-body panel-body-scroll">
                 <ul class="status-list" id="service-list"></ul>
               </div>
-            </div>
+            </a>
 
-            <div class="panel">
+            <div class="panel" data-panel="captures">
               <div class="panel-header">
                 <h2>Active Captures</h2>
                 <span class="panel-meta" id="capture-summary">Loading...</span>
+                <div class="panel-header-actions">
+                  <a class="panel-action" href="/advanced/capture.html">Start new</a>
+                  <a class="panel-action" href="/advanced/capture.html">View all</a>
+                </div>
               </div>
               <div class="panel-body">
                 <ul class="status-list" id="capture-list"></ul>
               </div>
             </div>
 
-            <div class="panel">
+            <div class="panel" data-panel="logs">
               <div class="panel-header">
-                <h2>Recent Alerts</h2>
-                <span class="panel-meta" id="alert-summary">Loading...</span>
+                <h2>Logs</h2>
+                <span class="panel-meta" id="logs-summary">Log types</span>
               </div>
               <div class="panel-body">
-                <ul class="status-list" id="alert-list"></ul>
+                <div class="logs-type-selector">
+                  <a class="logs-type-link" href="/advanced/logs.html#system">System</a>
+                  <a class="logs-type-link" href="/advanced/logs.html#metrics">Metrics</a>
+                  <a class="logs-type-link" href="/advanced/logs.html#alerts">Alerts</a>
+                </div>
               </div>
             </div>
 
-            <div class="panel">
+            <a class="panel panel-link" href="/advanced/serial.html" data-panel="serial">
+              <div class="panel-header">
+                <h2>Serial Devices</h2>
+                <span class="panel-meta" id="serial-summary">Loading...</span>
+              </div>
+              <div class="panel-body panel-body-scroll">
+                <ul class="status-list" id="serial-device-list"></ul>
+              </div>
+            </a>
+
+            <a class="panel panel-link" href="/advanced/system.html" data-panel="remote">
               <div class="panel-header">
                 <h2>Remote Access</h2>
                 <span class="panel-meta" id="remote-summary">Loading...</span>
@@ -224,7 +228,7 @@
               <div class="panel-body">
                 <div id="remote-tools-list" class="remote-tools-list" aria-live="polite"></div>
               </div>
-            </div>
+            </a>
           </section>
         </main>
       </div>

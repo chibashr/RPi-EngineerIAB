@@ -194,7 +194,7 @@ function setupActions() {
 }
 
 function init() {
-  initTabs(document.querySelector("[data-tabs]"));
+  initTabs(document.querySelector("[data-tabs]"), { useHash: true });
   const refresh = document.getElementById("refresh-logs");
   if (refresh) {
     refresh.addEventListener("click", () => {

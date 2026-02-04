@@ -1,4 +1,4 @@
-import { apiGet, extractData } from "../api.js";
+import { apiGet, apiPost, extractData } from "../api.js";
 import { copyTextToClipboard } from "../components.js";
 import { createWebSocketClient } from "../websocket.js";
 import { setAlerts, formatAlertTimestamp } from "../notifications.js";
@@ -34,9 +34,9 @@ const elements = {
     summary: document.getElementById("capture-summary"),
     list: document.getElementById("capture-list"),
   },
-  alerts: {
-    summary: document.getElementById("alert-summary"),
-    list: document.getElementById("alert-list"),
+  serial: {
+    summary: document.getElementById("serial-summary"),
+    list: document.getElementById("serial-device-list"),
   },
   remote: {
     summary: document.getElementById("remote-summary"),
@@ -159,48 +159,74 @@ function renderCaptures(captures) {
 
   elements.captures.summary.textContent = `${captures.length} active`;
   captures.forEach((capture) => {
+    const captureId = capture.capture_id || capture.id;
     const item = document.createElement("li");
-    item.className = "status-item";
+    item.className = "status-item status-item-with-actions";
+    const left = document.createElement("div");
+    left.className = "status-item-main";
     const label = document.createElement("span");
     label.className = "status-label";
-    label.textContent = capture.name || capture.id || "Capture";
+    label.textContent = capture.name || captureId || "Capture";
     const value = document.createElement("span");
     value.className = "status-value";
     value.textContent = capture.status || "running";
-    item.appendChild(label);
-    item.appendChild(value);
+    left.appendChild(label);
+    left.appendChild(value);
+    item.appendChild(left);
+    const actions = document.createElement("div");
+    actions.className = "status-item-actions";
+    const stopBtn = document.createElement("button");
+    stopBtn.className = "btn btn-ghost btn-sm";
+    stopBtn.type = "button";
+    stopBtn.textContent = "Stop";
+    stopBtn.dataset.captureId = captureId;
+    stopBtn.dataset.action = "stop";
+    actions.appendChild(stopBtn);
+    const viewLink = document.createElement("a");
+    viewLink.className = "btn btn-ghost btn-sm";
+    viewLink.href = "/advanced/capture.html";
+    viewLink.textContent = "View";
+    actions.appendChild(viewLink);
+    item.appendChild(actions);
     elements.captures.list.appendChild(item);
   });
 }
 
-function renderAlerts(alerts) {
-  if (!elements.alerts.list || !elements.alerts.summary) {
+function renderSerialDevices(devices) {
+  if (!elements.serial.list || !elements.serial.summary) {
     return;
   }
-  elements.alerts.list.textContent = "";
-  if (!alerts || alerts.length === 0) {
+  elements.serial.list.textContent = "";
+  if (!devices || devices.length === 0) {
     const item = document.createElement("li");
-    item.textContent = "No active alerts.";
-    elements.alerts.list.appendChild(item);
-    elements.alerts.summary.textContent = "No alerts reported.";
+    item.textContent = "No serial devices detected.";
+    elements.serial.list.appendChild(item);
+    elements.serial.summary.textContent = "No devices";
     return;
   }
 
-  elements.alerts.summary.textContent = `${alerts.length} alerts`;
-  alerts.slice(0, 5).forEach((alert) => {
+  elements.serial.summary.textContent =
+    devices.length === 1 ? "1 device" : `${devices.length} devices`;
+  devices.forEach((device) => {
     const item = document.createElement("li");
     item.className = "status-item";
     const label = document.createElement("span");
     label.className = "status-label";
-    label.textContent = (alert.severity || "info").toUpperCase();
+    label.textContent = device.friendly_name || device.path || device.id || "Device";
     const value = document.createElement("span");
     value.className = "status-value";
-    const timeStr = formatAlertTimestamp(alert.timestamp);
-    value.textContent = timeStr ? `${timeStr} — ${alert.message || "Alert"}` : (alert.message || "Alert");
+    value.textContent = `${device.status || "unknown"} • ${device.chipset || "—"}`;
     item.appendChild(label);
     item.appendChild(value);
-    elements.alerts.list.appendChild(item);
+    elements.serial.list.appendChild(item);
   });
+}
+
+function renderAlerts(alerts) {
+  if (!alerts?.length) {
+    return;
+  }
+  setAlerts(alerts);
 }
 
 const REMOTE_TOOL_DISPLAY = {
@@ -272,11 +298,37 @@ function setupRemoteCopyDelegation() {
     if (!button || !elements.remote.list?.contains(button)) {
       return;
     }
+    e.preventDefault();
+    e.stopPropagation();
     const targetId = button.dataset.copyTarget;
     const target = document.getElementById(targetId);
     if (!target) return;
     const ok = await copyTextToClipboard(target.textContent.trim());
     showToast(ok ? "Copied to clipboard." : "Copy failed. Select and copy manually.", ok ? "success" : "error");
+  });
+}
+
+function setupCaptureStopDelegation() {
+  document.body.addEventListener("click", async (e) => {
+    const button = e.target.closest("[data-action='stop'][data-capture-id]");
+    if (!button || !elements.captures.list?.contains(button)) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    const captureId = button.dataset.captureId;
+    if (!captureId) return;
+    button.disabled = true;
+    button.textContent = "Stopping…";
+    try {
+      await apiPost(`/api/v1/capture/active/${encodeURIComponent(captureId)}/stop`);
+      showToast("Capture stopped.", "success");
+      loadCapturesWithOptions({ suppressError: true });
+    } catch (error) {
+      showToast("Unable to stop capture.", "error");
+      button.disabled = false;
+      button.textContent = "Stop";
+    }
   });
 }
 
@@ -334,6 +386,25 @@ async function loadCapturesWithOptions(options) {
   }
 }
 
+async function loadSerialDevices() {
+  return loadSerialDevicesWithOptions({});
+}
+
+async function loadSerialDevicesWithOptions(options) {
+  try {
+    const payload = await apiGet("/api/v1/serial/devices");
+    const data = extractData(payload) || {};
+    renderSerialDevices(data.devices || []);
+  } catch (error) {
+    if (elements.serial.summary) {
+      elements.serial.summary.textContent = "Unavailable";
+    }
+    if (!options.suppressError) {
+      showToast("Unable to load serial devices.", "error");
+    }
+  }
+}
+
 async function loadAlerts() {
   return loadAlertsWithOptions({});
 }
@@ -344,9 +415,7 @@ async function loadAlertsWithOptions(options) {
     const data = extractData(payload) || {};
     const alerts = data.alerts || data.monitor?.alerts || [];
     renderAlerts(alerts);
-    setAlerts(alerts);
   } catch (error) {
-    elements.alerts.summary.textContent = "Alerts unavailable.";
     if (!options.suppressError) {
       showToast("Unable to load alerts.", "error");
     }
@@ -390,6 +459,7 @@ function startPolling() {
     loadSystemStatusWithOptions({ suppressError: true });
     loadNetworkStatusWithOptions({ suppressError: true });
     loadCapturesWithOptions({ suppressError: true });
+    loadSerialDevicesWithOptions({ suppressError: true });
     loadAlertsWithOptions({ suppressError: true });
     loadRemoteStatusWithOptions({ suppressError: true });
   }, MAX_POLL_INTERVAL);
@@ -449,9 +519,11 @@ function initStatusWebSocket() {
 
 function init() {
   setupRemoteCopyDelegation();
+  setupCaptureStopDelegation();
   loadSystemStatus();
   loadNetworkStatus();
   loadCaptures();
+  loadSerialDevices();
   loadAlerts();
   loadRemoteStatus();
   initStatusWebSocket();

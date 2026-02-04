@@ -36,7 +36,12 @@ function fallbackCopy(text) {
   return ok;
 }
 
-export function initTabs(container) {
+/**
+ * Initialize tabbed UI. Optionally sync with URL hash for deep-linking.
+ * @param {Element} container - Element with [data-tabs] containing tab buttons
+ * @param {{ useHash?: boolean }} options - If useHash: true, read hash on load and update hash on tab change
+ */
+export function initTabs(container, options = {}) {
   if (!container) {
     return;
   }
@@ -48,7 +53,15 @@ export function initTabs(container) {
     return;
   }
 
+  const useHash = options.useHash === true;
+  const validTargets = new Set(
+    Array.from(tabButtons).map((b) => b.dataset.tabTarget)
+  );
+
   const activateTab = (target) => {
+    if (!validTargets.has(target)) {
+      return;
+    }
     tabButtons.forEach((button) => {
       const isActive = button.dataset.tabTarget === target;
       button.classList.toggle("tab-button-active", isActive);
@@ -58,6 +71,12 @@ export function initTabs(container) {
     tabPanels.forEach((panel) => {
       panel.hidden = panel.dataset.tabPanel !== target;
     });
+
+    if (useHash) {
+      const url = new URL(window.location.href);
+      url.hash = target;
+      window.history.replaceState(null, "", url.toString());
+    }
   };
 
   tabButtons.forEach((button) => {
@@ -66,7 +85,13 @@ export function initTabs(container) {
     });
   });
 
-  activateTab(tabButtons[0].dataset.tabTarget);
+  const initialTarget = useHash
+    ? (() => {
+        const hash = window.location.hash.slice(1);
+        return validTargets.has(hash) ? hash : tabButtons[0].dataset.tabTarget;
+      })()
+    : tabButtons[0].dataset.tabTarget;
+  activateTab(initialTarget);
 }
 
 export function createStatusItem(label, value) {
