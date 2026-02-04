@@ -15,6 +15,9 @@ const elements = {
   filesChangedSection: document.getElementById("files-changed-section"),
   filesChangedList: document.getElementById("files-changed-list"),
   detailsEmpty: document.getElementById("update-details-empty"),
+  manualUpdateSection: document.getElementById("manual-update-section"),
+  manualUpdateCommand: document.getElementById("manual-update-command"),
+  copyManualCommand: document.getElementById("copy-manual-command"),
 };
 
 function showToast(message, variant = "info") {
@@ -109,6 +112,17 @@ function renderUpdateStatus(data) {
   const hasDetails = hasCommitInfo || filesChanged.length > 0;
   if (elements.detailsEmpty) {
     elements.detailsEmpty.hidden = hasDetails;
+  }
+
+  const manualCmd = data?.manual_update_command;
+  if (elements.manualUpdateSection && elements.manualUpdateCommand) {
+    if (data?.update_available && manualCmd) {
+      elements.manualUpdateSection.hidden = false;
+      elements.manualUpdateCommand.textContent = manualCmd;
+    } else {
+      elements.manualUpdateSection.hidden = true;
+      elements.manualUpdateCommand.textContent = "";
+    }
   }
 }
 
@@ -323,6 +337,19 @@ function setupActions() {
   if (logClose && logWrapper) {
     logClose.addEventListener("click", () => {
       logWrapper.hidden = true;
+    });
+  }
+
+  if (elements.copyManualCommand && elements.manualUpdateCommand) {
+    elements.copyManualCommand.addEventListener("click", async () => {
+      const cmd = elements.manualUpdateCommand.textContent;
+      if (!cmd) return;
+      try {
+        await navigator.clipboard.writeText(cmd);
+        showToast("Command copied to clipboard.", "success");
+      } catch {
+        showToast("Could not copy to clipboard.", "error");
+      }
     });
   }
 

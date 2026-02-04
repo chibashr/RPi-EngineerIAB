@@ -556,6 +556,14 @@ See API-REFERENCE.md for:
 - Backup/restore requires root
 - Web interface triggers update via authenticated service call
 
+### Update without sudo (alternative deployment)
+
+When the app runs in an environment where sudo cannot run (e.g. container with `no-new-privileges`), the update manager falls back to running `git fetch` and `git reset --hard` in-process as the service user. That fallback requires the install directory to be writable by the service user.
+
+- **New installs:** Run the installer with `RPI_ENGINEER_UPDATE_WITHOUT_SUDO=1` so the install directory is made group-writable; in-app updates can then succeed without sudo.
+- **Existing installs:** Re-run the installer with that variable (e.g. Upgrade mode) to apply the same permissions, or run `chmod -R g+w` on the install dir as root and ensure the service user is in the owning group.
+- The web interface shows a copyable "Update manually" command for use via SSH when in-app update fails. See docs/troubleshooting/common-issues.html.
+
 ---
 
 ## Document Control

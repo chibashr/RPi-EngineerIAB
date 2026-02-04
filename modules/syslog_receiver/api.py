@@ -77,5 +77,38 @@ def clear():
     return success_response({"cleared": target})
 
 
+@syslog_bp.post("/start")
+def start():
+    config = receiver.load_config()
+    config["enabled"] = True
+    receiver.save_config(config)
+    receiver.start_receiver()
+    return success_response(receiver.get_status())
+
+
+@syslog_bp.post("/stop")
+def stop():
+    receiver.stop_receiver()
+    config = receiver.load_config()
+    config["enabled"] = False
+    receiver.save_config(config)
+    return success_response(receiver.get_status())
+
+
+@syslog_bp.post("/restart")
+def restart():
+    receiver.stop_receiver()
+    config = receiver.load_config()
+    config["enabled"] = True
+    receiver.save_config(config)
+    receiver.start_receiver()
+    return success_response(receiver.get_status())
+
+
+@syslog_bp.get("/storage")
+def storage():
+    return success_response(receiver.get_storage_info())
+
+
 def register_routes(app) -> None:  # type: ignore[no-untyped-def]
     app.register_blueprint(syslog_bp)

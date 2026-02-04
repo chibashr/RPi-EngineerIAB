@@ -300,6 +300,8 @@ class UpdateManager:
                 last_update=last_update,
                 files_changed=[],
                 branch=branch,
+                root_dir=root_dir,
+                repo=repo,
             )
 
         # Prefer git-pull–style check when the install (or running code) is a git repo
@@ -332,6 +334,8 @@ class UpdateManager:
                     available_commit_author=available_commit_author,
                     files_changed=files_changed[:200],
                     branch=branch,
+                    root_dir=root_dir,
+                    repo=repo,
                 )
 
         # Fallback: not a git repo; compare remote ref and tree blobs to install directory
@@ -354,6 +358,8 @@ class UpdateManager:
                 last_update=last_update,
                 files_changed=[],
                 branch=branch,
+                root_dir=root_dir,
+                repo=repo,
             )
         ref_differs = bool(available and available != current_hash)
         files_changed = []
@@ -392,7 +398,18 @@ class UpdateManager:
             available_commit_author=available_commit_author,
             files_changed=files_changed[:200],
             branch=branch,
+            root_dir=root_dir,
+            repo=repo,
         )
+
+    def _manual_update_command(
+        self, root_dir: Path, repo: str, branch: str, target_version: str
+    ) -> Optional[str]:
+        """Build the command to run manually via SSH when in-app update fails (e.g. permissions)."""
+        script = root_dir / "bin" / "apply-update.sh"
+        if not script.exists():
+            return None
+        return f'sudo {script} "{repo}" {branch} {root_dir} {self._version_file} {target_version}'
 
     def _check_response(
         self,
@@ -407,9 +424,11 @@ class UpdateManager:
         available_since: Optional[str] = None,
         available_commit_message: Optional[str] = None,
         available_commit_author: Optional[str] = None,
+        root_dir: Optional[Path] = None,
+        repo: Optional[str] = None,
     ) -> Dict[str, object]:
         """Build the standard check_for_updates response dict."""
-        return {
+        out: Dict[str, object] = {
             "current_version": current_version,
             "update_available": update_available,
             "available_version": available_version,
@@ -421,6 +440,11 @@ class UpdateManager:
             "files_changed": files_changed,
             "update_branch": branch,
         }
+        if update_available and root_dir and repo and available_version:
+            cmd = self._manual_update_command(root_dir, repo, branch, available_version)
+            if cmd:
+                out["manual_update_command"] = cmd
+        return out
 
     def apply_update(
         self,
@@ -939,7 +963,15 @@ class UpdateManager:
                         check=False,
                     )
                     if reset.returncode != 0:
-                        raise RuntimeError(reset.stderr.strip() or "git reset failed")
+                        err = (reset.stderr or "").strip() or (reset.stdout or "").strip()
+                        if "Permission denied" in err or "unable to unlink" in err:
+                            raise RuntimeError(
+                                "Repository directory is not writable by this user (files owned by root or another user). "
+                                "Run the update manually via SSH with the command shown in the Updates page, or make the "
+                                "install directory writable by the API user (chmod -R g+w, add user to group). "
+                                "See docs/troubleshooting/common-issues.html for details."
+                            ) from None
+                        raise RuntimeError(err or "git reset failed")
                     emit("Writing version file...")
                 except (OSError, subprocess.TimeoutExpired) as exc:
                     raise RuntimeError(f"Git update failed: {exc}") from exc

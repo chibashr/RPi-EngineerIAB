@@ -181,6 +181,16 @@
                 <div class="info-value" id="available-since">--</div>
               </div>
             </div>
+            <div class="manual-update-section" id="manual-update-section" hidden>
+              <div class="info-label">Update manually (if in-app update fails)</div>
+              <p class="section-muted" style="margin-top: 0.25rem;">
+                If the in-app update fails with permission errors (e.g. in a container), run this command via SSH on the device:
+              </p>
+              <div class="manual-command-row">
+                <code class="manual-command" id="manual-update-command"></code>
+                <button type="button" class="btn btn-secondary btn-sm" id="copy-manual-command" title="Copy to clipboard">Copy</button>
+              </div>
+            </div>
             <details class="update-details" id="update-details">
               <summary class="update-details-summary">More details</summary>
               <div class="update-details-content">

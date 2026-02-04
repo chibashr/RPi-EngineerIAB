@@ -62,6 +62,21 @@ def _db_path() -> Path:
     return _data_dir() / "messages.db"
 
 
+def get_storage_info() -> Dict[str, object]:
+    """Return storage directory path and list of files (name, size, mtime) for the explorer."""
+    data = _data_dir()
+    files: List[Dict[str, object]] = []
+    for p in sorted(data.iterdir()):
+        if p.is_file():
+            stat = p.stat()
+            files.append({
+                "name": p.name,
+                "size": stat.st_size,
+                "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+            })
+    return {"path": str(data), "files": files}
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
