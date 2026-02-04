@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Auto-generated from bin/install-src/*.sh. Do not edit directly.
 
 set -euo pipefail
 
@@ -283,14 +284,6 @@ run_preflight_checks() {
     check_internet
     check_dpkg_status
     log_info "Pre-flight checks passed."
-}
-
-get_arch() {
-    if command -v dpkg >/dev/null 2>&1; then
-        dpkg --print-architecture
-    else
-        uname -m
-    fi
 }
 
 get_default_hotspot_ssid() {
@@ -682,7 +675,6 @@ apt_install_interactive() {
 install_system_dependencies() {
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "deps"; then log_info "Step 'deps' already completed; skipping."; return 0; fi
     log_step "Installing system dependencies"
-    echo "Ensuring dpkg/apt state is clean..."
     DEBIAN_FRONTEND=noninteractive dpkg --configure -a >> "$INSTALL_LOG" 2>&1 || true
     DEBIAN_FRONTEND=noninteractive apt-get install -f -y >> "$INSTALL_LOG" 2>&1 || true
     if ! dpkg --audit >/dev/null 2>&1; then
@@ -692,17 +684,13 @@ install_system_dependencies() {
         echo "  3. If errors mention 'parsing' or 'near line 0', edit /var/lib/dpkg/status: backup with sudo cp /var/lib/dpkg/status /var/lib/dpkg/status.bak, then remove or fix the corrupt lines (often garbage/binary near the top)."
         exit 1
     fi
-    echo "Updating package lists..."
     apt-get update 2>&1 | tee -a "$INSTALL_LOG"
-    echo "Package lists updated."
-    echo
-    echo "Upgrading existing packages (this may take several minutes)..."
+    echo "Upgrading packages (may take several minutes)..."
     if DEBIAN_FRONTEND=noninteractive apt-get upgrade -y 2>&1 | tee -a "$INSTALL_LOG"; then
-        echo "Upgrade complete."
+        :
     else
-        log_warn "Upgrade had issues (see $INSTALL_LOG); continuing with installation."
+        log_warn "Upgrade had issues (see $INSTALL_LOG); continuing."
     fi
-    echo
     mark_step_done "deps"
 }
 
@@ -763,9 +751,8 @@ install_required_packages() {
             log_info "Package already installed: $package"
             continue
         fi
-        echo "Installing $package..."
         if apt_install_interactive "$package"; then
-            echo "  $package installed."
+            :
         else
             log_error "Failed to install $package. Check $INSTALL_LOG for details."
             if echo "$package" | grep -q python3 && [ -f "$INSTALL_LOG" ] && grep -q "cannot get content of\|py3clean\|error processing package python3" "$INSTALL_LOG" 2>/dev/null; then
@@ -781,15 +768,13 @@ install_required_packages() {
             exit 1
         fi
     done
-    # nginx required for web interface; try distro first, then nginx.org (avoids Trixie parse issues)
     if ! command -v nginx >/dev/null 2>&1; then
-        echo "Installing nginx..."
         if apt_install_interactive "nginx"; then
-            echo "  nginx installed (from distribution)."
+            :
         else
-            log_warn "Distribution nginx failed (e.g. nginx-common parse issues on Trixie). Trying nginx.org repository..."
+            log_warn "Distribution nginx failed (e.g. Trixie parse issues). Trying nginx.org..."
             if install_nginx_from_nginx_org; then
-                echo "  nginx installed (from nginx.org)."
+                :
             else
                 log_error "nginx is required for the web interface but could not be installed. Try: sudo apt install nginx, or install from https://nginx.org/en/linux_packages.html"
                 exit 1
@@ -799,7 +784,6 @@ install_required_packages() {
         log_info "nginx already installed"
     fi
     validate_dependencies
-    echo "Required packages installed."
     DEPS_INSTALLED="yes"
     mark_step_done "packages"
 }
@@ -812,14 +796,10 @@ install_python_dependencies() {
         echo "Removing existing virtual environment to ensure a clean install..."
         rm -rf "$venv_path"
     fi
-    echo "Creating virtual environment..."
     python3 -m venv "$venv_path" 2>&1 | tee -a "$INSTALL_LOG"
-    echo "Virtual environment created."
     if [ -f "$INSTALL_DIR/requirements.txt" ]; then
-        echo "Installing Python packages from requirements.txt..."
         "$venv_path/bin/pip" install --upgrade pip 2>&1 | tee -a "$INSTALL_LOG"
         "$venv_path/bin/pip" install -r "$INSTALL_DIR/requirements.txt" 2>&1 | tee -a "$INSTALL_LOG"
-        echo "Python packages installed."
     else
         log_warn "requirements.txt not found under $INSTALL_DIR"
     fi
@@ -829,11 +809,9 @@ install_python_dependencies() {
 create_directories() {
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "directories"; then log_info "Step 'directories' already completed; skipping."; APP_INSTALLED="yes"; return 0; fi
     log_step "Creating directories"
-    echo "Creating $INSTALL_DIR, $CONFIG_DIR, $DATA_DIR, $LOG_DIR..."
     mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$DATA_DIR" "$LOG_DIR"
     mkdir -p "$CONFIG_DIR/network_profiles" "$CONFIG_DIR/module_config"
     mkdir -p "$DATA_DIR/captures" "$DATA_DIR/serial_logs" "$DATA_DIR/backups" "$DATA_DIR/database" "$DATA_DIR/updates" "$DATA_DIR/staging"
-    echo "Directories created."
     APP_INSTALLED="yes"
     mark_step_done "directories"
 }
@@ -1097,10 +1075,8 @@ setup_user_permissions() {
     # Make install dir group-writable so the web UI can apply updates (service user runs git in-process
     # when sudo is unavailable, or when sudoers rule is not present; group write allows both paths).
     chmod -R g+w "$INSTALL_DIR" 2>/dev/null || true
-    log_info "Install dir is group-writable so updates from the web UI can be applied."
     usermod -a -G dialout "$SERVICE_USER" || true
     usermod -a -G netdev "$SERVICE_USER" || true
-    echo "Permissions configured."
     mark_step_done "permissions"
 }
 
@@ -1157,7 +1133,6 @@ EOF
 configure_services() {
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "services"; then log_info "Step 'services' already completed; skipping."; SERVICES_CONFIGURED="yes"; return 0; fi
     log_step "Configuring systemd services"
-    echo "Creating systemd service units..."
     create_master_service
     local api_env="Environment=RPI_ENGINEER_ROOT=${INSTALL_DIR}
 Environment=RPI_ENGINEER_DRY_RUN=0"
@@ -1171,7 +1146,6 @@ Environment=RPI_ENGINEER_DRY_RUN=0"
     create_service_unit "rpi-engineer-logging" "RPi Engineer Logging Service" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/logging_service/manager.py" "$SERVICE_USER"
     if [ -d /run/systemd/system ]; then
         systemctl daemon-reload
-        echo "Services configured and daemon reloaded."
     else
         log_warn "systemd not detected; skipping daemon-reload."
     fi
@@ -1182,7 +1156,6 @@ Environment=RPI_ENGINEER_DRY_RUN=0"
 configure_nginx() {
     # Always re-apply nginx config so updates (e.g. 403 fix) take effect when install is re-run.
     log_step "Configuring nginx"
-    echo "Writing nginx configuration..."
     if ! command -v nginx >/dev/null 2>&1; then
         log_warn "nginx not found; skipping nginx configuration."
         return 0
@@ -1246,48 +1219,31 @@ EOF
         fi
         if getent passwd "$NGINX_USER" >/dev/null 2>&1; then
             chown -R "$NGINX_USER:$NGINX_USER" "$INSTALL_DIR/web"
-            echo "Web root ownership set to $NGINX_USER for nginx."
         else
             chmod -R o+rX "$INSTALL_DIR/web"
-            echo "Web root permissions set for nginx read access (user $NGINX_USER not found)."
         fi
         # Ensure nginx can traverse parent path (e.g. /opt, /opt/rpi-engineer).
         for d in "$(dirname "$INSTALL_DIR")" "$INSTALL_DIR"; do
             [ -d "$d" ] && chmod o+x "$d" 2>/dev/null || true
         done
     fi
-    echo "Testing nginx configuration..."
     nginx -t 2>&1 | tee -a "$INSTALL_LOG"
     if [ -d /run/systemd/system ]; then
         systemctl restart nginx
-        echo "nginx restarted."
     else
         log_warn "systemd not detected; nginx config written but not restarted."
     fi
-    SCRIPT_PATH="$INSTALL_DIR/bin/apply-web-permissions.sh"
-    if [ -f "$SCRIPT_PATH" ]; then
-        chmod 755 "$SCRIPT_PATH"
-        SUDOERS_FILE="/etc/sudoers.d/rpi-engineer-apply-web-permissions"
-        echo "$SERVICE_USER ALL=(root) NOPASSWD: $SCRIPT_PATH" > "$SUDOERS_FILE"
-        chmod 440 "$SUDOERS_FILE"
-        echo "Sudoers rule added so updates can re-apply web permissions."
-    fi
-    APPLY_UPDATE_SCRIPT="$INSTALL_DIR/bin/apply-update.sh"
-    if [ -f "$APPLY_UPDATE_SCRIPT" ]; then
-        chmod 755 "$APPLY_UPDATE_SCRIPT"
-        SUDOERS_UPDATE="/etc/sudoers.d/rpi-engineer-apply-update"
-        echo "$SERVICE_USER ALL=(root) NOPASSWD: $APPLY_UPDATE_SCRIPT" > "$SUDOERS_UPDATE"
-        chmod 440 "$SUDOERS_UPDATE"
-        echo "Sudoers rule added so in-app updates can apply via git."
-    fi
-    CREATE_BACKUP_SCRIPT="$INSTALL_DIR/bin/create-config-backup.sh"
-    if [ -f "$CREATE_BACKUP_SCRIPT" ]; then
-        chmod 755 "$CREATE_BACKUP_SCRIPT"
-        SUDOERS_BACKUP="/etc/sudoers.d/rpi-engineer-create-config-backup"
-        echo "$SERVICE_USER ALL=(root) NOPASSWD: $CREATE_BACKUP_SCRIPT" > "$SUDOERS_BACKUP"
-        chmod 440 "$SUDOERS_BACKUP"
-        echo "Sudoers rule added so in-app updates can create config backup (e.g. read remote_access.conf)."
-    fi
+    add_sudoers_rule() {
+        local script="$1" name="$2"
+        [ -f "$script" ] || return 0
+        chmod 755 "$script"
+        mkdir -p /etc/sudoers.d
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: $script" > "/etc/sudoers.d/rpi-engineer-$name"
+        chmod 440 "/etc/sudoers.d/rpi-engineer-$name"
+    }
+    add_sudoers_rule "$INSTALL_DIR/bin/apply-web-permissions.sh" "apply-web-permissions"
+    add_sudoers_rule "$INSTALL_DIR/bin/apply-update.sh" "apply-update"
+    add_sudoers_rule "$INSTALL_DIR/bin/create-config-backup.sh" "create-config-backup"
     mark_step_done "nginx"
 }
 
@@ -1590,6 +1546,14 @@ install_modules() {
     mark_step_done "modules"
 }
 
+get_arch() {
+    if command -v dpkg >/dev/null 2>&1; then
+        dpkg --print-architecture
+    else
+        uname -m
+    fi
+}
+
 install_anydesk() {
     log_step "Installing AnyDesk"
     if dpkg -s anydesk >/dev/null 2>&1; then
@@ -1759,7 +1723,6 @@ setup_remote_access() {
 generate_configs() {
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "configs"; then log_info "Step 'configs' already completed; skipping."; return 0; fi
     log_step "Generating configuration files"
-    echo "Writing system.conf, remote_access.conf..."
     mkdir -p "$CONFIG_DIR"
     cat > "$CONFIG_DIR/system.conf" <<EOF
 [general]
@@ -1786,7 +1749,6 @@ mode=simple
 level=INFO
 retention_days=7
 EOF
-    echo "Configuration files written."
     mark_step_done "configs"
 }
 
@@ -1824,7 +1786,6 @@ enable_services() {
                 ;;
         esac
     done
-    echo "Services enabled (hotspot services will start after reboot)."
     mark_step_done "enable_services"
 }
 
@@ -1998,11 +1959,11 @@ main() {
         deploy_files
         progress_bar 5 16 "Python dependencies"
         install_python_dependencies
-        progress_bar 6 16 "User permissions"
+        progress_bar 6 16 "Permissions"
         setup_user_permissions
-        progress_bar 7 16 "Systemd services"
+        progress_bar 7 16 "Services"
         configure_services
-        progress_bar 8 16 "Nginx"
+        progress_bar 8 16 "nginx"
         configure_nginx
         progress_bar 9 16 "WiFi hotspot"
         configure_hotspot

@@ -10,20 +10,22 @@ store a 40-char git hash (after an in-app update) or a fallback version string.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
 import shutil
 import subprocess
 import tempfile
-import urllib.parse
-import urllib.request
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Dict, Optional
+
+from ._backup import _add_dir_to_archive, _restore_tree, _safe_extract
+from ._git import _check_updates_via_git, _git_blob_sha, _git_safe_dir, _is_hash
+from ._github import _github_commit_info, _github_repo_slug, _github_tree_blobs
+from ._version import _current_version, _local_git_hash, _resolve_version_file, _write_version
 
 
 DEFAULT_UPDATE_REPO = "https://github.com/chibashr/RPi-EngineerIAB.git"
@@ -55,10 +57,6 @@ def _which(binary: str) -> Optional[str]:
     return shutil.which(binary)
 
 
-def _is_hash(value: str) -> bool:
-    return bool(value) and len(value) == 40 and all(ch in "0123456789abcdef" for ch in value)
-
-
 def _sudo_unavailable_message(err: str) -> bool:
     """True if the error indicates sudo cannot run (e.g. container no-new-privileges)."""
     if not err:
@@ -67,187 +65,6 @@ def _sudo_unavailable_message(err: str) -> bool:
     return "no new privileges" in lower or "adjust the container" in lower
 
 
-def _github_repo_slug(repo_url: str) -> Optional[str]:
-    """Return 'owner/repo' for GitHub URLs, else None."""
-    if not repo_url or "github.com" not in repo_url:
-        return None
-    try:
-        path = urllib.parse.urlparse(repo_url.rstrip("/")).path.strip("/")
-        if path.endswith(".git"):
-            path = path[:-4]
-        parts = path.split("/")
-        if len(parts) >= 2:
-            return f"{parts[0]}/{parts[1]}"
-    except Exception:
-        pass
-    return None
-
-
-def _github_commit_date(repo_slug: str, commit_hash: str) -> Optional[str]:
-    """Fetch commit date (ISO) from GitHub API. Returns None on any failure."""
-    info = _github_commit_info(repo_slug, commit_hash)
-    return info.get("date") if info else None
-
-
-def _github_commit_info(repo_slug: str, commit_hash: str) -> Optional[Dict[str, str]]:
-    """Fetch commit date, message, and author from GitHub API. Returns None on any failure."""
-    if not _is_hash(commit_hash):
-        return None
-    url = f"https://api.github.com/repos/{repo_slug}/commits/{commit_hash}"
-    try:
-        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-        commit = data.get("commit") or {}
-        author = commit.get("author") or {}
-        return {
-            "date": author.get("date") or "",
-            "message": (commit.get("message") or "").strip(),
-            "author": author.get("name") or commit.get("author", {}).get("name") or "",
-        }
-    except Exception:
-        return None
-
-
-def _github_tree_blobs(repo_slug: str, commit_ref: str) -> Optional[list[tuple[str, str]]]:
-    """Fetch recursive tree for commit; return list of (path, blob_sha) for type blob under CORE_DIRS."""
-    if not commit_ref:
-        return None
-    try:
-        url = f"https://api.github.com/repos/{repo_slug}/commits/{commit_ref}"
-        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            commit_data = json.loads(resp.read().decode())
-        tree_url = (commit_data.get("commit") or {}).get("tree", {}).get("url")
-        if not tree_url:
-            return None
-        req2 = urllib.request.Request(tree_url + "?recursive=1", headers={"Accept": "application/vnd.github.v3+json"})
-        with urllib.request.urlopen(req2, timeout=15) as resp2:
-            tree_data = json.loads(resp2.read().decode())
-        blobs: list[tuple[str, str]] = []
-        for node in tree_data.get("tree") or []:
-            if node.get("type") != "blob":
-                continue
-            path = node.get("path") or ""
-            if not path or path.startswith((".git", ".github", "__pycache__")) or ".pyc" in path:
-                continue
-            top = path.split("/")[0] if "/" in path else path
-            if top not in CORE_DIRS:
-                continue
-            blobs.append((path, node.get("sha") or ""))
-        return blobs
-    except Exception:
-        return None
-
-
-def _git_blob_sha(content: bytes) -> str:
-    """Compute git blob object SHA1 (blob {size}\\0{content})."""
-    blob = b"blob " + str(len(content)).encode() + b"\0" + content
-    return hashlib.sha1(blob).hexdigest()
-
-
-def _git_safe_dir(repo_dir: Path) -> list[str]:
-    """Git 2.35.2+ dubious ownership: allow repo_dir when run by non-owner (e.g. service user)."""
-    return ["-c", f"safe.directory={repo_dir}"]
-
-
-def _check_updates_via_git(repo_dir: Path, repo: str, branch: str) -> Optional[tuple[str, str, list[str]]]:
-    """Run a git-pull–style check: fetch origin, compare HEAD to origin/branch, list differing files.
-    Returns (local_hash, remote_hash, files_changed) or None on failure.
-    files_changed is limited to paths under CORE_DIRS.
-    """
-    if not repo_dir.is_dir() or not (repo_dir / ".git").is_dir():
-        return None
-    safe = _git_safe_dir(repo_dir)
-    try:
-        # Ensure origin exists and points to the configured repo so fetch uses it
-        r = subprocess.run(
-            ["git", *safe, "remote", "get-url", "origin"],
-            cwd=repo_dir,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if r.returncode != 0:
-            subprocess.run(
-                ["git", *safe, "remote", "add", "origin", repo],
-                cwd=repo_dir,
-                capture_output=True,
-                check=False,
-            )
-        else:
-            subprocess.run(
-                ["git", *safe, "remote", "set-url", "origin", repo],
-                cwd=repo_dir,
-                capture_output=True,
-                check=False,
-            )
-        fetch = subprocess.run(
-            ["git", *safe, "fetch", "origin", branch],
-            cwd=repo_dir,
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-        if fetch.returncode != 0:
-            return None
-        local_ref = subprocess.run(
-            ["git", *safe, "rev-parse", "HEAD"],
-            cwd=repo_dir,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if local_ref.returncode != 0:
-            return None
-        local_hash = local_ref.stdout.strip()
-        if not _is_hash(local_hash):
-            return None
-        remote_ref = subprocess.run(
-            ["git", *safe, "rev-parse", f"origin/{branch}"],
-            cwd=repo_dir,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if remote_ref.returncode != 0:
-            return None
-        remote_hash = remote_ref.stdout.strip()
-        if not _is_hash(remote_hash):
-            return None
-        # List files that differ between HEAD and origin/branch, under core trees only
-        diff = subprocess.run(
-            ["git", *safe, "diff", "--name-only", "HEAD", f"origin/{branch}"],
-            cwd=repo_dir,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        files_changed: list[str] = []
-        if diff.returncode == 0 and diff.stdout:
-            for line in diff.stdout.strip().splitlines():
-                path = line.strip().replace("\\", "/")
-                if not path:
-                    continue
-                top = path.split("/")[0] if "/" in path else path
-                if top in CORE_DIRS:
-                    files_changed.append(path)
-        return (local_hash, remote_hash, files_changed)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-
-
-def _safe_extract(archive: zipfile.ZipFile, destination: Path) -> None:
-    destination = destination.resolve()
-    for member in archive.infolist():
-        name = member.filename
-        if not name or name.endswith("/"):
-            continue
-        target = (destination / name).resolve()
-        if not str(target).startswith(str(destination)):
-            raise RuntimeError("Archive contains unsafe paths")
-        archive.extract(member, destination)
 
 
 @dataclass
@@ -272,7 +89,7 @@ class UpdateManager:
             Path(os.getenv("RPI_ENGINEER_CONFIG_DIR", "/etc/rpi-engineer")),
             repo_root / "config",
         )
-        self._version_file = self._resolve_version_file()
+        self._version_file = _resolve_version_file(self._config_dir, self._data_dir)
         self._state_file = self._data_dir / "updates" / "state.json"
         self._state_file_fallback = repo_root / "data" / "updates" / "state.json"
         self._state_file_temp = Path(tempfile.gettempdir()) / "rpi-engineer-updates" / "state.json"
@@ -286,7 +103,7 @@ class UpdateManager:
         """
         state = self._read_state()
         last_update = state.applied_at if state else None
-        current_version = self._current_version()
+        current_version = _current_version(self._version_file)
         repo = os.getenv("RPI_ENGINEER_UPDATE_REPO", DEFAULT_UPDATE_REPO)
         branch = os.getenv("RPI_ENGINEER_UPDATE_BRANCH", DEFAULT_UPDATE_BRANCH)
         root_dir = Path(os.getenv("RPI_ENGINEER_ROOT", "/opt/rpi-engineer"))
@@ -309,7 +126,7 @@ class UpdateManager:
             self._repo_root if (self._repo_root / ".git").is_dir() else None
         )
         if repo_dir is not None:
-            git_result = _check_updates_via_git(repo_dir, repo, branch)
+            git_result = _check_updates_via_git(repo_dir, repo, branch, CORE_DIRS)
             if git_result is not None:
                 local_hash, available_hash, files_changed = git_result
                 update_available = local_hash != available_hash or len(files_changed) > 0
@@ -348,7 +165,7 @@ class UpdateManager:
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or "Unable to check updates")
         available = result.stdout.split()[0] if result.stdout.strip() else ""
-        current_hash = current_version if _is_hash(current_version) else self._local_git_hash()
+        current_hash = current_version if _is_hash(current_version) else _local_git_hash(self._repo_root)
         if not current_hash:
             return self._check_response(
                 current_version=current_version,
@@ -365,7 +182,7 @@ class UpdateManager:
         files_changed = []
         slug = _github_repo_slug(repo)
         if slug and available and _is_hash(available):
-            blobs = _github_tree_blobs(slug, available)
+            blobs = _github_tree_blobs(slug, available, CORE_DIRS)
             if blobs:
                 for path, remote_sha in blobs:
                     local_path = root_dir / path
@@ -463,7 +280,7 @@ class UpdateManager:
         emit("Creating pre-update config backup...")
         backup_path = self.create_config_backup(label="pre-update")
         emit(f"Backup created: {backup_path.name}")
-        previous_version = self._current_version()
+        previous_version = _current_version(self._version_file)
         target_version = str(update_info.get("available_version") or previous_version)
         state = UpdateState(
             previous_version=previous_version,
@@ -588,7 +405,7 @@ class UpdateManager:
                 "backup_path": state.backup_path,
             }
         self.restore_config(str(backup_path))
-        self._write_version(state.previous_version)
+        self._version_file = _write_version(self._version_file, self._data_dir, state.previous_version)
         return {
             "status": "rolled_back",
             "dry_run": False,
@@ -614,7 +431,7 @@ class UpdateManager:
                         str(self._config_dir),
                         str(self._data_dir),
                         label,
-                        self._current_version(),
+                        _current_version(self._version_file),
                     ],
                     capture_output=True,
                     text=True,
@@ -632,17 +449,17 @@ class UpdateManager:
                 "version": "1.0",
                 "created": _timestamp(),
                 "label": label,
-                "source_version": self._current_version(),
+                "source_version": _current_version(self._version_file),
                 "includes": ["config", "data"],
                 "excludes": excludes,
             }
             archive.writestr("manifest.json", json.dumps(manifest, indent=2))
             if self._config_dir.exists():
-                self._add_dir_to_archive(
+                _add_dir_to_archive(
                     archive, self._config_dir, Path("config"), exclude_names=[]
                 )
             if self._data_dir.exists():
-                self._add_dir_to_archive(
+                _add_dir_to_archive(
                     archive, self._data_dir, Path("data"), exclude_names=excludes
                 )
         return backup_path
@@ -658,69 +475,22 @@ class UpdateManager:
             config_root = extracted / "config"
             data_root = extracted / "data"
             if config_root.exists():
-                self._restore_tree(config_root, self._config_dir)
+                _restore_tree(config_root, self._config_dir)
             else:
-                self._restore_tree(extracted, self._config_dir, skip_manifest=True)
+                _restore_tree(extracted, self._config_dir, skip_manifest=True)
             if data_root.exists():
-                self._restore_tree(data_root, self._data_dir)
+                _restore_tree(data_root, self._data_dir)
         return {
             "restored": True,
             "config_dir": str(self._config_dir),
             "data_dir": str(self._data_dir),
         }
 
-    def _resolve_version_file(self) -> Path:
-        config_path = self._config_dir / "version"
-        data_path = self._data_dir / "version"
-        if config_path.exists():
-            return config_path
-        if data_path.exists():
-            return data_path
-        return config_path
-
     def _current_version(self) -> str:
-        if self._version_file.exists():
-            try:
-                return self._version_file.read_text().strip()
-            except OSError:
-                pass
-        return os.getenv("RPI_ENGINEER_VERSION", "1.0.0")
-
-    def _local_git_hash(self) -> Optional[str]:
-        if not (self._repo_root / ".git").exists():
-            return None
-        try:
-            result = subprocess.run(
-                ["git", *_git_safe_dir(self._repo_root), "rev-parse", "HEAD"],
-                cwd=self._repo_root,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        except OSError:
-            return None
-        if result.returncode != 0:
-            return None
-        value = result.stdout.strip()
-        return value if _is_hash(value) else None
+        return _current_version(self._version_file)
 
     def _write_version(self, version: str) -> None:
-        """Write version to config or data dir; fallback to data dir if config is not writable."""
-        text = str(version).strip()
-        try:
-            self._version_file.parent.mkdir(parents=True, exist_ok=True)
-            self._version_file.write_text(text)
-            return
-        except OSError:
-            pass
-        data_version = self._data_dir / "version"
-        try:
-            data_version.parent.mkdir(parents=True, exist_ok=True)
-            data_version.write_text(text)
-            self._version_file = data_version
-            logger.info("Version written to data dir (config dir not writable): %s", data_version)
-        except OSError as e:
-            raise RuntimeError(f"Cannot write version to {self._version_file} or {data_version}: {e}") from e
+        self._version_file = _write_version(self._version_file, self._data_dir, version)
 
     def _write_state(self, state: UpdateState) -> None:
         payload = {
@@ -975,7 +745,7 @@ class UpdateManager:
                     emit("Writing version file...")
                 except (OSError, subprocess.TimeoutExpired) as exc:
                     raise RuntimeError(f"Git update failed: {exc}") from exc
-                self._write_version(target_version)
+                self._version_file = _write_version(self._version_file, self._data_dir, target_version)
             emit("Applying web permissions...")
             self._apply_web_permissions(root_dir)
             return
@@ -1003,42 +773,7 @@ class UpdateManager:
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(item, destination)
         self._verify_and_repair_core_assets(root_dir, staging_dir)
-        self._write_version(target_version)
+        self._version_file = _write_version(self._version_file, self._data_dir, target_version)
         emit("Applying web permissions...")
         self._apply_web_permissions(root_dir)
 
-    def _add_dir_to_archive(
-        self,
-        archive: zipfile.ZipFile,
-        root: Path,
-        prefix: Path,
-        exclude_names: list[str],
-    ) -> None:
-        for path in root.rglob("*"):
-            if not path.is_file():
-                continue
-            rel = path.relative_to(root)
-            if rel.parts and rel.parts[0] in exclude_names:
-                continue
-            try:
-                archive.write(path, prefix / rel)
-            except OSError as e:
-                logger.warning("Skipping unreadable file in backup: %s (%s)", path, e)
-
-    def _restore_tree(
-        self, source: Path, target_root: Path, skip_manifest: bool = False
-    ) -> None:
-        """Restore files from source to target_root; skip files that fail with permission errors."""
-        for path in source.rglob("*"):
-            if skip_manifest and path.name == "manifest.json":
-                continue
-            relative = path.relative_to(source)
-            target = target_root / relative
-            try:
-                if path.is_dir():
-                    target.mkdir(parents=True, exist_ok=True)
-                else:
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(path, target)
-            except OSError as e:
-                logger.warning("Skipping restore of %s to %s: %s", path, target, e)
