@@ -21,69 +21,32 @@ from services.serial_manager import manager as serial_manager_mod
 class MockSerialPort:
     """Mock serial port for testing without hardware."""
 
-    def __init__(self, *args, **kwargs):
-        self.in_waiting = 0
-        self._closed = False
-        self.writes = []
-
-    def read(self, size=1):
-        if self._closed:
-            raise OSError("Port closed")
-        return b""
-
-    def write(self, data):
-        if self._closed:
-            raise OSError("Port closed")
-        self.writes.append(data)
-        return len(data)
-
-    def flush(self):
-        pass
-
-    def close(self):
-        self._closed = True
-
-    @property
-    def is_open(self):
-        return not self._closed
-
-
-class EchoMockSerialPort:
-    """Mock serial port that echoes Tx back to Rx for accurate loopback testing.
-
-    When write(data) is called, data is appended to an internal read buffer.
-    When read() is called, data is returned from that buffer. Simulates a
-    device (or loopback cable) that echoes transmitted data back.
-    """
-
-    def __init__(self, *args, **kwargs):
-        self._closed = False
+    def __init__(self, *args, echo=False, **kwargs):
         self._read_buffer = bytearray()
-        self._lock = threading.Lock()
+        self._closed = False
         self.writes = []
+        self.echo = echo
 
     @property
     def in_waiting(self):
-        with self._lock:
-            return len(self._read_buffer)
+        return len(self._read_buffer)
 
     def read(self, size=1):
         if self._closed:
             raise OSError("Port closed")
-        with self._lock:
-            n = min(size, len(self._read_buffer))
-            if n == 0:
-                return b""
-            data = bytes(self._read_buffer[:n])
-            del self._read_buffer[:n]
-            return data
+        n = min(size, len(self._read_buffer))
+        if n == 0:
+            return b""
+        data = bytes(self._read_buffer[:n])
+        del self._read_buffer[:n]
+        return data
 
     def write(self, data):
         if self._closed:
             raise OSError("Port closed")
         self.writes.append(data)
-        with self._lock:
-            self._read_buffer.extend(data)
+        if self.echo:
+            self.inject_rx(data)
         return len(data)
 
     def flush(self):
@@ -92,12 +55,19 @@ class EchoMockSerialPort:
     def close(self):
         self._closed = True
 
-    def send_break(self, duration=0.25):
-        pass
+    def inject_rx(self, data: bytes | str) -> None:
+        """Simulate data received from the device (for Rx testing)."""
+        if isinstance(data, str):
+            data = data.encode("utf-8")
+        self._read_buffer.extend(data)
 
     @property
     def is_open(self):
         return not self._closed
+
+    def send_break(self, duration=0.25):
+        """Mock break signal (no-op)."""
+        pass
 
 
 @pytest.mark.integration
@@ -275,12 +245,8 @@ def test_serial_websocket_with_live_server(monkeypatch, tmp_path):
 
 
 @pytest.mark.integration
-def test_serial_tx_and_rx_echo_loopback(monkeypatch, tmp_path):
-    """Verify Tx (write to serial) and Rx (read from serial, forward to WebSocket) with echo mock.
-
-    Uses EchoMockSerialPort: data written is echoed back to read(). This accurately
-    tests the full path: WebSocket send -> backend write -> mock -> backend read -> WebSocket receive.
-    """
+def test_serial_tx_accuracy(monkeypatch, tmp_path):
+    """Verify data sent via WebSocket is correctly written to the serial port (Tx)."""
     try:
         from simple_websocket import Client, ConnectionClosed
     except ImportError:
@@ -290,24 +256,18 @@ def test_serial_tx_and_rx_echo_loopback(monkeypatch, tmp_path):
         serial_manager,
         "_scan_devices",
         lambda: [
-            {
-                "id": "/dev/ttyLOOP0",
-                "path": "/dev/ttyLOOP0",
-                "friendly_name": "Loopback Test",
-                "chipset": "Unknown",
-            }
+            {"id": "/dev/ttyTEST0", "path": "/dev/ttyTEST0", "friendly_name": "Test", "chipset": "Unknown"}
         ],
     )
     monkeypatch.setattr(serial_manager_mod, "LOG_DIR", tmp_path)
 
     mock_serial = MagicMock()
-    echo_port = EchoMockSerialPort()
-    mock_serial.Serial.return_value = echo_port
+    mock_port = MockSerialPort()
+    mock_serial.Serial.return_value = mock_port
     mock_serial.PARITY_NONE = 0
     mock_serial.EIGHTBITS = 8
     mock_serial.STOPBITS_ONE = 1
 
-    port_holder = [None]
     with patch("services.api_gateway.websockets.serial", mock_serial):
         serial_manager._sessions.clear()
         app = create_app()
@@ -318,6 +278,7 @@ def test_serial_tx_and_rx_echo_loopback(monkeypatch, tmp_path):
             port_holder[0] = srv.server_port
             srv.serve_forever()
 
+        port_holder = [None]
         thread = threading.Thread(target=run_server, daemon=True)
         thread.start()
         for _ in range(50):
@@ -327,47 +288,198 @@ def test_serial_tx_and_rx_echo_loopback(monkeypatch, tmp_path):
         if port_holder[0] is None:
             pytest.skip("Server port not available")
 
-        port = port_holder[0]
         with app.test_client() as client:
             r = client.post(
                 "/api/v1/serial/sessions",
-                json={"device_id": "/dev/ttyLOOP0", "config": {}},
+                json={"device_id": "/dev/ttyTEST0", "config": {}},
                 content_type="application/json",
             )
             assert r.status_code in (200, 201)
             session_id = r.get_json()["data"]["session_id"]
 
-        ws_url = f"ws://127.0.0.1:{port}/ws/serial/{session_id}"
-        ws = Client.connect(ws_url)
-
-        sent_text = "hello"
-        received_data = []
-        received_status = []
-
-        ws.send(json.dumps({"type": "data", "data": sent_text}))
-        deadline = time.time() + 3
-        while time.time() < deadline:
-            try:
-                msg = ws.receive(timeout=0.2)
-                if msg:
-                    obj = json.loads(msg)
-                    if obj.get("type") == "data":
-                        received_data.append(obj.get("data", ""))
-                    elif obj.get("type") == "status":
-                        received_status.append(obj)
-            except ConnectionClosed:
-                break
-            except Exception:
-                break
-            if received_data:
-                break
-
+        ws = Client.connect(f"ws://127.0.0.1:{port_holder[0]}/ws/serial/{session_id}")
         try:
-            ws.close()
-        except Exception:
-            pass
+            test_payloads = ["hello", "reboot\n", "a", "\r\n", "\x01"]
+            for payload in test_payloads:
+                mock_port.writes.clear()
+                ws.send(json.dumps({"type": "data", "data": payload}))
+                time.sleep(0.15)
+                written = b"".join(mock_port.writes)
+                assert payload.encode("utf-8") in written or written == payload.encode("utf-8"), (
+                    f"Tx failed: sent {payload!r}, wrote {written!r}"
+                )
+        finally:
+            try:
+                ws.close()
+            except Exception:
+                pass
 
-        assert len(echo_port.writes) >= 1, "Tx: no data written to serial"
-        assert sent_text.encode() in b"".join(echo_port.writes), "Tx: sent text not in writes"
-        assert len(received_data) >= 1, "Rx: no data received over WebSocket (echo not received)"
-        assert "".join(received_data) == sent_text, f"Rx: echo mismatch got {received_data!r}"
+
+@pytest.mark.integration
+def test_serial_rx_accuracy(monkeypatch, tmp_path):
+    """Verify data from the serial port is correctly received via WebSocket (Rx)."""
+    try:
+        from simple_websocket import Client, ConnectionClosed
+    except ImportError:
+        pytest.skip("simple-websocket not available")
+
+    monkeypatch.setattr(
+        serial_manager,
+        "_scan_devices",
+        lambda: [
+            {"id": "/dev/ttyTEST0", "path": "/dev/ttyTEST0", "friendly_name": "Test", "chipset": "Unknown"}
+        ],
+    )
+    monkeypatch.setattr(serial_manager_mod, "LOG_DIR", tmp_path)
+
+    mock_serial = MagicMock()
+    mock_port = MockSerialPort()
+    mock_serial.Serial.return_value = mock_port
+    mock_serial.PARITY_NONE = 0
+    mock_serial.EIGHTBITS = 8
+    mock_serial.STOPBITS_ONE = 1
+
+    with patch("services.api_gateway.websockets.serial", mock_serial):
+        serial_manager._sessions.clear()
+        app = create_app()
+
+        def run_server():
+            from werkzeug.serving import make_server
+            srv = make_server("127.0.0.1", 0, app, threaded=True)
+            port_holder[0] = srv.server_port
+            srv.serve_forever()
+
+        port_holder = [None]
+        thread = threading.Thread(target=run_server, daemon=True)
+        thread.start()
+        for _ in range(50):
+            if port_holder[0] is not None:
+                break
+            time.sleep(0.1)
+        if port_holder[0] is None:
+            pytest.skip("Server port not available")
+
+        with app.test_client() as client:
+            r = client.post(
+                "/api/v1/serial/sessions",
+                json={"device_id": "/dev/ttyTEST0", "config": {}},
+                content_type="application/json",
+            )
+            assert r.status_code in (200, 201)
+            session_id = r.get_json()["data"]["session_id"]
+
+        ws = Client.connect(f"ws://127.0.0.1:{port_holder[0]}/ws/serial/{session_id}")
+        try:
+            time.sleep(0.2)
+            mock_port.inject_rx("prompt> ")
+            mock_port.inject_rx("hello from device\n")
+            time.sleep(0.3)
+
+            received_data = []
+            deadline = time.time() + 2
+            while time.time() < deadline:
+                try:
+                    msg = ws.receive(timeout=0.3)
+                    if msg:
+                        obj = json.loads(msg)
+                        if obj.get("type") == "data":
+                            received_data.append(obj.get("data", ""))
+                        if "prompt>" in "".join(received_data) and "hello from device" in "".join(received_data):
+                            break
+                except ConnectionClosed:
+                    break
+                except Exception:
+                    break
+
+            combined = "".join(received_data)
+            assert "prompt>" in combined, f"Rx failed: expected 'prompt>' in received data, got {combined!r}"
+            assert "hello from device" in combined, f"Rx failed: expected 'hello from device' in received data, got {combined!r}"
+        finally:
+            try:
+                ws.close()
+            except Exception:
+                pass
+
+
+@pytest.mark.integration
+def test_serial_tx_rx_roundtrip(monkeypatch, tmp_path):
+    """Verify Tx and Rx work together: send data, simulate echo, receive it back."""
+    try:
+        from simple_websocket import Client, ConnectionClosed
+    except ImportError:
+        pytest.skip("simple-websocket not available")
+
+    monkeypatch.setattr(
+        serial_manager,
+        "_scan_devices",
+        lambda: [
+            {"id": "/dev/ttyTEST0", "path": "/dev/ttyTEST0", "friendly_name": "Test", "chipset": "Unknown"}
+        ],
+    )
+    monkeypatch.setattr(serial_manager_mod, "LOG_DIR", tmp_path)
+
+    mock_serial = MagicMock()
+    mock_port = MockSerialPort(echo=True)
+    mock_serial.Serial.return_value = mock_port
+    mock_serial.PARITY_NONE = 0
+    mock_serial.EIGHTBITS = 8
+    mock_serial.STOPBITS_ONE = 1
+
+    with patch("services.api_gateway.websockets.serial", mock_serial):
+        serial_manager._sessions.clear()
+        app = create_app()
+
+        def run_server():
+            from werkzeug.serving import make_server
+            srv = make_server("127.0.0.1", 0, app, threaded=True)
+            port_holder[0] = srv.server_port
+            srv.serve_forever()
+
+        port_holder = [None]
+        thread = threading.Thread(target=run_server, daemon=True)
+        thread.start()
+        for _ in range(50):
+            if port_holder[0] is not None:
+                break
+            time.sleep(0.1)
+        if port_holder[0] is None:
+            pytest.skip("Server port not available")
+
+        with app.test_client() as client:
+            r = client.post(
+                "/api/v1/serial/sessions",
+                json={"device_id": "/dev/ttyTEST0", "config": {}},
+                content_type="application/json",
+            )
+            assert r.status_code in (200, 201)
+            session_id = r.get_json()["data"]["session_id"]
+
+        ws = Client.connect(f"ws://127.0.0.1:{port_holder[0]}/ws/serial/{session_id}")
+        try:
+            ws.send(json.dumps({"type": "data", "data": "echo_test"}))
+            time.sleep(0.4)
+
+            received = []
+            deadline = time.time() + 2
+            while time.time() < deadline:
+                try:
+                    msg = ws.receive(timeout=0.3)
+                    if msg:
+                        obj = json.loads(msg)
+                        if obj.get("type") == "data":
+                            received.append(obj.get("data", ""))
+                        if "echo_test" in "".join(received):
+                            break
+                except ConnectionClosed:
+                    break
+                except Exception:
+                    pass
+
+            combined = "".join(received)
+            assert "echo_test" in combined, f"Roundtrip failed: expected echo in {combined!r}"
+            assert b"echo_test" in b"".join(mock_port.writes), "Tx failed: data not written to serial"
+        finally:
+            try:
+                ws.close()
+            except Exception:
+                pass

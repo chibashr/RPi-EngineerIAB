@@ -97,20 +97,16 @@ def main():
     try:
         ws = Client.connect(ws_url)
         print("WebSocket CONNECTED")
-        print("Sending 'test' to verify Tx...")
-        ws.send(json.dumps({"type": "data", "data": "test"}))
         received = 0
-        rx_data = []
         deadline = time.time() + 5
-        while time.time() < deadline and received < 15:
+        while time.time() < deadline and received < 10:
             try:
-                msg = ws.receive(timeout=0.5)
+                msg = ws.receive(timeout=1)
                 if msg:
                     obj = json.loads(msg)
                     msg_type = obj.get("type", "?")
                     if msg_type == "data":
-                        rx_data.append(obj.get("data", ""))
-                        print(f"  Rx DATA: {obj.get('data', '')!r}")
+                        print(f"  DATA: {obj.get('data', '')!r}")
                     elif msg_type == "status":
                         print(f"  STATUS: Tx={obj.get('bytes_tx',0)} Rx={obj.get('bytes_rx',0)}")
                     elif msg_type == "error":
@@ -121,10 +117,6 @@ def main():
                 break
         ws.close()
         print(f"Test complete. Received {received} message(s).")
-        if rx_data:
-            print(f"Rx verification: got {''.join(rx_data)!r} (device must echo for Rx)")
-        else:
-            print("Rx: no data received (device may not echo; use loopback for Rx test)")
     except Exception as e:
         print(f"ERROR: WebSocket failed: {e}")
         sys.exit(1)
