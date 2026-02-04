@@ -64,6 +64,11 @@ chmod o+x /opt /opt/rpi-engineer</pre>
 <p><strong>Common cause:</strong> The API is running with <code>RPI_ENGINEER_DRY_RUN=1</code>, which skips applying updates.</p>
 <p><strong>Resolution:</strong> Ensure the API systemd unit includes <code>Environment=RPI_ENGINEER_DRY_RUN=0</code> and <code>Environment=RPI_ENGINEER_ROOT=/opt/rpi-engineer</code>. The installer writes these automatically; re-run the installer or update the unit and restart <code>rpi-engineer-api</code>.</p>
 
+<h2>Cannot save network profiles or Permission denied in Network</h2>
+<p><strong>Symptom:</strong> Saving a network profile in Advanced → Network fails with <code>Permission denied</code> or similar. Updates may also fail with permission errors on config files.</p>
+<p><strong>Cause:</strong> The API user (<code>rpi-engineer</code>) cannot write to <code>/etc/rpi-engineer/network_profiles</code> or other config dirs (e.g. <code>version</code>, <code>hotspot.secret</code>). This can happen if the installer was run before permissions were fixed, or permissions were changed.</p>
+<p><strong>Resolution:</strong> Run <code>sudo /opt/rpi-engineer/bin/apply-web-permissions.sh</code> to re-apply config dir permissions. Or re-run the installer (choose Upgrade, use existing configuration) to fix all permissions. The installer now sets <code>network_profiles</code>, <code>network_configs</code>, <code>version</code>, and <code>hotspot.secret</code> so the API user can write.</p>
+
 <h2>No network access</h2>
 <p><strong>Symptom:</strong> WAN shows disconnected on the dashboard.</p>
 <p><strong>Common causes:</strong> Ethernet unplugged or USB modem not detected.</p>

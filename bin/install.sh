@@ -810,7 +810,7 @@ create_directories() {
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "directories"; then log_info "Step 'directories' already completed; skipping."; APP_INSTALLED="yes"; return 0; fi
     log_step "Creating directories"
     mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$DATA_DIR" "$LOG_DIR"
-    mkdir -p "$CONFIG_DIR/network_profiles" "$CONFIG_DIR/module_config"
+    mkdir -p "$CONFIG_DIR/network_profiles" "$CONFIG_DIR/network_configs" "$CONFIG_DIR/module_config"
     mkdir -p "$DATA_DIR/captures" "$DATA_DIR/serial_logs" "$DATA_DIR/backups" "$DATA_DIR/database" "$DATA_DIR/updates" "$DATA_DIR/staging"
     APP_INSTALLED="yes"
     mark_step_done "directories"
@@ -1062,6 +1062,22 @@ setup_user_permissions() {
     if [ -f "$CONFIG_DIR/remote_access.conf" ]; then
         chown "root:$SERVICE_GROUP" "$CONFIG_DIR/remote_access.conf"
         chmod 640 "$CONFIG_DIR/remote_access.conf"
+    fi
+    # Writable config dirs: API (rpi-engineer) must write for network profiles, updates, hotspot config
+    for subdir in network_profiles network_configs module_config; do
+        if [ -d "$CONFIG_DIR/$subdir" ]; then
+            chown -R "root:$SERVICE_GROUP" "$CONFIG_DIR/$subdir"
+            find "$CONFIG_DIR/$subdir" -type d -exec chmod 775 {} \;
+            find "$CONFIG_DIR/$subdir" -type f -exec chmod 664 {} \;
+        fi
+    done
+    if [ -f "$CONFIG_DIR/version" ]; then
+        chown "root:$SERVICE_GROUP" "$CONFIG_DIR/version"
+        chmod 664 "$CONFIG_DIR/version"
+    fi
+    if [ -f "$CONFIG_DIR/hotspot.secret" ]; then
+        chown "root:$SERVICE_GROUP" "$CONFIG_DIR/hotspot.secret"
+        chmod 660 "$CONFIG_DIR/hotspot.secret"
     fi
     if [ -d "$INSTALL_DIR/bin" ]; then
         chmod 750 "$INSTALL_DIR/bin/"* 2>/dev/null || true
@@ -1405,9 +1421,11 @@ wpa_pairwise=TKIP
 rsn_pairwise=CCMP
 EOF
     # Persist hotspot credentials so they survive reboot (applied by setup-wlan0-hotspot.sh at boot)
+    # API (rpi-engineer) must write when user reconfigures hotspot from web UI
     mkdir -p "$CONFIG_DIR"
     printf '%s\n%s\n' "$HOTSPOT_SSID" "$HOTSPOT_PASSWORD" > "$CONFIG_DIR/hotspot.secret"
-    chmod 600 "$CONFIG_DIR/hotspot.secret"
+    chown "root:$SERVICE_GROUP" "$CONFIG_DIR/hotspot.secret"
+    chmod 660 "$CONFIG_DIR/hotspot.secret"
     log_info "Hotspot credentials saved to $CONFIG_DIR/hotspot.secret (used at boot)."
 
     cat > /etc/dnsmasq.d/rpi-engineer.conf <<EOF

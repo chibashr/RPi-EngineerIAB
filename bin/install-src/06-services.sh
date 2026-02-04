@@ -29,6 +29,22 @@ setup_user_permissions() {
         chown "root:$SERVICE_GROUP" "$CONFIG_DIR/remote_access.conf"
         chmod 640 "$CONFIG_DIR/remote_access.conf"
     fi
+    # Writable config dirs: API (rpi-engineer) must write for network profiles, updates, hotspot config
+    for subdir in network_profiles network_configs module_config; do
+        if [ -d "$CONFIG_DIR/$subdir" ]; then
+            chown -R "root:$SERVICE_GROUP" "$CONFIG_DIR/$subdir"
+            find "$CONFIG_DIR/$subdir" -type d -exec chmod 775 {} \;
+            find "$CONFIG_DIR/$subdir" -type f -exec chmod 664 {} \;
+        fi
+    done
+    if [ -f "$CONFIG_DIR/version" ]; then
+        chown "root:$SERVICE_GROUP" "$CONFIG_DIR/version"
+        chmod 664 "$CONFIG_DIR/version"
+    fi
+    if [ -f "$CONFIG_DIR/hotspot.secret" ]; then
+        chown "root:$SERVICE_GROUP" "$CONFIG_DIR/hotspot.secret"
+        chmod 660 "$CONFIG_DIR/hotspot.secret"
+    fi
     if [ -d "$INSTALL_DIR/bin" ]; then
         chmod 750 "$INSTALL_DIR/bin/"* 2>/dev/null || true
     fi

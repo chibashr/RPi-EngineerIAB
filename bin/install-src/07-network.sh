@@ -158,9 +158,11 @@ wpa_pairwise=TKIP
 rsn_pairwise=CCMP
 EOF
     # Persist hotspot credentials so they survive reboot (applied by setup-wlan0-hotspot.sh at boot)
+    # API (rpi-engineer) must write when user reconfigures hotspot from web UI
     mkdir -p "$CONFIG_DIR"
     printf '%s\n%s\n' "$HOTSPOT_SSID" "$HOTSPOT_PASSWORD" > "$CONFIG_DIR/hotspot.secret"
-    chmod 600 "$CONFIG_DIR/hotspot.secret"
+    chown "root:$SERVICE_GROUP" "$CONFIG_DIR/hotspot.secret"
+    chmod 660 "$CONFIG_DIR/hotspot.secret"
     log_info "Hotspot credentials saved to $CONFIG_DIR/hotspot.secret (used at boot)."
 
     cat > /etc/dnsmasq.d/rpi-engineer.conf <<EOF

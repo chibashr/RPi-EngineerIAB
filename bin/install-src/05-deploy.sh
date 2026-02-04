@@ -4,7 +4,7 @@ create_directories() {
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "directories"; then log_info "Step 'directories' already completed; skipping."; APP_INSTALLED="yes"; return 0; fi
     log_step "Creating directories"
     mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$DATA_DIR" "$LOG_DIR"
-    mkdir -p "$CONFIG_DIR/network_profiles" "$CONFIG_DIR/module_config"
+    mkdir -p "$CONFIG_DIR/network_profiles" "$CONFIG_DIR/network_configs" "$CONFIG_DIR/module_config"
     mkdir -p "$DATA_DIR/captures" "$DATA_DIR/serial_logs" "$DATA_DIR/backups" "$DATA_DIR/database" "$DATA_DIR/updates" "$DATA_DIR/staging"
     APP_INSTALLED="yes"
     mark_step_done "directories"

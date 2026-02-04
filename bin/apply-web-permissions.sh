@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Apply nginx config and web root permissions so the web UI is reachable (avoids 403).
-# Run as root; can be invoked by the update manager via sudo after an update.
+# Apply nginx config, web root, and config dir permissions so the web UI is reachable
+# and API can write (profiles, updates, hotspot). Run as root; can be invoked by the
+# update manager via sudo after an update.
 set -euo pipefail
 
 INSTALL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CONFIG_DIR="${RPI_ENGINEER_CONFIG_DIR:-/etc/rpi-engineer}"
+SERVICE_GROUP="rpi-engineer"
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script must be run as root (use sudo)." >&2
@@ -79,4 +82,17 @@ fi
 nginx -t 2>&1
 if [ -d /run/systemd/system ]; then
     systemctl reload nginx 2>/dev/null || systemctl restart nginx
+fi
+
+# Ensure API (rpi-engineer) can write to config dirs for network profiles, updates, hotspot
+if getent group "$SERVICE_GROUP" >/dev/null 2>&1; then
+    for subdir in network_profiles network_configs module_config; do
+        if [ -d "${CONFIG_DIR}/${subdir}" ]; then
+            chown -R "root:${SERVICE_GROUP}" "${CONFIG_DIR}/${subdir}"
+            find "${CONFIG_DIR}/${subdir}" -type d -exec chmod 775 {} \;
+            find "${CONFIG_DIR}/${subdir}" -type f -exec chmod 664 {} \;
+        fi
+    done
+    [ -f "${CONFIG_DIR}/version" ] && chown "root:${SERVICE_GROUP}" "${CONFIG_DIR}/version" && chmod 664 "${CONFIG_DIR}/version"
+    [ -f "${CONFIG_DIR}/hotspot.secret" ] && chown "root:${SERVICE_GROUP}" "${CONFIG_DIR}/hotspot.secret" && chmod 660 "${CONFIG_DIR}/hotspot.secret"
 fi

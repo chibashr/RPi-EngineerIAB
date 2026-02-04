@@ -385,30 +385,39 @@ wpa_key_mgmt=WPA-PSK
                 return parts[parts.index("dev") + 1]
         return None
 
+    # Quad9 (https://quad9.net/) for connectivity: 9.9.9.9 (IP), quad9.net (DNS).
+    _CONNECTIVITY_IP = "9.9.9.9"
+    _CONNECTIVITY_DNS = "quad9.net"
+
+    def _check_dns(self) -> bool:
+        """Return True if quad9.net resolves (DNS confirmation)."""
+        try:
+            socket.gethostbyname(self._CONNECTIVITY_DNS)
+            return True
+        except OSError:
+            return False
+
     def _check_connectivity(self) -> bool:
+        """Return True if system has internet: ping 9.9.9.9 + resolve quad9.net."""
         if platform.system().lower() == "windows":
             return False
         ping = subprocess.run(
-            ["ping", "-c", "1", "-W", "1", "8.8.8.8"],
+            ["ping", "-c", "1", "-W", "1", self._CONNECTIVITY_IP],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
         if ping.returncode != 0:
             return False
-        try:
-            socket.gethostbyname("example.com")
-        except OSError:
-            return False
-        return True
+        return self._check_dns()
 
     def _check_connectivity_via_interface(self, interface_id: str) -> bool:
-        """Return True if the given interface has internet (ping 8.8.8.8 via that interface)."""
+        """Return True if the given interface can reach internet (ping 9.9.9.9 via that interface)."""
         if platform.system().lower() == "windows":
             return False
         if interface_id not in self._interface_names():
             return False
         ping = subprocess.run(
-            ["ping", "-c", "1", "-W", "2", "-I", interface_id, "8.8.8.8"],
+            ["ping", "-c", "1", "-W", "2", "-I", interface_id, self._CONNECTIVITY_IP],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -565,9 +574,14 @@ wpa_key_mgmt=WPA-PSK
         return neighbors
 
     def _role_for(self, name: str, iface_type: str) -> str:
+        """WAN = interface can reach internet (9.9.9.9 + quad9.net DNS). LAN = hotspot or no internet."""
         if iface_type == "wifi" and name.startswith("wlan"):
             return "lan"
-        return "wan"
+        if platform.system().lower() == "windows":
+            return "wan"  # heuristic when connectivity checks unavailable
+        if self._check_connectivity_via_interface(name) and self._check_dns():
+            return "wan"
+        return "lan"
 
     def _interface_type(self, name: str) -> str:
         if name.startswith("usb"):
