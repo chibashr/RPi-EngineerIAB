@@ -198,16 +198,17 @@ export function modalPrompt(message, defaultValue = "", options = {}) {
 }
 
 /**
- * @typedef {{ name: string, label: string, default?: string, type?: string, placeholder?: string }} ModalField
+ * @typedef {{ name: string, label: string, default?: string|boolean, type?: string, placeholder?: string, options?: { value: string, label: string }[] }} ModalField
  */
 
 /**
  * Show a form modal with multiple fields. Submit returns an object of field names to values; Cancel returns null.
  * @param {ModalField[]} fields
  * @param {string} title
+ * @param {{ onOpen?: (overlay: HTMLElement) => void }} options
  * @returns {Promise<Record<string, string>|null>}
  */
-export function modalForm(fields, title) {
+export function modalForm(fields, title, options = {}) {
   const container = getContainer();
   container.setAttribute("aria-hidden", "false");
   container.innerHTML = "";
@@ -235,11 +236,47 @@ export function modalForm(fields, title) {
     .map((f) => {
       const id = `modal-form-${f.name}`;
       const type = f.type || "text";
-      const def = f.default != null ? escapeHtml(f.default) : "";
+      const def = f.default != null ? escapeHtml(String(f.default)) : "";
       const ph = f.placeholder != null ? ` placeholder="${escapeHtml(f.placeholder)}"` : "";
+      const label = f.label ? `<label class="field-label" for="${id}">${escapeHtml(f.label)}</label>` : "";
+
+      if (type === "select") {
+        const optionsMarkup = (f.options || [])
+          .map((opt) => {
+            const selected = opt.value === f.default ? " selected" : "";
+            return `<option value="${escapeHtml(opt.value)}"${selected}>${escapeHtml(opt.label)}</option>`;
+          })
+          .join("");
+        return `
+        <div class="field" data-field-name="${escapeHtml(f.name)}">
+          ${label}
+          <select id="${id}" name="${escapeHtml(f.name)}" class="modal-input">${optionsMarkup}</select>
+        </div>
+      `;
+      }
+
+      if (type === "checkbox") {
+        const checked = f.default === true || f.default === "true" ? " checked" : "";
+        return `
+        <div class="field checkbox-field" data-field-name="${escapeHtml(f.name)}">
+          <input type="checkbox" id="${id}" name="${escapeHtml(f.name)}"${checked} />
+          <label class="field-label" for="${id}">${escapeHtml(f.label || "")}</label>
+        </div>
+      `;
+      }
+
+      if (type === "display") {
+        return `
+        <div class="field" data-field-name="${escapeHtml(f.name)}">
+          ${label}
+          <div class="modal-value" id="${id}">${def || "--"}</div>
+        </div>
+      `;
+      }
+
       return `
-        <div class="field">
-          <label class="field-label" for="${id}">${escapeHtml(f.label)}</label>
+        <div class="field" data-field-name="${escapeHtml(f.name)}">
+          ${label}
           <input type="${escapeHtml(type)}" id="${id}" name="${escapeHtml(f.name)}" class="modal-input" value="${def}"${ph} />
         </div>
       `;
@@ -265,8 +302,19 @@ export function modalForm(fields, title) {
     e.preventDefault();
     const result = {};
     fields.forEach((f) => {
+      if (f.type === "display") {
+        return;
+      }
       const input = overlay.querySelector(`#modal-form-${f.name}`);
-      result[f.name] = input ? input.value.trim() : "";
+      if (!input) {
+        result[f.name] = "";
+        return;
+      }
+      if (f.type === "checkbox") {
+        result[f.name] = input.checked ? "true" : "false";
+        return;
+      }
+      result[f.name] = input.value.trim();
     });
     close(result);
   });
@@ -283,6 +331,9 @@ export function modalForm(fields, title) {
   if (firstInput) {
     firstInput.focus();
     firstInput.select();
+  }
+  if (typeof options.onOpen === "function") {
+    options.onOpen(overlay);
   }
 
   return promise;

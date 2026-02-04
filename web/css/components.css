@@ -337,6 +337,17 @@
   outline-offset: 2px;
 }
 
+.modal-value {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface-muted);
+  color: var(--color-fg);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
 .modal-actions {
   display: flex;
   gap: 0.75rem;

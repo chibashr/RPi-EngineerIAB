@@ -43,6 +43,11 @@ def list_routes():
     return success_response(_network_manager.list_routes())
 
 
+@network_bp.get("/routes/current")
+def list_current_routes():
+    return success_response(_network_manager.list_current_routes())
+
+
 @network_bp.post("/routes")
 def add_route():
     payload = request.get_json(silent=True) or {}

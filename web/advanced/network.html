@@ -106,11 +106,6 @@
                 Configure interfaces, routing, profiles, and hotspot settings.
               </p>
             </div>
-            <div class="toolbar">
-              <button class="btn btn-secondary" id="refresh-network">
-                Refresh
-              </button>
-            </div>
           </div>
 
           <div class="tabs" data-tabs>
@@ -130,9 +125,14 @@
           <section class="card" data-tab-panel="interfaces">
             <div class="section-header">
               <h2>Interfaces</h2>
-              <button class="btn btn-primary" id="configure-interface">
-                Configure Interface
-              </button>
+              <div class="section-actions">
+                <button class="btn btn-secondary" id="refresh-interfaces">
+                  Refresh Interfaces
+                </button>
+                <button class="btn btn-primary" id="configure-interface">
+                  Configure Interface
+                </button>
+              </div>
             </div>
             <div class="section-body">
               <table class="status-table">
@@ -142,11 +142,12 @@
                     <th>Status</th>
                     <th>IP</th>
                     <th>Role</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody id="interface-table-body">
                   <tr>
-                    <td colspan="4">Loading interfaces...</td>
+                    <td colspan="5">Loading interfaces...</td>
                   </tr>
                 </tbody>
               </table>
@@ -169,6 +170,7 @@
               <h2>Routing</h2>
               <button class="btn btn-primary" id="add-route">Add Route</button>
             </div>
+            <h3 class="section-subtitle">Configured routes</h3>
             <table class="status-table">
               <thead>
                 <tr>
@@ -183,6 +185,25 @@
                 </tr>
               </tbody>
             </table>
+            <h3 class="section-subtitle">Current routing table</h3>
+            <table class="status-table">
+              <thead>
+                <tr>
+                  <th>Destination</th>
+                  <th>Gateway</th>
+                  <th>Interface</th>
+                  <th>Source</th>
+                  <th>Metric</th>
+                  <th>Protocol</th>
+                  <th>Scope</th>
+                </tr>
+              </thead>
+              <tbody id="current-route-table-body">
+                <tr>
+                  <td colspan="7">Loading current routes...</td>
+                </tr>
+              </tbody>
+            </table>
           </section>
 
           <section class="card" data-tab-panel="profiles" hidden>
@@ -192,6 +213,10 @@
                 Save Profile
               </button>
             </div>
+            <p class="section-muted">
+              Profiles capture the current interface and routing configuration
+              so you can restore it later.
+            </p>
             <ul class="status-list" id="profile-list"></ul>
           </section>
 
@@ -216,6 +241,23 @@
                 <div class="info-value" id="hotspot-channel">--</div>
               </div>
             </div>
+            <h3 class="section-subtitle">Connected clients</h3>
+            <table class="status-table">
+              <thead>
+                <tr>
+                  <th>Device</th>
+                  <th>IP</th>
+                  <th>MAC</th>
+                  <th>Signal</th>
+                  <th>Link</th>
+                </tr>
+              </thead>
+              <tbody id="hotspot-client-table-body">
+                <tr>
+                  <td colspan="5">No client data available.</td>
+                </tr>
+              </tbody>
+            </table>
           </section>
 
           <section class="card factory-reset-card">
@@ -226,10 +268,6 @@
               Reset network settings to factory defaults. You may keep the
               hotspot enabled for recovery.
             </p>
-            <label class="field checkbox-field">
-              <input type="checkbox" id="preserve-hotspot" />
-              Preserve hotspot configuration
-            </label>
             <button class="btn btn-secondary" id="reset-network">
               Reset Network
             </button>

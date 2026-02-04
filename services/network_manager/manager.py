@@ -61,6 +61,9 @@ class NetworkManager:
     def list_routes(self) -> Dict[str, List[Dict[str, str]]]:
         return {"routes": [route.__dict__ for route in self._routes()]}
 
+    def list_current_routes(self) -> Dict[str, List[Dict[str, object]]]:
+        return {"routes": self._current_routes()}
+
     def add_route(self, payload: Dict[str, object]) -> Dict[str, object]:
         destination = payload.get("destination")
         gateway = payload.get("gateway")
@@ -86,6 +89,8 @@ class NetworkManager:
                         "name": payload.get("name", path.stem),
                         "description": payload.get("description", ""),
                         "saved_at": payload.get("saved_at"),
+                        "interfaces": payload.get("interfaces", []),
+                        "routes": payload.get("routes", []),
                     }
                 )
             except (OSError, json.JSONDecodeError):
@@ -135,6 +140,7 @@ class NetworkManager:
             "ssid": hotspot_config.get("ssid", ""),
             "channel": hotspot_config.get("channel", ""),
             "last_test": _timestamp(),
+            "clients": self._hotspot_clients(),
         }
 
     def reset_network(self, preserve_hotspot: bool = False) -> Dict[str, object]:
@@ -242,6 +248,7 @@ wpa_key_mgmt=WPA-PSK
             "type": iface_type,
             "status": "up" if stats.get("isup") else "down",
             "ip_address": ip_address,
+            "netmask": addrs.get("netmask"),
             "gateway": gateway,
             "metric": metric,
             "role": self._role_for(name, iface_type),
@@ -260,14 +267,33 @@ wpa_key_mgmt=WPA-PSK
         if psutil:
             ip_address = None
             mac_address = None
+            netmask = None
             af_link = getattr(psutil, "AF_LINK", None)
             for addr in psutil.net_if_addrs().get(name, []):
                 if addr.family == socket.AF_INET:
                     ip_address = addr.address
+                    netmask = addr.netmask
                 if af_link and addr.family == af_link:
                     mac_address = addr.address
-            return {"ip_address": ip_address, "mac_address": mac_address}
-        return {"ip_address": None, "mac_address": None}
+            return {"ip_address": ip_address, "mac_address": mac_address, "netmask": netmask}
+        if _which("ip"):
+            try:
+                data = _run_ip_json(["addr", "show", "dev", name])
+                if data:
+                    addr_info = data[0].get("addr_info", [])
+                    for entry in addr_info:
+                        if entry.get("family") == "inet":
+                            ip_address = entry.get("local")
+                            prefix = entry.get("prefixlen")
+                            netmask = _cidr_to_netmask(prefix) if prefix is not None else None
+                            return {
+                                "ip_address": ip_address,
+                                "mac_address": None,
+                                "netmask": netmask,
+                            }
+            except (OSError, json.JSONDecodeError):
+                pass
+        return {"ip_address": None, "mac_address": None, "netmask": None}
 
     def _interface_stats(self, name: str) -> Dict[str, Optional[object]]:
         if psutil:
@@ -321,6 +347,29 @@ wpa_key_mgmt=WPA-PSK
                 interface = parts[parts.index("dev") + 1]
             routes.append(NetworkRoute(destination, gateway, interface))
         return routes
+
+    def _current_routes(self) -> List[Dict[str, object]]:
+        if not _which("ip"):
+            return []
+        try:
+            data = _run_ip_json(["route"])
+            routes = []
+            for entry in data:
+                destination = entry.get("dst") or "default"
+                routes.append(
+                    {
+                        "destination": destination,
+                        "gateway": entry.get("gateway") or "",
+                        "interface": entry.get("dev") or "",
+                        "source": entry.get("prefsrc") or "",
+                        "metric": entry.get("metric"),
+                        "protocol": entry.get("protocol") or "",
+                        "scope": entry.get("scope") or "",
+                    }
+                )
+            return routes
+        except (OSError, json.JSONDecodeError):
+            return [route.__dict__ for route in self._routes()]
 
     def _default_route_interface(self) -> Optional[str]:
         if not _which("ip"):
@@ -418,6 +467,102 @@ wpa_key_mgmt=WPA-PSK
             if result.returncode == 0:
                 return True
         return False
+
+    def _hotspot_clients(self) -> List[Dict[str, object]]:
+        if platform.system().lower() == "windows":
+            return []
+        clients: Dict[str, Dict[str, object]] = {}
+
+        def ensure(mac: str) -> Dict[str, object]:
+            if mac not in clients:
+                clients[mac] = {"mac": mac}
+            return clients[mac]
+
+        hostapd = self._hostapd_stations()
+        for mac, station in hostapd.items():
+            entry = ensure(mac)
+            entry.update(station)
+
+        for lease in self._dnsmasq_leases():
+            mac = lease.get("mac")
+            if not mac:
+                continue
+            entry = ensure(mac)
+            entry.update(lease)
+
+        for neigh in self._arp_neighbors():
+            mac = neigh.get("mac")
+            if not mac:
+                continue
+            entry = ensure(mac)
+            entry.update(neigh)
+
+        return list(clients.values())
+
+    def _hostapd_stations(self) -> Dict[str, Dict[str, object]]:
+        if not _which("hostapd_cli"):
+            return {}
+        result = subprocess.run(
+            ["hostapd_cli", "all_sta"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return {}
+        return _parse_hostapd_all_sta(result.stdout)
+
+    def _dnsmasq_leases(self) -> List[Dict[str, object]]:
+        lease_paths = [
+            Path("/var/lib/misc/dnsmasq.leases"),
+            Path("/var/lib/dnsmasq/dnsmasq.leases"),
+        ]
+        for path in lease_paths:
+            if path.exists():
+                try:
+                    lines = path.read_text().splitlines()
+                except OSError:
+                    continue
+                leases = []
+                for line in lines:
+                    parts = line.split()
+                    if len(parts) < 4:
+                        continue
+                    leases.append(
+                        {
+                            "lease_expires": parts[0],
+                            "mac": parts[1],
+                            "ip": parts[2],
+                            "hostname": parts[3] if parts[3] != "*" else "",
+                        }
+                    )
+                return leases
+        return []
+
+    def _arp_neighbors(self) -> List[Dict[str, object]]:
+        if not _which("ip"):
+            return []
+        result = subprocess.run(["ip", "neigh", "show"], capture_output=True, text=True)
+        if result.returncode != 0:
+            return []
+        neighbors = []
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) < 5:
+                continue
+            ip_address = parts[0]
+            mac = None
+            interface = None
+            if "lladdr" in parts:
+                idx = parts.index("lladdr")
+                if idx + 1 < len(parts):
+                    mac = parts[idx + 1]
+            if "dev" in parts:
+                idx = parts.index("dev")
+                if idx + 1 < len(parts):
+                    interface = parts[idx + 1]
+            if mac:
+                neighbors.append({"ip": ip_address, "mac": mac, "interface": interface or ""})
+        return neighbors
 
     def _role_for(self, name: str, iface_type: str) -> str:
         if iface_type == "wifi" and name.startswith("wlan"):
@@ -550,12 +695,60 @@ def _netmask_to_cidr(netmask: str) -> int:
     return sum(bin(int(part)).count("1") for part in netmask.split("."))
 
 
+def _cidr_to_netmask(prefix_len: int) -> str:
+    if prefix_len is None:
+        return ""
+    mask = (0xFFFFFFFF << (32 - int(prefix_len))) & 0xFFFFFFFF
+    return ".".join(str((mask >> (8 * shift)) & 255) for shift in [3, 2, 1, 0])
+
+
 def _timestamp() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 def _which(binary: str) -> Optional[str]:
     return shutil.which(binary)
+
+
+def _parse_hostapd_all_sta(output: str) -> Dict[str, Dict[str, object]]:
+    stations: Dict[str, Dict[str, object]] = {}
+    current = None
+    for line in output.splitlines():
+        line = line.strip()
+        if not line:
+            current = None
+            continue
+        if _looks_like_mac(line):
+            current = line.lower()
+            stations[current] = {"mac": current}
+            continue
+        if current and "=" in line:
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            if key == "signal" and value.lstrip("-").isdigit():
+                stations[current]["signal_dbm"] = int(value)
+            elif key == "rx_rate_info":
+                stations[current]["rx_rate"] = value
+            elif key == "tx_rate_info":
+                stations[current]["tx_rate"] = value
+            elif key == "connected_time" and value.isdigit():
+                stations[current]["connected_time"] = int(value)
+    return stations
+
+
+def _looks_like_mac(value: str) -> bool:
+    parts = value.split(":")
+    if len(parts) != 6:
+        return False
+    for part in parts:
+        if len(part) != 2:
+            return False
+        try:
+            int(part, 16)
+        except ValueError:
+            return False
+    return True
 
 
 def _main() -> None:
