@@ -183,6 +183,14 @@
                 <span class="field-label">Search</span>
                 <input class="input" id="alerts-search" type="text" placeholder="Search alerts..." />
               </label>
+              <label class="field">
+                <span class="field-label">Show</span>
+                <select class="select" id="alerts-per-page">
+                  <option value="10">10</option>
+                  <option value="20" selected>20</option>
+                  <option value="50">50</option>
+                </select>
+              </label>
             </div>
             <div class="alerts-table-container">
               <table class="status-table" id="alerts-table">
@@ -197,6 +205,7 @@
                 <tbody id="alerts-table-body"></tbody>
               </table>
             </div>
+            <div class="alerts-pagination" id="alerts-pagination"></div>
           </section>
         </main>
       </div>

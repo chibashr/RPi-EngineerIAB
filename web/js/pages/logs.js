@@ -12,6 +12,8 @@ const elements = {
   metricsRow: document.getElementById("metrics-row"),
   alertsTableBody: document.getElementById("alerts-table-body"),
   alertsSearch: document.getElementById("alerts-search"),
+  alertsPerPage: document.getElementById("alerts-per-page"),
+  alertsPagination: document.getElementById("alerts-pagination"),
 };
 
 function showToast(message, variant = "info") {
@@ -185,7 +187,7 @@ function loadDismissed() {
   }
 }
 
-function renderAlerts(alerts, searchTerm = "") {
+function renderAlerts(alerts, searchTerm = "", pageSize = 20, page = 1) {
   if (!elements.alertsTableBody) {
     return;
   }
@@ -223,7 +225,13 @@ function renderAlerts(alerts, searchTerm = "") {
     return;
   }
 
-  filteredAlerts.forEach((alert) => {
+  const total = filteredAlerts.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.max(1, Math.min(page, pageCount));
+  const start = (safePage - 1) * pageSize;
+  const pageAlerts = filteredAlerts.slice(start, start + pageSize);
+
+  pageAlerts.forEach((alert) => {
     const row = document.createElement("tr");
     const isDismissed = dismissed.has(alertKey(alert));
     const severity = (alert.severity || "info").toLowerCase();
@@ -259,6 +267,42 @@ function renderAlerts(alerts, searchTerm = "") {
     }
     elements.alertsTableBody.appendChild(row);
   });
+
+  renderAlertsPagination(total, pageSize, safePage);
+}
+
+function renderAlertsPagination(total, pageSize, page) {
+  if (!elements.alertsPagination) return;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const start = (page - 1) * pageSize + 1;
+  const end = Math.min(page * pageSize, total);
+  const info = document.createElement("span");
+  info.className = "alerts-pagination-info";
+  info.textContent = `${start}-${end} of ${total}`;
+  elements.alertsPagination.textContent = "";
+  elements.alertsPagination.appendChild(info);
+  if (pageCount > 1) {
+    const prevBtn = document.createElement("button");
+    prevBtn.type = "button";
+    prevBtn.className = "btn btn-secondary btn-sm";
+    prevBtn.textContent = "Previous";
+    prevBtn.disabled = page <= 1;
+    prevBtn.addEventListener("click", () => {
+      alertsCurrentPage = Math.max(1, page - 1);
+      renderAlerts(currentAlerts, elements.alertsSearch?.value || "", alertsPageSize, alertsCurrentPage);
+    });
+    const nextBtn = document.createElement("button");
+    nextBtn.type = "button";
+    nextBtn.className = "btn btn-secondary btn-sm";
+    nextBtn.textContent = "Next";
+    nextBtn.disabled = page >= pageCount;
+    nextBtn.addEventListener("click", () => {
+      alertsCurrentPage = Math.min(pageCount, page + 1);
+      renderAlerts(currentAlerts, elements.alertsSearch?.value || "", alertsPageSize, alertsCurrentPage);
+    });
+    elements.alertsPagination.insertBefore(prevBtn, info);
+    elements.alertsPagination.appendChild(nextBtn);
+  }
 }
 
 function renderLogContent(lines) {
@@ -314,6 +358,8 @@ async function loadLogContent() {
 }
 
 let currentAlerts = [];
+let alertsPageSize = 20;
+let alertsCurrentPage = 1;
 
 async function loadMonitor() {
   try {
@@ -324,7 +370,7 @@ async function loadMonitor() {
     currentAlerts = alerts;
     renderMetrics(monitor.metrics || data.resources, data.uptime_seconds);
     const searchTerm = elements.alertsSearch?.value || "";
-    renderAlerts(alerts, searchTerm);
+    renderAlerts(alerts, searchTerm, alertsPageSize, alertsCurrentPage);
     setAlerts(alerts);
   } catch (error) {
     showToast("Unable to load monitoring data.", "error");
@@ -375,8 +421,17 @@ function setupActions() {
   }
   if (elements.alertsSearch) {
     elements.alertsSearch.addEventListener("input", () => {
+      alertsCurrentPage = 1;
       const searchTerm = elements.alertsSearch.value || "";
-      renderAlerts(currentAlerts, searchTerm);
+      renderAlerts(currentAlerts, searchTerm, alertsPageSize, alertsCurrentPage);
+    });
+  }
+  if (elements.alertsPerPage) {
+    elements.alertsPerPage.addEventListener("change", () => {
+      alertsPageSize = parseInt(elements.alertsPerPage.value, 10) || 20;
+      alertsCurrentPage = 1;
+      const searchTerm = elements.alertsSearch?.value || "";
+      renderAlerts(currentAlerts, searchTerm, alertsPageSize, alertsCurrentPage);
     });
   }
 }
