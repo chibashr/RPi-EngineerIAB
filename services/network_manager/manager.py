@@ -115,8 +115,8 @@ class NetworkManager:
         return {"name": name, "description": description}
 
     def load_profile(self, name: str) -> Dict[str, object]:
-        path = PROFILE_DIR / f"{name}.json"
-        if not path.exists():
+        path = self._find_profile_by_name(name)
+        if not path or not path.exists():
             raise KeyError("Profile not found")
         payload = json.loads(path.read_text())
         if os.getenv("RPI_ENGINEER_DRY_RUN", "1") == "1":
@@ -127,6 +127,47 @@ class NetworkManager:
             if iface_id and config:
                 self.update_interface(iface_id, config)
         return {"name": name, "applied": True}
+
+    def _find_profile_by_name(self, name: str) -> Optional[Path]:
+        """Find profile file by name (matches payload name or path stem)."""
+        for path in PROFILE_DIR.glob("*.json"):
+            try:
+                payload = json.loads(path.read_text())
+                if payload.get("name") == name:
+                    return path
+                if path.stem == name:
+                    return path
+            except (OSError, json.JSONDecodeError):
+                continue
+        return None
+
+    def delete_profile(self, name: str) -> Dict[str, object]:
+        path = self._find_profile_by_name(name)
+        if not path:
+            raise KeyError("Profile not found")
+        path.unlink()
+        return {"name": name, "deleted": True}
+
+    def update_profile(self, name: str, payload: Dict[str, object]) -> Dict[str, object]:
+        path = self._find_profile_by_name(name)
+        if not path:
+            raise KeyError("Profile not found")
+        data = json.loads(path.read_text())
+        new_name = payload.get("name")
+        new_description = payload.get("description")
+        if new_name is not None and str(new_name).strip():
+            data["name"] = str(new_name).strip()
+        if new_description is not None:
+            data["description"] = str(new_description)
+        data["saved_at"] = _timestamp()
+        final_name = data["name"]
+        new_path = PROFILE_DIR / f"{final_name}.json"
+        if new_path.resolve() != path.resolve():
+            new_path.write_text(json.dumps(data, indent=2))
+            path.unlink()
+        else:
+            path.write_text(json.dumps(data, indent=2))
+        return {"name": final_name, "description": data.get("description", "")}
 
     def get_status(self) -> Dict[str, object]:
         wan_interface = self._default_route_interface()

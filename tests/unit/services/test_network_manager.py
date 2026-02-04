@@ -104,3 +104,31 @@ def test_save_and_load_profile_dry_run(tmp_path, monkeypatch):
 
     load_result = manager.load_profile("lab")
     assert load_result["applied"] is False
+
+
+@pytest.mark.unit
+def test_delete_profile(tmp_path, monkeypatch):
+    monkeypatch.setattr(network_manager, "PROFILE_DIR", tmp_path)
+    manager = network_manager.NetworkManager()
+    monkeypatch.setattr(manager, "list_interfaces", lambda: {"interfaces": []})
+    monkeypatch.setattr(manager, "list_routes", lambda: {"routes": []})
+    manager.save_profile({"name": "lab", "description": "Lab"})
+    assert (tmp_path / "lab.json").exists()
+
+    result = manager.delete_profile("lab")
+    assert result["deleted"] is True
+    assert not (tmp_path / "lab.json").exists()
+
+
+@pytest.mark.unit
+def test_update_profile(tmp_path, monkeypatch):
+    monkeypatch.setattr(network_manager, "PROFILE_DIR", tmp_path)
+    manager = network_manager.NetworkManager()
+    monkeypatch.setattr(manager, "list_interfaces", lambda: {"interfaces": []})
+    monkeypatch.setattr(manager, "list_routes", lambda: {"routes": []})
+    manager.save_profile({"name": "lab", "description": "Original"})
+
+    result = manager.update_profile("lab", {"description": "Updated"})
+    assert result["description"] == "Updated"
+    data = json.loads((tmp_path / "lab.json").read_text())
+    assert data["description"] == "Updated"

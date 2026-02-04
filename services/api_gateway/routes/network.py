@@ -88,6 +88,31 @@ def load_profile(profile_name: str):
     return success_response(data)
 
 
+@network_bp.put("/profiles/<profile_name>")
+def update_profile(profile_name: str):
+    payload = request.get_json(silent=True) or {}
+    try:
+        data = _network_manager.update_profile(profile_name, payload)
+    except KeyError as exc:
+        return error_response("NOT_FOUND", str(exc), status_code=404)
+    except ValueError as exc:
+        return error_response("VALIDATION_ERROR", str(exc), status_code=400)
+    except Exception as exc:  # pragma: no cover - defensive
+        return error_response("INTERNAL_ERROR", str(exc), status_code=500)
+    return success_response(data)
+
+
+@network_bp.delete("/profiles/<profile_name>")
+def delete_profile(profile_name: str):
+    try:
+        data = _network_manager.delete_profile(profile_name)
+    except KeyError as exc:
+        return error_response("NOT_FOUND", str(exc), status_code=404)
+    except Exception as exc:  # pragma: no cover - defensive
+        return error_response("INTERNAL_ERROR", str(exc), status_code=500)
+    return success_response(data)
+
+
 @network_bp.get("/status")
 def get_status():
     return success_response(_network_manager.get_status())

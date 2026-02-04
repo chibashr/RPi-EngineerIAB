@@ -1,6 +1,6 @@
-import { apiGet, apiPost, apiPut, extractData } from "../api.js";
+import { apiGet, apiPost, apiPut, apiDelete, extractData } from "../api.js";
 import { initTabs } from "../components.js";
-import { modalForm } from "../modal.js";
+import { modalForm, modalConfirm } from "../modal.js";
 
 const elements = {
   interfaceTable: document.getElementById("interface-table-body"),
@@ -602,6 +602,71 @@ function renderCurrentRoutes(routes) {
   });
 }
 
+function renderProfileInterfacesTable(interfaces) {
+  if (!interfaces.length) {
+    const p = document.createElement("p");
+    p.className = "profile-empty";
+    p.textContent = "No interfaces in this profile.";
+    return p;
+  }
+  const table = document.createElement("table");
+  table.className = "status-table profile-table";
+  const thead = document.createElement("thead");
+  thead.innerHTML = "<tr><th>Name</th><th>Status</th><th>IP</th><th>Gateway</th><th>Role</th></tr>";
+  const tbody = document.createElement("tbody");
+  interfaces.forEach((iface) => {
+    const row = document.createElement("tr");
+    row.innerHTML = [
+      iface.name || iface.id || "--",
+      iface.status || "--",
+      iface.ip_address || "--",
+      iface.gateway || "--",
+      iface.role || "--",
+    ]
+      .map((v) => `<td>${escapeHtml(String(v || "--"))}</td>`)
+      .join("");
+    tbody.appendChild(row);
+  });
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  return table;
+}
+
+function renderProfileRoutesTable(routes) {
+  if (!routes.length) {
+    const p = document.createElement("p");
+    p.className = "profile-empty";
+    p.textContent = "No routes in this profile.";
+    return p;
+  }
+  const table = document.createElement("table");
+  table.className = "status-table profile-table";
+  const thead = document.createElement("thead");
+  thead.innerHTML = "<tr><th>Destination</th><th>Gateway</th><th>Interface</th></tr>";
+  const tbody = document.createElement("tbody");
+  routes.forEach((route) => {
+    const row = document.createElement("tr");
+    row.innerHTML = [
+      route.destination || "--",
+      route.gateway || "--",
+      route.interface || "--",
+    ]
+      .map((v) => `<td>${escapeHtml(String(v || "--"))}</td>`)
+      .join("");
+    tbody.appendChild(row);
+  });
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  return table;
+}
+
+function escapeHtml(str) {
+  if (str == null) return "";
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
 function renderProfiles(profiles) {
   if (!elements.profileList) {
     return;
@@ -618,42 +683,136 @@ function renderProfiles(profiles) {
     const item = document.createElement("li");
     const card = document.createElement("div");
     card.className = "profile-card";
+    const header = document.createElement("div");
+    header.className = "profile-card-header";
     const title = document.createElement("h4");
     title.textContent = profile.name || "Profile";
+    const actions = document.createElement("div");
+    actions.className = "profile-card-actions";
+    const loadBtn = document.createElement("button");
+    loadBtn.className = "btn btn-primary btn-sm";
+    loadBtn.textContent = "Load";
+    loadBtn.type = "button";
+    loadBtn.addEventListener("click", () => loadProfile(profile.name));
+    const editBtn = document.createElement("button");
+    editBtn.className = "btn btn-secondary btn-sm";
+    editBtn.textContent = "Edit";
+    editBtn.type = "button";
+    editBtn.addEventListener("click", () => editProfile(profile));
+    const renameBtn = document.createElement("button");
+    renameBtn.className = "btn btn-secondary btn-sm";
+    renameBtn.textContent = "Rename";
+    renameBtn.type = "button";
+    renameBtn.addEventListener("click", () => renameProfile(profile));
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "btn btn-ghost btn-sm";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.type = "button";
+    deleteBtn.addEventListener("click", () => deleteProfile(profile.name));
+    actions.append(loadBtn, editBtn, renameBtn, deleteBtn);
+    header.appendChild(title);
+    header.appendChild(actions);
+    card.appendChild(header);
+
     const meta = document.createElement("div");
     meta.className = "profile-meta";
     const description = profile.description || "No description";
     const savedAt = profile.saved_at ? `Saved ${profile.saved_at}` : "Saved --";
     meta.textContent = `${description} • ${savedAt}`;
+    card.appendChild(meta);
+
     const routes = Array.isArray(profile.routes) ? profile.routes : [];
     const interfaces = Array.isArray(profile.interfaces) ? profile.interfaces : [];
-    const interfaceDetails = document.createElement("details");
-    interfaceDetails.className = "profile-json";
-    interfaceDetails.open = true;
+
+    const interfaceSection = document.createElement("details");
+    interfaceSection.className = "profile-section";
+    interfaceSection.open = true;
     const interfaceSummary = document.createElement("summary");
     interfaceSummary.textContent = `Interfaces (${interfaces.length})`;
-    const interfacePre = document.createElement("pre");
-    interfacePre.textContent = JSON.stringify(interfaces, null, 2);
-    interfaceDetails.appendChild(interfaceSummary);
-    interfaceDetails.appendChild(interfacePre);
+    interfaceSection.appendChild(interfaceSummary);
+    interfaceSection.appendChild(renderProfileInterfacesTable(interfaces));
 
-    const routeDetails = document.createElement("details");
-    routeDetails.className = "profile-json";
-    routeDetails.open = true;
+    const routeSection = document.createElement("details");
+    routeSection.className = "profile-section";
+    routeSection.open = true;
     const routeSummary = document.createElement("summary");
     routeSummary.textContent = `Routes (${routes.length})`;
-    const routePre = document.createElement("pre");
-    routePre.textContent = JSON.stringify(routes, null, 2);
-    routeDetails.appendChild(routeSummary);
-    routeDetails.appendChild(routePre);
+    routeSection.appendChild(routeSummary);
+    routeSection.appendChild(renderProfileRoutesTable(routes));
 
-    card.appendChild(title);
-    card.appendChild(meta);
-    card.appendChild(interfaceDetails);
-    card.appendChild(routeDetails);
+    card.appendChild(interfaceSection);
+    card.appendChild(routeSection);
     item.appendChild(card);
     elements.profileList.appendChild(item);
   });
+}
+
+async function loadProfile(name) {
+  try {
+    await apiPost(`/api/v1/network/profiles/${encodeURIComponent(name)}/load`);
+    showToast(`Profile "${name}" loaded.`, "success");
+    loadNetworkData();
+  } catch (error) {
+    showToast(error?.message || "Unable to load profile.", "error");
+  }
+}
+
+async function editProfile(profile) {
+  const form = await modalForm(
+    [
+      { name: "name", label: "Profile name", default: profile.name || "" },
+      { name: "description", label: "Description", default: profile.description || "" },
+    ],
+    "Edit profile"
+  );
+  if (!form) return;
+  if (!form.name.trim()) {
+    showToast("Profile name is required.", "error");
+    return;
+  }
+  try {
+    await apiPut(`/api/v1/network/profiles/${encodeURIComponent(profile.name)}`, {
+      name: form.name.trim(),
+      description: form.description.trim(),
+    });
+    showToast("Profile updated.", "success");
+    loadNetworkData();
+  } catch (error) {
+    showToast(error?.message || "Unable to update profile.", "error");
+  }
+}
+
+async function renameProfile(profile) {
+  const form = await modalForm(
+    [{ name: "name", label: "New name", default: profile.name || "" }],
+    "Rename profile"
+  );
+  if (!form) return;
+  if (!form.name.trim()) {
+    showToast("Profile name is required.", "error");
+    return;
+  }
+  try {
+    await apiPut(`/api/v1/network/profiles/${encodeURIComponent(profile.name)}`, {
+      name: form.name.trim(),
+    });
+    showToast("Profile renamed.", "success");
+    loadNetworkData();
+  } catch (error) {
+    showToast(error?.message || "Unable to rename profile.", "error");
+  }
+}
+
+async function deleteProfile(name) {
+  const confirmed = await modalConfirm(`Delete profile "${name}"? This cannot be undone.`);
+  if (!confirmed) return;
+  try {
+    await apiDelete(`/api/v1/network/profiles/${encodeURIComponent(name)}`);
+    showToast("Profile deleted.", "success");
+    loadNetworkData();
+  } catch (error) {
+    showToast(error?.message || "Unable to delete profile.", "error");
+  }
 }
 
 function renderHotspot(statusPayload) {
