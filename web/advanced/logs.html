@@ -168,18 +168,36 @@
             <ul class="status-list" id="log-file-list"></ul>
           </section>
 
-          <section class="card" data-tab-panel="metrics" hidden>
+          <section class="card" data-tab-panel="metrics">
             <div class="section-header">
               <h2>Performance Metrics</h2>
             </div>
-            <ul class="status-list" id="metrics-list"></ul>
+            <div class="metrics-row" id="metrics-row"></div>
           </section>
 
-          <section class="card" data-tab-panel="alerts" hidden>
+          <section class="card" data-tab-panel="alerts">
             <div class="section-header">
               <h2>Alerts History</h2>
             </div>
-            <ul class="status-list" id="alerts-list"></ul>
+            <div class="alerts-controls">
+              <label class="field">
+                <span class="field-label">Search</span>
+                <input class="input" id="alerts-search" type="text" placeholder="Search alerts..." />
+              </label>
+            </div>
+            <div class="alerts-table-container">
+              <table class="status-table" id="alerts-table">
+                <thead>
+                  <tr>
+                    <th>Severity</th>
+                    <th>Message</th>
+                    <th>Time</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="alerts-table-body"></tbody>
+              </table>
+            </div>
           </section>
         </main>
       </div>

@@ -5,8 +5,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Dict, List
 
+from lib.module_logger import get_service_logger
 from services.network_manager import NetworkManager
 from services.system_manager import SystemManager
+
+logger = get_service_logger(__name__)
 
 
 def _timestamp() -> str:
@@ -54,11 +57,11 @@ class MonitorService:
 
         if memory_percent >= 90:
             alerts.append(self._alert("warning", "Memory usage above 90%"))
-            severity = "degraded"
+            severity = "degraded" if severity != "unhealthy" else severity
 
         if cpu_percent >= 95:
             alerts.append(self._alert("warning", "CPU usage above 95%"))
-            severity = "degraded"
+            severity = "degraded" if severity != "unhealthy" else severity
 
         if temperature_c is not None:
             temp_value = float(temperature_c)
@@ -67,16 +70,19 @@ class MonitorService:
                 severity = "unhealthy"
             elif temp_value >= 80:
                 alerts.append(self._alert("warning", "CPU temperature above 80 C"))
-                severity = "degraded"
+                severity = "degraded" if severity != "unhealthy" else severity
 
         for name, status in services.items():
             if status != "running":
                 alerts.append(self._alert("warning", f"Service {name} is {status}"))
-                severity = "degraded"
+                severity = "degraded" if severity != "unhealthy" else severity
+
+        if severity != "healthy":
+            logger.debug("Health check: %s (%d alerts)", severity, len(alerts))
 
         if network_status.get("wan_status") == "disconnected":
             alerts.append(self._alert("warning", "WAN connectivity is down"))
-            severity = "degraded"
+            severity = "degraded" if severity != "unhealthy" else severity
 
         health = {
             "status": severity,

@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import logging
 import os
 import subprocess
 from pathlib import Path
 from typing import Optional
 
+from lib.module_logger import get_service_logger
 from ._git import _git_safe_dir, _is_hash
 
-logger = logging.getLogger(__name__)
+logger = get_service_logger(__name__)
 
 
 def _resolve_version_file(config_dir: Path, data_dir: Path) -> Path:

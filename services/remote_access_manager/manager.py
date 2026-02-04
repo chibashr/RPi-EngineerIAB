@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 import re
 import shutil
@@ -12,9 +11,10 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from lib.module_logger import get_service_logger
 from services.network_manager import NetworkManager
 
-logger = logging.getLogger(__name__)
+logger = get_service_logger(__name__)
 
 REMOTE_ACCESS_CONFIG_DIR = Path(
     os.getenv("RPI_ENGINEER_CONFIG_DIR", "/etc/rpi-engineer")

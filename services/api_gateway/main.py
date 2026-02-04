@@ -13,6 +13,7 @@ from flask_cors import CORS
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
+from lib.module_logger import get_service_logger  # noqa: E402
 from services.api_gateway.response import success_response  # noqa: E402
 from services.api_gateway.routes import register_routes  # noqa: E402
 from services.api_gateway.websockets import register_websockets  # noqa: E402
@@ -118,7 +119,9 @@ app = create_app()
 
 
 if __name__ == "__main__":
+    logger = get_service_logger("services.api_gateway.main")
     host = os.getenv("RPI_ENGINEER_API_HOST", "0.0.0.0")
     port = int(os.getenv("RPI_ENGINEER_API_PORT", "5000"))
     debug = os.getenv("RPI_ENGINEER_DEBUG", "0") == "1"
+    logger.info("API Gateway starting on %s:%s", host, port)
     app.run(host=host, port=port, debug=debug)

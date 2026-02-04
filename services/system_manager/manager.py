@@ -16,6 +16,10 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     psutil = None
 
+from lib.module_logger import get_service_logger
+
+logger = get_service_logger(__name__)
+
 
 @dataclass
 class ServiceStatus:
@@ -112,6 +116,7 @@ class SystemManager:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+        logger.info("Service %s %s", action, service)
         return {"service": service, "action": action, "status": "ok"}
 
     def control_services_bulk(
@@ -144,6 +149,7 @@ class SystemManager:
         if not self._systemctl_available():
             raise RuntimeError("systemctl not available")
         cmd = "poweroff" if action == "shutdown" else "reboot"
+        logger.warning("Power action requested: %s", action)
         subprocess.Popen(["systemctl", cmd])
         return {"action": action, "scheduled": True}
 

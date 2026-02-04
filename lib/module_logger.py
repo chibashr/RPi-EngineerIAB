@@ -1,15 +1,16 @@
-"""Shared logging helper for modules to ensure consistent log format.
+"""Shared logging helper for modules and services to ensure consistent log format.
 
-Modules should use this helper instead of Python's standard logging module
-to ensure logs follow the RPi Engineer-in-a-Box format:
-    YYYY-MM-DD HH:MM:SS,mmm LEVEL [module_name] message
+Modules and services should use these helpers instead of Python's standard logging
+module to ensure logs follow the RPi Engineer-in-a-Box format:
+    YYYY-MM-DD HH:MM:SS,mmm LEVEL [name] message
 
-Example:
+Example (module):
     from lib.module_logger import get_module_logger
-    
     logger = get_module_logger(__name__)
-    logger.info("Module initialized")
-    logger.error("Failed to connect", exc_info=True)
+
+Example (service):
+    from lib.module_logger import get_service_logger
+    logger = get_service_logger(__name__)
 """
 
 from __future__ import annotations
@@ -35,15 +36,31 @@ def _get_log_dir() -> Path:
 def _get_module_name(module_path: str) -> str:
     """Extract module name from module path (e.g., 'modules.syslog_receiver.receiver' -> 'syslog_receiver')."""
     parts = module_path.split(".")
-    # Look for 'modules' in the path, or use the first part after 'modules'
     try:
         modules_idx = parts.index("modules")
         if modules_idx + 1 < len(parts):
             return parts[modules_idx + 1]
     except ValueError:
         pass
-    # Fallback: use the last part or a reasonable default
     return parts[-1] if parts else "unknown_module"
+
+
+def _get_service_name(module_path: str) -> str:
+    """Extract service name from path (e.g., 'services.network_manager.manager' -> 'network_manager').
+    API gateway submodules (routes, websockets) map to 'api_gateway'.
+    remote_access_manager maps to 'remote_access' per spec.
+    """
+    parts = module_path.split(".")
+    try:
+        services_idx = parts.index("services")
+        if services_idx + 1 < len(parts):
+            name = parts[services_idx + 1]
+            if name == "remote_access_manager":
+                return "remote_access"
+            return name
+    except ValueError:
+        pass
+    return parts[-1] if parts else "unknown_service"
 
 
 class ModuleFormatter(logging.Formatter):
@@ -78,52 +95,60 @@ class ModuleFormatter(logging.Formatter):
 def get_module_logger(module_path: str, log_file: Optional[str] = None) -> logging.Logger:
     """
     Get a logger configured for module logging with consistent format.
-    
+
     Args:
-        module_path: Typically __name__ from the module (e.g., 'modules.syslog_receiver.receiver')
+        module_path: Typically __name__ (e.g., 'modules.syslog_receiver.receiver')
         log_file: Optional log file name (defaults to '{module_name}.log')
-    
+
     Returns:
         Configured logger instance
-    
-    Example:
-        logger = get_module_logger(__name__)
-        logger.info("Starting receiver")
     """
     module_name = _get_module_name(module_path)
-    
-    # Create logger
-    logger = logging.getLogger(module_path)
+    return _get_app_logger(
+        module_path, module_name, log_file or f"{module_name}.log"
+    )
+
+
+def get_service_logger(module_path: str, log_file: Optional[str] = None) -> logging.Logger:
+    """
+    Get a logger configured for service logging with consistent format.
+    Writes to /var/log/rpi-engineer/{service_name}.log (or RPI_ENGINEER_LOG_DIR).
+
+    Args:
+        module_path: Typically __name__ (e.g., 'services.network_manager.manager')
+        log_file: Optional log file name (defaults to '{service_name}.log')
+
+    Returns:
+        Configured logger instance
+    """
+    service_name = _get_service_name(module_path)
+    return _get_app_logger(
+        module_path, service_name, log_file or f"{service_name}.log"
+    )
+
+
+def _get_app_logger(
+    logger_name: str, display_name: str, log_file: str
+) -> logging.Logger:
+    """Shared implementation for module and service loggers."""
+    logger = logging.getLogger(logger_name)
     logger.setLevel(logging.INFO)
-    
-    # Avoid duplicate handlers
     if logger.handlers:
         return logger
-    
-    # Determine log file name
-    if not log_file:
-        log_file = f"{module_name}.log"
-    
-    # Ensure log file ends with .log
     if not log_file.endswith(".log"):
         log_file = f"{log_file}.log"
-    
-    # Create file handler
     log_dir = _get_log_dir()
     log_path = log_dir / log_file
-    
     try:
         file_handler = logging.FileHandler(log_path, encoding="utf-8")
         file_handler.setLevel(logging.DEBUG)
-        formatter = ModuleFormatter(module_name)
+        formatter = ModuleFormatter(display_name)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
     except (OSError, PermissionError):
-        # Fallback to console if file logging fails
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.INFO)
-        formatter = ModuleFormatter(module_name)
+        formatter = ModuleFormatter(display_name)
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
-    
     return logger

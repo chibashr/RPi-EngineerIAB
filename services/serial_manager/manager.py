@@ -20,7 +20,9 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     serial = None
 
+from lib.module_logger import get_service_logger
 
+logger = get_service_logger(__name__)
 LOG_DIR = Path("/opt/rpi-engineer/data/serial_logs")
 EXPORT_DIR = LOG_DIR / "exports"
 MAX_SESSIONS = 8
@@ -110,6 +112,7 @@ class SerialManager:
             with serial.Serial(device_id, baudrate=baud_rate, timeout=1):
                 pass
         except Exception as exc:
+            logger.warning("Device test failed %s: %s", device_id, exc)
             raise RuntimeError(str(exc)) from exc
         return {"id": device_id, "status": "ok"}
 
@@ -139,6 +142,7 @@ class SerialManager:
             log_path=log_path,
         )
         self._sessions[session_id] = session
+        logger.info("Session created: %s for device %s", session_id[:8], device_id)
         return {
             "session_id": session_id,
             "device_id": device_id,
@@ -185,6 +189,7 @@ class SerialManager:
         if not session:
             raise KeyError("Session not found")
         session.status = "closed"
+        logger.info("Session closed: %s (device %s)", session_id[:8], session.device_id)
         return {"session_id": session_id, "status": "closed"}
 
     def list_logs(self, device: Optional[str], since: Optional[str], limit: int) -> Dict[str, object]:

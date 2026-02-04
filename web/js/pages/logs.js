@@ -10,8 +10,9 @@ const elements = {
   logService: document.getElementById("log-service"),
   logSearch: document.getElementById("log-search"),
   logContent: document.getElementById("log-content"),
-  metricsList: document.getElementById("metrics-list"),
-  alertsList: document.getElementById("alerts-list"),
+  metricsRow: document.getElementById("metrics-row"),
+  alertsTableBody: document.getElementById("alerts-table-body"),
+  alertsSearch: document.getElementById("alerts-search"),
 };
 
 function showToast(message, variant = "info") {
@@ -72,49 +73,208 @@ function renderLogs(files) {
   });
 }
 
-function renderMetrics(metrics) {
-  if (!elements.metricsList) {
+function setMetric(element, value, unit, maxValue = 100) {
+  if (!element) return;
+  const valueEl = element.querySelector(".metric-value");
+  const meterEl = element.querySelector(".meter-fill");
+  if (!valueEl || !meterEl) return;
+  
+  const safeValue = Number.isFinite(value) ? value : null;
+  const percentValue =
+    safeValue === null
+      ? null
+      : Math.min(Math.max((safeValue / maxValue) * 100, 0), 100);
+
+  valueEl.textContent = safeValue === null ? `--${unit}` : `${safeValue}${unit}`;
+  meterEl.style.width = percentValue === null ? "0%" : `${percentValue}%`;
+}
+
+function formatUptime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "--";
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function renderMetrics(metrics, uptimeSeconds) {
+  if (!elements.metricsRow) {
     return;
   }
-  elements.metricsList.textContent = "";
+  elements.metricsRow.textContent = "";
   if (!metrics || Object.keys(metrics).length === 0) {
-    const item = document.createElement("li");
-    item.textContent = "No metrics available.";
-    elements.metricsList.appendChild(item);
+    const msg = document.createElement("p");
+    msg.textContent = "No metrics available.";
+    msg.className = "empty-state";
+    elements.metricsRow.appendChild(msg);
     return;
   }
-  elements.metricsList.appendChild(
-    createStatusItem("CPU Usage", `${metrics.cpu_percent ?? "--"}%`)
-  );
-  elements.metricsList.appendChild(
-    createStatusItem("Memory Usage", `${metrics.memory_percent ?? "--"}%`)
-  );
-  elements.metricsList.appendChild(
-    createStatusItem("Disk Usage", `${metrics.disk_percent ?? "--"}%`)
-  );
+
+  // CPU
+  const cpuCard = document.createElement("div");
+  cpuCard.className = "metric-card";
+  cpuCard.innerHTML = `
+    <div class="metric-label">CPU</div>
+    <div class="metric-value">--%</div>
+    <div class="meter">
+      <div class="meter-fill"></div>
+    </div>
+  `;
+  elements.metricsRow.appendChild(cpuCard);
+  setMetric(cpuCard, metrics.cpu_percent, "%");
+
+  // Memory
+  const memoryCard = document.createElement("div");
+  memoryCard.className = "metric-card";
+  memoryCard.innerHTML = `
+    <div class="metric-label">Memory</div>
+    <div class="metric-value">--%</div>
+    <div class="meter">
+      <div class="meter-fill"></div>
+    </div>
+  `;
+  elements.metricsRow.appendChild(memoryCard);
+  setMetric(memoryCard, metrics.memory_percent, "%");
+
+  // Temperature
   if (metrics.temperature_c !== null && metrics.temperature_c !== undefined) {
-    elements.metricsList.appendChild(
-      createStatusItem("Temperature", `${metrics.temperature_c} C`)
-    );
+    const tempCard = document.createElement("div");
+    tempCard.className = "metric-card";
+    tempCard.innerHTML = `
+      <div class="metric-label">Temperature</div>
+      <div class="metric-value">-- C</div>
+      <div class="meter">
+        <div class="meter-fill"></div>
+      </div>
+    `;
+    elements.metricsRow.appendChild(tempCard);
+    setMetric(tempCard, metrics.temperature_c, " C", 100);
+  }
+
+  // Storage
+  const storageCard = document.createElement("div");
+  storageCard.className = "metric-card";
+  storageCard.innerHTML = `
+    <div class="metric-label">Storage</div>
+    <div class="metric-value">--%</div>
+    <div class="meter">
+      <div class="meter-fill"></div>
+    </div>
+  `;
+  elements.metricsRow.appendChild(storageCard);
+  setMetric(storageCard, metrics.disk_percent, "%");
+
+  // Uptime
+  if (uptimeSeconds !== null && uptimeSeconds !== undefined) {
+    const uptimeCard = document.createElement("div");
+    uptimeCard.className = "metric-card";
+    uptimeCard.innerHTML = `
+      <div class="metric-label">Uptime</div>
+      <div class="metric-value">--</div>
+      <div class="meter">
+        <div class="meter-fill" style="width: 100%; opacity: 0.3;"></div>
+      </div>
+    `;
+    const uptimeValue = uptimeCard.querySelector(".metric-value");
+    if (uptimeValue) {
+      uptimeValue.textContent = formatUptime(uptimeSeconds);
+    }
+    elements.metricsRow.appendChild(uptimeCard);
   }
 }
 
-function renderAlerts(alerts) {
-  if (!elements.alertsList) {
+function alertKey(alert) {
+  const ts = alert.timestamp || "";
+  const msg = (alert.message || "").slice(0, 80);
+  return `${ts}|${msg}`;
+}
+
+function loadDismissed() {
+  try {
+    const raw = localStorage.getItem("rpi-alerts-dismissed");
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr.slice(-200) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function renderAlerts(alerts, searchTerm = "") {
+  if (!elements.alertsTableBody) {
     return;
   }
-  elements.alertsList.textContent = "";
+  elements.alertsTableBody.textContent = "";
   if (!alerts?.length) {
-    const item = document.createElement("li");
-    item.textContent = "No alerts reported.";
-    elements.alertsList.appendChild(item);
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 4;
+    cell.textContent = "No alerts reported.";
+    cell.className = "empty-state";
+    row.appendChild(cell);
+    elements.alertsTableBody.appendChild(row);
     return;
   }
-  alerts.forEach((alert) => {
-    const label = `${alert.severity || "info"}`.toUpperCase();
-    const timeStr = formatAlertTimestamp(alert.timestamp);
-    const value = timeStr ? `${timeStr} — ${alert.message || "Alert"}` : (alert.message || "Alert");
-    elements.alertsList.appendChild(createStatusItem(label, value));
+
+  const dismissed = loadDismissed();
+  const searchLower = searchTerm.toLowerCase();
+  const filteredAlerts = alerts.filter((alert) => {
+    if (searchTerm) {
+      const message = (alert.message || "").toLowerCase();
+      const severity = (alert.severity || "").toLowerCase();
+      return message.includes(searchLower) || severity.includes(searchLower);
+    }
+    return true;
+  });
+
+  if (filteredAlerts.length === 0) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 4;
+    cell.textContent = "No alerts match your search.";
+    cell.className = "empty-state";
+    row.appendChild(cell);
+    elements.alertsTableBody.appendChild(row);
+    return;
+  }
+
+  filteredAlerts.forEach((alert) => {
+    const row = document.createElement("tr");
+    const isDismissed = dismissed.has(alertKey(alert));
+    const severity = (alert.severity || "info").toLowerCase();
+    
+    // Severity cell with badge
+    const severityCell = document.createElement("td");
+    const severityBadge = document.createElement("span");
+    severityBadge.className = `status-pill status-pill-${severity === "critical" ? "danger" : severity === "warning" ? "warning" : "info"}`;
+    severityBadge.textContent = severity.toUpperCase();
+    severityCell.appendChild(severityBadge);
+    row.appendChild(severityCell);
+
+    // Message cell
+    const messageCell = document.createElement("td");
+    messageCell.textContent = alert.message || "Alert";
+    row.appendChild(messageCell);
+
+    // Time cell
+    const timeCell = document.createElement("td");
+    timeCell.textContent = formatAlertTimestamp(alert.timestamp) || "--";
+    row.appendChild(timeCell);
+
+    // Status cell (dismissed/active)
+    const statusCell = document.createElement("td");
+    const statusBadge = document.createElement("span");
+    statusBadge.className = `status-pill ${isDismissed ? "status-pill-muted" : "status-pill-success"}`;
+    statusBadge.textContent = isDismissed ? "Dismissed" : "Active";
+    statusCell.appendChild(statusBadge);
+    row.appendChild(statusCell);
+
+    if (isDismissed) {
+      row.style.opacity = "0.6";
+    }
+    elements.alertsTableBody.appendChild(row);
   });
 }
 
@@ -170,14 +330,18 @@ async function loadLogContent() {
   }
 }
 
+let currentAlerts = [];
+
 async function loadMonitor() {
   try {
     const payload = await apiGet("/api/v1/system/status");
     const data = extractData(payload) || {};
     const monitor = data.monitor || {};
     const alerts = data.alerts || monitor.alerts || [];
-    renderMetrics(monitor.metrics || data.resources);
-    renderAlerts(alerts);
+    currentAlerts = alerts;
+    renderMetrics(monitor.metrics || data.resources, data.uptime_seconds);
+    const searchTerm = elements.alertsSearch?.value || "";
+    renderAlerts(alerts, searchTerm);
     setAlerts(alerts);
   } catch (error) {
     showToast("Unable to load monitoring data.", "error");
@@ -224,6 +388,12 @@ function setupActions() {
       // Debounce search input
       clearTimeout(elements.logSearch._debounceTimer);
       elements.logSearch._debounceTimer = setTimeout(loadLogContent, 500);
+    });
+  }
+  if (elements.alertsSearch) {
+    elements.alertsSearch.addEventListener("input", () => {
+      const searchTerm = elements.alertsSearch.value || "";
+      renderAlerts(currentAlerts, searchTerm);
     });
   }
 }

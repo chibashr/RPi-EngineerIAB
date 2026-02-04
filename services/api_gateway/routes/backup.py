@@ -1,18 +1,17 @@
 """Backup API routes."""
 
-import logging
-
 import tempfile
 from pathlib import Path
 
 from flask import Blueprint, request, send_file
 
+from lib.module_logger import get_service_logger
 from services.update_manager import update_manager
 
 from ..response import error_response, success_response
 
 backup_bp = Blueprint("backup", __name__, url_prefix="/api/v1/backup")
-logger = logging.getLogger(__name__)
+logger = get_service_logger(__name__)
 
 
 @backup_bp.get("/config")

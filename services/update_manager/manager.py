@@ -11,7 +11,6 @@ store a 40-char git hash (after an in-app update) or a fallback version string.
 from __future__ import annotations
 
 import json
-import logging
 import os
 import shutil
 import subprocess
@@ -25,6 +24,7 @@ from typing import Callable, Dict, Optional
 from ._backup import _add_dir_to_archive, _restore_tree, _safe_extract
 from ._git import _check_updates_via_git, _git_blob_sha, _git_safe_dir, _is_hash
 from ._github import _github_commit_info, _github_repo_slug, _github_tree_blobs
+from lib.module_logger import get_service_logger
 from ._version import _current_version, _local_git_hash, _resolve_version_file, _write_version
 
 
@@ -37,7 +37,7 @@ CORE_DIRS = ("web", "services", "lib", "bin")
 # Exclude patterns when discovering core files (path segments or names).
 CORE_EXCLUDE = ("__pycache__", ".git", ".pyc")
 
-logger = logging.getLogger(__name__)
+logger = get_service_logger(__name__)
 
 
 def _timestamp() -> str:

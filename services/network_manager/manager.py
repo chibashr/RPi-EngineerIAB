@@ -18,6 +18,9 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     psutil = None
 
+from lib.module_logger import get_service_logger
+
+logger = get_service_logger(__name__)
 PROFILE_DIR = Path("/etc/rpi-engineer/network_profiles")
 CONFIG_DIR = Path("/etc/rpi-engineer/network_configs")
 HOTSPOT_SECRET_PATH = Path("/etc/rpi-engineer/hotspot.secret")
@@ -494,13 +497,17 @@ wpa_key_mgmt=WPA-PSK
                 ["ip", "route", "replace", "default", "via", gateway, "dev", iface, "metric", str(metric)],
                 check=False,
             )
+            logger.debug("WAN priority set to %s (internet capable)", iface)
             return {
                 "wan_interface": iface,
                 "internet_capable": True,
                 "applied": True,
             }
+        default = self._default_route_interface()
+        if not self._check_connectivity():
+            logger.warning("No WAN connectivity; default route: %s", default)
         return {
-            "wan_interface": self._default_route_interface(),
+            "wan_interface": default,
             "internet_capable": self._check_connectivity(),
             "applied": False,
         }
@@ -811,6 +818,7 @@ def _main() -> None:
     import signal
     manager = NetworkManager()
     interval = int(os.getenv("RPI_ENGINEER_WAN_CHECK_INTERVAL", "60"))
+    logger.info("Network manager daemon starting (WAN check interval=%ss)", interval)
     stop = False
 
     def _sig(_signum: int, _frame: object) -> None:

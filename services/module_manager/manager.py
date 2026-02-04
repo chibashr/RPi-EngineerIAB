@@ -23,6 +23,10 @@ DEFAULT_UPDATE_REPO = "https://github.com/chibashr/RPi-EngineerIAB.git"
 DEFAULT_UPDATE_BRANCH = "main"
 MODULES_SUBDIR = "modules"
 
+from lib.module_logger import get_service_logger
+
+logger = get_service_logger(__name__)
+
 
 def _safe_dir(primary: Path, fallback: Path) -> Path:
     try:
@@ -205,6 +209,7 @@ class ModuleManager:
             raise KeyError("Module not found")
         record.enabled = True
         record.state = "enabled"
+        logger.info("Module enabled: %s", module_id)
         self._save_enabled_modules()
         if not record.routes_registered:
             self._register_module_api_routes(record)
@@ -217,6 +222,7 @@ class ModuleManager:
             raise KeyError("Module not found")
         record.enabled = False
         record.state = "disabled"
+        logger.info("Module disabled: %s", module_id)
         self._save_enabled_modules()
         self._shutdown_module(record)
         return {"enabled": False, "module_id": module_id}

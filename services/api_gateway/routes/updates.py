@@ -1,14 +1,13 @@
 """Updates API routes."""
 
-import logging
-
 from flask import Blueprint
 
+from lib.module_logger import get_service_logger
 from services.update_manager import update_manager
 
 from ..response import error_response, success_response
 
-logger = logging.getLogger(__name__)
+logger = get_service_logger(__name__)
 updates_bp = Blueprint("updates", __name__, url_prefix="/api/v1/updates")
 
 

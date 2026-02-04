@@ -1,10 +1,12 @@
-"""Logging Service implementation for log viewing and export."""
+"""Logging Service implementation for log viewing, export, and rotation daemon."""
 
 from __future__ import annotations
 
 import os
 import re
+import signal
 import shutil
+import time
 import zipfile
 from collections import deque
 from datetime import datetime, timezone
@@ -248,3 +250,75 @@ class LoggingService:
         alerts.sort(key=lambda a: (a.get("timestamp") or ""), reverse=True)
         return alerts[:limit]
 
+
+def _run_rotation(log_dir: Path, max_size_mb: int, retain_days: int) -> None:
+    """Rotate log files exceeding max_size_mb; remove rotated files older than retain_days."""
+    if not log_dir.exists():
+        return
+    max_bytes = max_size_mb * 1024 * 1024
+    cutoff = time.time() - (retain_days * 86400)
+    for path in sorted(log_dir.glob("*.log")):
+        try:
+            if path.stat().st_size > max_bytes:
+                # Rotate: .log -> .log.1, .log.1 -> .log.2, etc.
+                for n in range(9, 0, -1):
+                    old = log_dir / f"{path.stem}.log.{n}"
+                    new = log_dir / f"{path.stem}.log.{n + 1}"
+                    if old.exists():
+                        if new.exists():
+                            new.unlink()
+                        old.rename(new)
+                path.rename(log_dir / f"{path.stem}.log.1")
+        except OSError:
+            continue
+    # Remove old rotated files
+    for path in log_dir.glob("*.log.*"):
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+        except OSError:
+            continue
+
+
+def _daemon_main() -> None:
+    """Run logging daemon: periodic rotation and retention cleanup."""
+    import sys
+
+    repo_root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(repo_root))
+    from lib.module_logger import get_service_logger
+
+    logger = get_service_logger("services.logging_service.manager")
+    logger.info("Logging daemon started")
+
+    log_dir = _safe_dir(
+        Path(os.getenv("RPI_ENGINEER_LOG_DIR", "/var/log/rpi-engineer")),
+        repo_root / "logs",
+    )
+    interval = int(os.getenv("RPI_ENGINEER_LOG_ROTATE_INTERVAL", "3600"))
+    max_size_mb = int(os.getenv("RPI_ENGINEER_LOG_MAX_SIZE_MB", "10"))
+    retain_days = int(os.getenv("RPI_ENGINEER_LOG_RETAIN_DAYS", "7"))
+
+    stop = False
+
+    def _on_signal(_signum: int, _frame: object) -> None:
+        nonlocal stop
+        stop = True
+
+    signal.signal(signal.SIGTERM, _on_signal)
+    signal.signal(signal.SIGINT, _on_signal)
+
+    while not stop:
+        try:
+            _run_rotation(log_dir, max_size_mb, retain_days)
+        except Exception as exc:
+            logger.warning("Log rotation failed: %s", exc)
+        for _ in range(interval):
+            if stop:
+                break
+            time.sleep(1)
+    logger.info("Logging daemon stopped")
+
+
+if __name__ == "__main__":
+    _daemon_main()

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import logging
 import shutil
 import zipfile
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from lib.module_logger import get_service_logger
+
+logger = get_service_logger(__name__)
 
 
 def _safe_extract(archive: zipfile.ZipFile, destination: Path) -> None:

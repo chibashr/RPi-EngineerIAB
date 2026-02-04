@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import threading
 import time
 from typing import Optional
@@ -17,6 +16,7 @@ from services.system_manager import SystemManager
 from services.network_manager import NetworkManager
 from services.monitor_service import MonitorService
 from services.logging_service import logging_service
+from lib.module_logger import get_service_logger
 from services.update_manager import update_manager
 
 try:
@@ -29,7 +29,7 @@ def register_websockets(sock: Sock) -> None:
     system_manager = SystemManager()
     network_manager = NetworkManager()
     monitor_service = MonitorService()
-    logger = logging.getLogger(__name__)
+    logger = get_service_logger(__name__)
 
     def _merged_monitor_payload() -> dict:
         """Build monitor payload with health alerts + recent log alerts (same as GET /system/status)."""
