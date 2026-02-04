@@ -201,11 +201,13 @@ function connectWebSocket(sessionId) {
       updateBanner("Serial console connected.", false);
       renderDevices(deviceCache);
     } else if (status === "disconnected") {
+      wsClient = null; /* Clear so device table shows "Session active" not "Connected" */
       updateBanner("Serial console disconnected.");
       renderDevices(deviceCache);
     } else if (status === "connecting") {
       updateBanner("Connecting to serial console...");
     } else if (status === "error") {
+      wsClient = null; /* Clear so device table reflects failed connection */
       updateBanner("Serial console connection error.");
       renderDevices(deviceCache);
     }
