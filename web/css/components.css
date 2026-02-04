@@ -31,6 +31,13 @@
   color: var(--color-muted);
 }
 
+.btn-sm {
+  padding: 0.35rem 0.75rem;
+  min-height: 0;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+
 .btn:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);

@@ -176,14 +176,14 @@ function renderCaptures(captures) {
     const actions = document.createElement("div");
     actions.className = "status-item-actions";
     const stopBtn = document.createElement("button");
-    stopBtn.className = "btn btn-ghost btn-sm";
+    stopBtn.className = "btn btn-secondary btn-sm";
     stopBtn.type = "button";
     stopBtn.textContent = "Stop";
     stopBtn.dataset.captureId = captureId;
     stopBtn.dataset.action = "stop";
     actions.appendChild(stopBtn);
     const viewLink = document.createElement("a");
-    viewLink.className = "btn btn-ghost btn-sm";
+    viewLink.className = "btn btn-secondary btn-sm";
     viewLink.href = "/advanced/capture.html";
     viewLink.textContent = "View";
     actions.appendChild(viewLink);
@@ -285,10 +285,20 @@ function renderRemoteTools(tools) {
       <div class="remote-connection-row">
         <span class="connection-label">Connection</span>
         <span class="connection-value" id="${idAttr}">${escapeHtml(connectionId)}</span>
-        <button class="btn btn-ghost btn-copy" type="button" data-copy-target="${idAttr}">Copy</button>
+        <button class="btn btn-secondary btn-sm" type="button" data-copy-target="${idAttr}">Copy</button>
       </div>
     `;
     elements.remote.list.appendChild(entry);
+  });
+}
+
+function setupPanelButtonDelegation() {
+  document.body.addEventListener("click", (e) => {
+    const panelLink = e.target.closest(".panel-link");
+    const button = e.target.closest("button, .btn");
+    if (panelLink && button && panelLink.contains(button)) {
+      e.stopPropagation();
+    }
   });
 }
 
@@ -517,6 +527,7 @@ function initStatusWebSocket() {
 }
 
 function init() {
+  setupPanelButtonDelegation();
   setupRemoteCopyDelegation();
   setupCaptureStopDelegation();
   loadDashboard();
