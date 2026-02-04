@@ -1,4 +1,5 @@
 import { apiGet, extractData } from "../api.js";
+import { copyTextToClipboard } from "../components.js";
 import { createWebSocketClient } from "../websocket.js";
 import { setAlerts, formatAlertTimestamp } from "../notifications.js";
 
@@ -274,12 +275,8 @@ function setupRemoteCopyDelegation() {
     const targetId = button.dataset.copyTarget;
     const target = document.getElementById(targetId);
     if (!target) return;
-    try {
-      await navigator.clipboard.writeText(target.textContent.trim());
-      showToast("Copied to clipboard.", "success");
-    } catch (err) {
-      showToast("Copy failed. Select and copy manually.", "error");
-    }
+    const ok = await copyTextToClipboard(target.textContent.trim());
+    showToast(ok ? "Copied to clipboard." : "Copy failed. Select and copy manually.", ok ? "success" : "error");
   });
 }
 

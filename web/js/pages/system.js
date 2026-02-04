@@ -96,20 +96,32 @@ function renderServices(servicesList) {
 
     const statusCell = document.createElement("td");
     statusCell.textContent = status || "unknown";
-    statusCell.className = "service-status";
+    statusCell.className = `service-status ${statusClass(status)}`;
     row.appendChild(statusCell);
 
     const actionsCell = document.createElement("td");
     actionsCell.className = "col-actions service-actions";
-    ["start", "stop", "restart"].forEach((action) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "btn btn-ghost btn-service-action";
-      btn.textContent = action.charAt(0).toUpperCase() + action.slice(1);
-      btn.dataset.serviceName = name;
-      btn.dataset.action = action;
-      actionsCell.appendChild(btn);
-    });
+    const run = isRunning(status);
+    const transitioning = isTransitioning(status);
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "btn btn-ghost btn-service-action btn-service-toggle";
+    toggleBtn.textContent = run ? "Stop" : "Start";
+    toggleBtn.dataset.serviceName = name;
+    toggleBtn.dataset.action = run ? "stop" : "start";
+    if (transitioning) {
+      toggleBtn.disabled = true;
+      toggleBtn.setAttribute("aria-label", `Service is ${status}`);
+    }
+    actionsCell.appendChild(toggleBtn);
+    const restartBtn = document.createElement("button");
+    restartBtn.type = "button";
+    restartBtn.className = "btn btn-ghost btn-service-action";
+    restartBtn.textContent = "Restart";
+    restartBtn.dataset.serviceName = name;
+    restartBtn.dataset.action = "restart";
+    if (transitioning) restartBtn.disabled = true;
+    actionsCell.appendChild(restartBtn);
     row.appendChild(actionsCell);
 
     elements.serviceTable.appendChild(row);

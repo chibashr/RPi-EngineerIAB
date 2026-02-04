@@ -1,5 +1,5 @@
 import { apiGet, apiPost, apiUpload, extractData } from "../api.js";
-import { initTabs } from "../components.js";
+import { copyTextToClipboard, initTabs } from "../components.js";
 
 const elements = {
   updateBranch: document.getElementById("update-branch"),
@@ -342,14 +342,10 @@ function setupActions() {
 
   if (elements.copyManualCommand && elements.manualUpdateCommand) {
     elements.copyManualCommand.addEventListener("click", async () => {
-      const cmd = elements.manualUpdateCommand.textContent;
+      const cmd = (elements.manualUpdateCommand.textContent || "").trim();
       if (!cmd) return;
-      try {
-        await navigator.clipboard.writeText(cmd);
-        showToast("Command copied to clipboard.", "success");
-      } catch {
-        showToast("Could not copy to clipboard.", "error");
-      }
+      const ok = await copyTextToClipboard(cmd);
+      showToast(ok ? "Command copied to clipboard." : "Could not copy to clipboard.", ok ? "success" : "error");
     });
   }
 

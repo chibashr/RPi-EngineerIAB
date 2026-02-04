@@ -1,4 +1,5 @@
 import { apiGet, extractData } from "../api.js";
+import { copyTextToClipboard } from "../components.js";
 import { applyStoredTheme, initThemeSelector } from "../theme.js";
 import { confirmModeSwitch, ensureSimpleMode, setMode } from "../mode.js";
 import { createWebSocketClient } from "../websocket.js";
@@ -436,12 +437,8 @@ function setupCopyButtons() {
     if (!target) {
       return;
     }
-    try {
-      await navigator.clipboard.writeText(target.textContent.trim());
-      showToast("Copied to clipboard.", "success");
-    } catch (error) {
-      showToast("Copy failed. Select and copy manually.", "error");
-    }
+    const ok = await copyTextToClipboard(target.textContent.trim());
+    showToast(ok ? "Copied to clipboard." : "Copy failed. Select and copy manually.", ok ? "success" : "error");
   });
 }
 

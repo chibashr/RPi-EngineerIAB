@@ -1094,12 +1094,10 @@ setup_user_permissions() {
         # Let service user run git fetch/reset when sudo is unavailable (e.g. container)
         chmod -R g+w "$INSTALL_DIR/.git" 2>/dev/null || true
     fi
-    # Optional: allow in-app update without sudo (e.g. container with no-new-privileges).
-    # When set, install dir is group-writable so the service user can run git reset in-process.
-    if [ "${RPI_ENGINEER_UPDATE_WITHOUT_SUDO:-0}" = "1" ]; then
-        chmod -R g+w "$INSTALL_DIR" 2>/dev/null || true
-        log_info "Install dir made group-writable for in-app updates without sudo (RPI_ENGINEER_UPDATE_WITHOUT_SUDO=1)."
-    fi
+    # Make install dir group-writable so the web UI can apply updates (service user runs git in-process
+    # when sudo is unavailable, or when sudoers rule is not present; group write allows both paths).
+    chmod -R g+w "$INSTALL_DIR" 2>/dev/null || true
+    log_info "Install dir is group-writable so updates from the web UI can be applied."
     usermod -a -G dialout "$SERVICE_USER" || true
     usermod -a -G netdev "$SERVICE_USER" || true
     echo "Permissions configured."

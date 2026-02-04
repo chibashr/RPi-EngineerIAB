@@ -130,5 +130,5 @@ Paths like `.cursor/`, `.planning/` are often dev-only. If they are in the repo 
 
 1. **Manual update command in UI** – When an update is available, the Updates page shows a copyable command to run via SSH (already implemented).
 2. **Clearer error on permission denied** – When `git reset` fails with "Permission denied", the message points to the manual command and troubleshooting docs (already implemented).
-3. **Installer: optional group-writable install dir** – If `RPI_ENGINEER_UPDATE_WITHOUT_SUDO=1` is set during install, the installer runs `chmod -R g+w` on the install directory so the service user can run the in-process git fallback when sudo is unavailable (e.g. container with no-new-privileges). Use for new installs where sudo will not be used for updates.
-4. **Documentation** – Troubleshooting (common-issues.html) documents the manual command, manual chmod, and the `RPI_ENGINEER_UPDATE_WITHOUT_SUDO=1` option for new installs.
+3. **Installer: group-writable install dir by default** – The installer runs `chmod -R g+w` on the install directory so the service user can apply updates from the web UI (in-process git fallback when sudo is unavailable, or when sudoers is not present). Web UI updates work after a normal install or reinstall.
+4. **Documentation** – Troubleshooting (common-issues.html) documents the manual command and re-running the installer to fix permissions.
