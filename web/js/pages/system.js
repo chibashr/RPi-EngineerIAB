@@ -35,6 +35,28 @@ function categoryLabel(category) {
   return category || "--";
 }
 
+/** CSS class for status cell (e.g. status-running, status-failed). */
+function statusClass(status) {
+  const s = (status || "").toLowerCase();
+  if (s === "running") return "status-running";
+  if (s === "stopped") return "status-stopped";
+  if (s === "starting" || s === "stopping") return "status-transitioning";
+  if (s === "failed") return "status-failed";
+  return "status-unknown";
+}
+
+/** True if service is considered running (show Stop). */
+function isRunning(status) {
+  const s = (status || "").toLowerCase();
+  return s === "running";
+}
+
+/** True if service is in a transition (disable Start/Stop). */
+function isTransitioning(status) {
+  const s = (status || "").toLowerCase();
+  return s === "starting" || s === "stopping";
+}
+
 function renderServices(servicesList) {
   if (!elements.serviceTable) {
     return;

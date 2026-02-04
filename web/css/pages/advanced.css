@@ -203,6 +203,13 @@
   margin-bottom: 0.2rem;
 }
 
+.notifications-item-time {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  margin-bottom: 0.2rem;
+}
+
 .notifications-item-message {
   display: block;
   color: var(--color-muted);

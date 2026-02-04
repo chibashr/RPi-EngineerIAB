@@ -1,6 +1,6 @@
 import { apiGet, extractData } from "../api.js";
 import { createWebSocketClient } from "../websocket.js";
-import { setAlerts } from "../notifications.js";
+import { setAlerts, formatAlertTimestamp } from "../notifications.js";
 
 const elements = {
   metrics: {
@@ -194,7 +194,8 @@ function renderAlerts(alerts) {
     label.textContent = (alert.severity || "info").toUpperCase();
     const value = document.createElement("span");
     value.className = "status-value";
-    value.textContent = alert.message || "Alert";
+    const timeStr = formatAlertTimestamp(alert.timestamp);
+    value.textContent = timeStr ? `${timeStr} — ${alert.message || "Alert"}` : (alert.message || "Alert");
     item.appendChild(label);
     item.appendChild(value);
     elements.alerts.list.appendChild(item);

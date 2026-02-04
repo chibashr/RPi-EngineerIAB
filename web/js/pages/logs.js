@@ -1,6 +1,6 @@
 import { apiGet, extractData } from "../api.js";
 import { initTabs, createStatusItem } from "../components.js";
-import { setAlerts } from "../notifications.js";
+import { setAlerts, formatAlertTimestamp } from "../notifications.js";
 
 const elements = {
   logList: document.getElementById("log-file-list"),
@@ -105,7 +105,8 @@ function renderAlerts(alerts) {
   }
   alerts.forEach((alert) => {
     const label = `${alert.severity || "info"}`.toUpperCase();
-    const value = alert.message || "Alert";
+    const timeStr = formatAlertTimestamp(alert.timestamp);
+    const value = timeStr ? `${timeStr} — ${alert.message || "Alert"}` : (alert.message || "Alert");
     elements.alertsList.appendChild(createStatusItem(label, value));
   });
 }

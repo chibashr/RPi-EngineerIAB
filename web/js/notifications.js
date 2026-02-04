@@ -1,11 +1,17 @@
 /**
  * Top-bar alerts: bell icon with badge, dropdown showing server-driven alerts.
  * Same source as Dashboard "Recent Alerts" and Logs "Alerts History" (GET /api/v1/system/status).
- * Optionally call setAlerts(alerts) when you have fresh data (e.g. from WebSocket) to update the bell.
+ * Alerts are clearable (dismissed state stored in localStorage); timestamps shown.
  */
 
 const ALERTS_POLL_INTERVAL_MS = 15000;
+const DISMISSED_STORAGE_KEY = "rpi-alerts-dismissed";
+const DISMISSED_MAX = 200;
 let alertsPollId = null;
+/** @type {Array<{ severity?: string, message?: string, timestamp?: string }>} */
+let lastAlerts = [];
+/** @type {Array<{ severity?: string, message?: string, timestamp?: string }>} */
+let lastVisibleAlerts = [];
 
 function escapeHtml(s) {
   if (s == null) return "";
@@ -19,7 +25,52 @@ function bellIcon() {
 }
 
 /**
+ * Format an alert timestamp for display (ISO string -> short time or date).
+ * @param {string} [ts] - ISO timestamp
+ * @returns {string}
+ */
+export function formatAlertTimestamp(ts) {
+  if (!ts || typeof ts !== "string") return "";
+  try {
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return "";
+    const now = new Date();
+    const sameDay = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    return sameDay ? d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
+function alertKey(alert) {
+  const ts = alert.timestamp || "";
+  const msg = (alert.message || "").slice(0, 80);
+  return `${ts}|${msg}`;
+}
+
+function loadDismissed() {
+  try {
+    const raw = localStorage.getItem(DISMISSED_STORAGE_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr.slice(-DISMISSED_MAX) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveDismissed(set) {
+  try {
+    const arr = Array.from(set).slice(-DISMISSED_MAX);
+    localStorage.setItem(DISMISSED_STORAGE_KEY, JSON.stringify(arr));
+  } catch {
+    // ignore
+  }
+}
+
+/**
  * Render server alerts into the bell dropdown and update badge.
+ * Filters out dismissed alerts; shows timestamp per alert.
  * @param {Array<{ severity?: string, message?: string, timestamp?: string }>} alerts
  */
 function renderAlertsInBell(alerts) {
@@ -31,25 +82,39 @@ function renderAlertsInBell(alerts) {
   const badge = wrap.querySelector(".notifications-badge");
   if (!listEl || !emptyEl) return;
 
-  const list = Array.isArray(alerts) ? alerts : [];
-  listEl.innerHTML = "";
-  emptyEl.hidden = list.length > 0;
-  if (clearBtn) clearBtn.hidden = true;
+  lastAlerts = Array.isArray(alerts) ? alerts : [];
+  const dismissed = loadDismissed();
+  lastVisibleAlerts = lastAlerts.filter((a) => !dismissed.has(alertKey(a)));
 
-  list.forEach((alert) => {
+  listEl.innerHTML = "";
+  emptyEl.hidden = lastVisibleAlerts.length > 0;
+  if (clearBtn) clearBtn.hidden = lastVisibleAlerts.length === 0;
+
+  lastVisibleAlerts.forEach((alert) => {
     const li = document.createElement("li");
     const severity = (alert.severity || "info").toLowerCase();
     li.className = `notifications-item notifications-item--${severity === "critical" ? "error" : severity === "warning" ? "warning" : "info"}`;
     const label = (alert.severity || "info").toUpperCase();
     const message = alert.message || "Alert";
-    li.innerHTML = `<span class="notifications-item-title">${escapeHtml(label)}</span><span class="notifications-item-message">${escapeHtml(message)}</span>`;
+    const timeStr = formatAlertTimestamp(alert.timestamp);
+    const timeHtml = timeStr ? `<span class="notifications-item-time">${escapeHtml(timeStr)}</span>` : "";
+    li.innerHTML = `<span class="notifications-item-title">${escapeHtml(label)}</span>${timeHtml}<span class="notifications-item-message">${escapeHtml(message)}</span>`;
     listEl.appendChild(li);
   });
 
   if (badge) {
-    badge.textContent = list.length > 99 ? "99+" : String(list.length);
-    badge.hidden = list.length === 0;
+    badge.textContent = lastVisibleAlerts.length > 99 ? "99+" : String(lastVisibleAlerts.length);
+    badge.hidden = lastVisibleAlerts.length === 0;
   }
+}
+
+function clearVisibleAlerts() {
+  const dismissed = loadDismissed();
+  for (const a of lastVisibleAlerts) {
+    dismissed.add(alertKey(a));
+  }
+  saveDismissed(dismissed);
+  renderAlertsInBell(lastAlerts);
 }
 
 /**
@@ -129,6 +194,7 @@ export function initNotifications() {
   dropdown.innerHTML = `
     <div class="notifications-dropdown-header">
       <span class="notifications-dropdown-title">Alerts</span>
+      <button type="button" class="btn btn-ghost notifications-clear-all" hidden>Clear all</button>
     </div>
     <p class="notifications-empty">No alerts.</p>
     <ul class="notifications-list" aria-label="Alert list"></ul>
@@ -143,6 +209,10 @@ export function initNotifications() {
     const isOpen = dropdown.hidden;
     dropdown.hidden = !isOpen;
     button.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  });
+
+  dropdown.querySelector(".notifications-clear-all")?.addEventListener("click", () => {
+    clearVisibleAlerts();
   });
 
   document.addEventListener("click", (e) => {

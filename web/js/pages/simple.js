@@ -237,7 +237,20 @@ function renderAlerts(alerts) {
   }
   list.slice(0, 5).forEach((alert) => {
     const item = document.createElement("li");
-    item.textContent = alert.message || alert.summary || "Alert";
+    const msg = alert.message || alert.summary || "Alert";
+    const ts = alert.timestamp;
+    let timeStr = "";
+    if (ts && typeof ts === "string") {
+      try {
+        const d = new Date(ts);
+        if (!Number.isNaN(d.getTime())) {
+          timeStr = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+        }
+      } catch {
+        // ignore
+      }
+    }
+    item.textContent = timeStr ? `${timeStr} — ${msg}` : msg;
     elements.alertList.appendChild(item);
   });
 }
