@@ -19,6 +19,7 @@ let currentSessionId = null;
 const MAX_TERMINAL_LINES = 500;
 let terminalBuffer = [];
 let terminalInputReady = false;
+let lastNotConnectedToast = 0;
 
 function showToast(message, variant = "info") {
   const toastRegion = document.getElementById("toast-region");
@@ -221,6 +222,9 @@ function connectWebSocket(sessionId) {
       elements.status.textContent = `Tx ${message.bytes_tx || 0} / Rx ${message.bytes_rx || 0}`;
     }
   });
+  wsClient.on("error", (message) => {
+    showToast(message?.message || "Serial connection error.", "error");
+  });
   wsClient.connect();
   focusTerminal();
 }
@@ -329,12 +333,20 @@ function charFromKeyEvent(event) {
 
 function sendToSerial(data) {
   if (!wsClient) {
-    showToast("Not connected. Select a session and connect.", "error");
+    const now = Date.now();
+    if (now - lastNotConnectedToast > 2000) {
+      lastNotConnectedToast = now;
+      showToast("Not connected. Select a session and connect.", "error");
+    }
     return false;
   }
   const sent = wsClient.send({ type: "data", data });
   if (!sent) {
-    showToast("Connection not ready. Wait for \"Connected\" status.", "error");
+    const now = Date.now();
+    if (now - lastNotConnectedToast > 2000) {
+      lastNotConnectedToast = now;
+      showToast("Connection not ready. Wait for \"Connected\" status.", "error");
+    }
     return false;
   }
   return true;
@@ -626,6 +638,10 @@ async function loadSessions() {
     activeSessions = data.sessions || [];
     renderDevices(deviceCache);
     renderSessionSelect();
+    const selected = elements.sessionSelect?.value;
+    if (selected && (currentSessionId !== selected || !wsClient)) {
+      connectWebSocket(selected);
+    }
   } catch {
     showToast("Unable to load serial sessions.", "error");
   }
