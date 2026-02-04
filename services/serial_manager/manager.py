@@ -57,10 +57,11 @@ class SerialManager:
     def __init__(self) -> None:
         self._device_configs: Dict[str, Dict[str, object]] = {}
         self._sessions: Dict[str, SerialSession] = {}
+        logger.info("Serial manager started")
 
     def list_devices(self) -> Dict[str, List[Dict[str, object]]]:
         raw = self._scan_devices()
-        logger.debug("list_devices: scanned %d raw device(s)", len(raw))
+        logger.info("list_devices: scanned %d device(s)", len(raw))
         devices = []
         for device in raw:
             config = self._device_configs.get(device["id"], {})
@@ -76,7 +77,6 @@ class SerialManager:
                     "config": config,
                 }
             )
-        logger.debug("list_devices: returning %d device(s)", len(devices))
         return {"devices": devices}
 
     def get_device(self, device_id: str) -> Dict[str, object]:
@@ -350,13 +350,12 @@ class SerialManager:
         devices = []
         if serial:
             ports = list(serial.tools.list_ports.comports())
-            logger.debug("_scan_devices: pyserial found %d port(s)", len(ports))
+            logger.info("_scan_devices: pyserial found %d port(s)", len(ports))
             for port in ports:
                 dev = self._port_to_device(port.device, port.description, port.vid)
                 devices.append(dev)
-                logger.debug("_scan_devices: port %s -> %s", port.device, dev.get("friendly_name"))
         if pyudev and not devices:
-            logger.debug("_scan_devices: pyserial empty, trying pyudev")
+            logger.info("_scan_devices: pyserial empty, trying pyudev")
             context = pyudev.Context()
             for device in context.list_devices(subsystem="tty"):
                 node = device.device_node
@@ -367,7 +366,7 @@ class SerialManager:
                 )
         dev_root = Path("/dev")
         if not devices and dev_root.exists():
-            logger.debug("_scan_devices: fallback to /dev/ttyUSB* and ttyACM*")
+            logger.info("_scan_devices: fallback to /dev/ttyUSB* and ttyACM*")
             for path in dev_root.glob("ttyUSB*"):
                 devices.append(self._port_to_device(str(path), "Serial Device", None))
             for path in dev_root.glob("ttyACM*"):
