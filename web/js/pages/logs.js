@@ -34,6 +34,13 @@ function renderLogs(files) {
   if (elements.logSelect) {
     const current = elements.logSelect.value;
     elements.logSelect.textContent = "";
+    
+    // Add "All" option first
+    const allOption = document.createElement("option");
+    allOption.value = "all";
+    allOption.textContent = "All";
+    elements.logSelect.appendChild(allOption);
+    
     if (files.length) {
       files.forEach((file) => {
         const option = document.createElement("option");
@@ -181,7 +188,14 @@ function setupActions() {
   const exportButton = document.getElementById("export-logs");
   if (exportButton) {
     exportButton.addEventListener("click", () => {
-      window.location.assign("/api/v1/logs/export");
+      const selectedFile = elements.logSelect?.value;
+      if (selectedFile && selectedFile !== "all" && selectedFile !== "") {
+        // Export individual file
+        window.location.assign(`/api/v1/logs/export?files=${encodeURIComponent(selectedFile)}`);
+      } else {
+        // Export all logs
+        window.location.assign("/api/v1/logs/export");
+      }
     });
   }
   const loadButton = document.getElementById("load-log");
@@ -190,6 +204,27 @@ function setupActions() {
   }
   if (elements.logSelect) {
     elements.logSelect.addEventListener("change", loadLogContent);
+  }
+  // Auto-load when filters change
+  if (elements.logTail) {
+    elements.logTail.addEventListener("change", loadLogContent);
+  }
+  if (elements.logLevel) {
+    elements.logLevel.addEventListener("change", loadLogContent);
+  }
+  if (elements.logService) {
+    elements.logService.addEventListener("input", () => {
+      // Debounce search input
+      clearTimeout(elements.logService._debounceTimer);
+      elements.logService._debounceTimer = setTimeout(loadLogContent, 500);
+    });
+  }
+  if (elements.logSearch) {
+    elements.logSearch.addEventListener("input", () => {
+      // Debounce search input
+      clearTimeout(elements.logSearch._debounceTimer);
+      elements.logSearch._debounceTimer = setTimeout(loadLogContent, 500);
+    });
   }
 }
 

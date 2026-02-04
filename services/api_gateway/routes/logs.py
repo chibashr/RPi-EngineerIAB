@@ -18,9 +18,14 @@ def list_system_logs():
     service = request.args.get("service")
     try:
         if file_name:
-            payload = logging_service.read_log(
-                file_name, tail=tail, level=level, search=search, service=service
-            )
+            if file_name.lower() == "all":
+                payload = logging_service.read_all_logs(
+                    tail=tail, level=level, search=search, service=service
+                )
+            else:
+                payload = logging_service.read_log(
+                    file_name, tail=tail, level=level, search=search, service=service
+                )
         else:
             payload = logging_service.list_logs()
     except ValueError as exc:

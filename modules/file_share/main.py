@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from . import server_ftp, server_sftp
+from lib.module_logger import get_module_logger
+
+logger = get_module_logger(__name__)
 
 
 DEFAULT_CONFIG: Dict[str, object] = {
@@ -134,10 +137,12 @@ def apply_config(payload: Dict[str, object]) -> Dict[str, object]:
 
 def initialize() -> None:
     config = load_config()
+    logger.info("File share module initializing")
     _restart_services(config)
 
 
 def shutdown() -> None:
+    logger.info("File share module shutting down")
     _stop_services()
 
 
@@ -152,19 +157,23 @@ def _restart_services(config: Dict[str, object]) -> None:
             _start_ftp(config)
         except Exception as exc:  # pragma: no cover - defensive guard
             _last_error = f"FTP start failed: {exc}"
+            logger.error(_last_error)
     if config.get("enable_sftp_scp"):
         try:
             _start_sftp(config)
         except Exception as exc:  # pragma: no cover - defensive guard
             _last_error = f"SFTP/SCP start failed: {exc}"
+            logger.error(_last_error)
 
 
 def _stop_services() -> None:
     global _ftp_service, _sftp_service
     if _ftp_service is not None:
+        logger.info("Stopping FTP service")
         _ftp_service.stop()
         _ftp_service = None
     if _sftp_service is not None:
+        logger.info("Stopping SFTP/SCP service")
         _sftp_service.stop()
         _sftp_service = None
 
@@ -173,9 +182,11 @@ def _start_ftp(config: Dict[str, object]) -> None:
     global _ftp_service
     _ftp_service = server_ftp.FTPService.from_config(config)
     _ftp_service.start()
+    logger.info("FTP service started")
 
 
 def _start_sftp(config: Dict[str, object]) -> None:
     global _sftp_service
     _sftp_service = server_sftp.SFTPService.from_config(config)
     _sftp_service.start()
+    logger.info("SFTP/SCP service started")

@@ -89,6 +89,52 @@ class LoggingService:
             "filters": {"level": level, "search": search, "service": service},
         }
 
+    def read_all_logs(
+        self,
+        tail: int = 100,
+        level: Optional[str] = None,
+        search: Optional[str] = None,
+        service: Optional[str] = None,
+    ) -> Dict[str, object]:
+        """Read logs from all files, merge by timestamp, return sorted."""
+        if not self._log_dir.exists():
+            return {
+                "file": "all",
+                "tail": tail,
+                "lines": [],
+                "filters": {"level": level, "search": search, "service": service},
+            }
+        
+        # Optional timestamp pattern: 2025-02-03 12:34:56,789 or 2025-02-03 12:34:56
+        ts_pattern = re.compile(
+            r"^(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2}(?:[,\s]\d+)?)"
+        )
+        
+        all_lines: List[Tuple[str, str]] = []  # (timestamp, line)
+        
+        for path in sorted(self._log_dir.glob("*.log")):
+            try:
+                lines = self._tail_lines(path, tail, level=level, search=search, service=service)
+                for line in lines:
+                    ts_match = ts_pattern.match(line.strip())
+                    ts_str = ts_match.group(1) if ts_match else "0000-00-00 00:00:00"
+                    # Normalize timestamp for sorting
+                    ts_str = ts_str.replace("T", " ").replace(",", ".")
+                    all_lines.append((ts_str, line))
+            except (OSError, ValueError):
+                continue
+        
+        # Sort by timestamp, then return just the lines
+        all_lines.sort(key=lambda x: x[0])
+        merged_lines = [line for _, line in all_lines]
+        
+        return {
+            "file": "all",
+            "tail": tail,
+            "lines": merged_lines,
+            "filters": {"level": level, "search": search, "service": service},
+        }
+
     def export_logs(self, files: Optional[Iterable[str]] = None) -> Path:
         if files:
             selected = [self._resolve_log_path(name) for name in files if name]

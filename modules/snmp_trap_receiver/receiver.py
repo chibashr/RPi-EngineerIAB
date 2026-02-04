@@ -18,6 +18,10 @@ try:
 except ImportError:  # pragma: no cover - dependency may be missing
     snmp_api = None
 
+from lib.module_logger import get_module_logger
+
+logger = get_module_logger(__name__)
+
 
 DEFAULT_CONFIG = {
     "enabled": True,
@@ -108,6 +112,7 @@ class TrapReceiver:
                 pass
         if self._thread:
             self._thread.join(timeout=2)
+        logger.info("SNMP trap receiver stopped")
 
     def _run(self) -> None:
         bind_address = str(self._config.get("bind_address", "0.0.0.0"))
@@ -119,11 +124,14 @@ class TrapReceiver:
             sock.settimeout(1.0)
             self._socket = sock
         except OSError as exc:
+            error_msg = f"Failed to bind SNMP trap socket on {bind_address}:{port}: {exc}"
+            logger.error(error_msg)
             with self._state.lock:
                 self._state.running = False
                 self._state.last_error = str(exc)
             return
 
+        logger.info(f"SNMP trap receiver started on {bind_address}:{port}")
         with self._state.lock:
             self._state.running = True
             self._state.bind_address = bind_address
@@ -140,6 +148,7 @@ class TrapReceiver:
             entry = _decode_trap(payload, addr)
             _handle_entry(entry, self._config, self._state)
 
+        logger.info("SNMP trap receiver loop exited")
         with self._state.lock:
             self._state.running = False
 

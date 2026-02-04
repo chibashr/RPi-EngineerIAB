@@ -13,6 +13,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Deque, Dict, List, Optional
 
+from lib.module_logger import get_module_logger
+
+logger = get_module_logger(__name__)
+
 
 DEFAULT_CONFIG = {
     "enabled": True,
@@ -120,6 +124,7 @@ class SyslogReceiver:
         self._tcp_thread.start()
 
     def stop(self) -> None:
+        logger.info("Stopping syslog receiver")
         self._stop_event.set()
         for sock in (self._udp_socket, self._tcp_socket):
             if sock:
@@ -142,12 +147,15 @@ class SyslogReceiver:
             sock.settimeout(1.0)
             self._udp_socket = sock
         except OSError as exc:
+            error_msg = f"Failed to bind UDP socket on {bind_address}:{port_udp}: {exc}"
+            logger.error(error_msg)
             with self._state.lock:
                 self._state.udp_running = False
                 self._state.running = self._state.tcp_running
                 self._state.last_error = str(exc)
             return
 
+        logger.info(f"Syslog UDP receiver started on {bind_address}:{port_udp}")
         with self._state.lock:
             self._state.udp_running = True
             self._state.running = True
@@ -165,6 +173,7 @@ class SyslogReceiver:
             entry = _decode_syslog(payload, addr, "udp")
             _handle_entry(entry, self._config, self._state)
 
+        logger.info("Syslog UDP receiver stopped")
         with self._state.lock:
             self._state.udp_running = False
             self._state.running = self._state.tcp_running
@@ -180,12 +189,15 @@ class SyslogReceiver:
             sock.settimeout(1.0)
             self._tcp_socket = sock
         except OSError as exc:
+            error_msg = f"Failed to bind TCP socket on {bind_address}:{port_tcp}: {exc}"
+            logger.error(error_msg)
             with self._state.lock:
                 self._state.tcp_running = False
                 self._state.running = self._state.udp_running
                 self._state.last_error = str(exc)
             return
 
+        logger.info(f"Syslog TCP receiver started on {bind_address}:{port_tcp}")
         with self._state.lock:
             self._state.tcp_running = True
             self._state.running = True
@@ -206,6 +218,7 @@ class SyslogReceiver:
             self._client_threads.append(thread)
             thread.start()
 
+        logger.info("Syslog TCP receiver stopped")
         with self._state.lock:
             self._state.tcp_running = False
             self._state.running = self._state.udp_running
