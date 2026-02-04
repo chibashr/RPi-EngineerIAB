@@ -681,8 +681,22 @@ class UpdateManager:
         return value if _is_hash(value) else None
 
     def _write_version(self, version: str) -> None:
-        self._version_file.parent.mkdir(parents=True, exist_ok=True)
-        self._version_file.write_text(str(version).strip())
+        """Write version to config or data dir; fallback to data dir if config is not writable."""
+        text = str(version).strip()
+        try:
+            self._version_file.parent.mkdir(parents=True, exist_ok=True)
+            self._version_file.write_text(text)
+            return
+        except OSError:
+            pass
+        data_version = self._data_dir / "version"
+        try:
+            data_version.parent.mkdir(parents=True, exist_ok=True)
+            data_version.write_text(text)
+            self._version_file = data_version
+            logger.info("Version written to data dir (config dir not writable): %s", data_version)
+        except OSError as e:
+            raise RuntimeError(f"Cannot write version to {self._version_file} or {data_version}: {e}") from e
 
     def _write_state(self, state: UpdateState) -> None:
         payload = {
@@ -909,7 +923,13 @@ class UpdateManager:
                         check=False,
                     )
                     if fetch.returncode != 0:
-                        raise RuntimeError(fetch.stderr.strip() or "git fetch failed")
+                        err = (fetch.stderr or "").strip() or (fetch.stdout or "").strip()
+                        if "Permission denied" in err or "FETCH_HEAD" in err:
+                            raise RuntimeError(
+                                "Repository directory is not writable by this user (e.g. .git owned by root). "
+                                "Run updates with sudo, or install to a directory owned by the service user."
+                            ) from None
+                        raise RuntimeError(err or "git fetch failed")
                     emit("Resetting to origin/" + branch + "...")
                     reset = subprocess.run(
                         ["git", *safe_dir, "reset", "--hard", f"origin/{branch}"],
@@ -976,13 +996,17 @@ class UpdateManager:
     def _restore_tree(
         self, source: Path, target_root: Path, skip_manifest: bool = False
     ) -> None:
+        """Restore files from source to target_root; skip files that fail with permission errors."""
         for path in source.rglob("*"):
             if skip_manifest and path.name == "manifest.json":
                 continue
             relative = path.relative_to(source)
             target = target_root / relative
-            if path.is_dir():
-                target.mkdir(parents=True, exist_ok=True)
-            else:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(path, target)
+            try:
+                if path.is_dir():
+                    target.mkdir(parents=True, exist_ok=True)
+                else:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(path, target)
+            except OSError as e:
+                logger.warning("Skipping restore of %s to %s: %s", path, target, e)
