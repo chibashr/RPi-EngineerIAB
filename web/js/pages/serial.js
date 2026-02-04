@@ -6,6 +6,7 @@ const elements = {
   deviceTable: document.getElementById("serial-device-table-body"),
   sessionSelect: document.getElementById("serial-session-select"),
   terminal: document.getElementById("terminal-placeholder"),
+  terminalInput: document.getElementById("serial-terminal-input"),
   banner: document.getElementById("serial-connection-banner"),
   status: document.getElementById("serial-status"),
   logsTable: document.getElementById("serial-logs-table-body"),
@@ -308,8 +309,8 @@ function setupActions() {
       id: "serial-clear",
       action: () => {
         if (elements.terminal) {
-          elements.terminal.textContent = "";
           terminalBuffer = [];
+          elements.terminal.textContent = "Click here to focus, then type to send data.";
         }
       },
     },
@@ -323,25 +324,84 @@ function setupActions() {
   });
 }
 
+function charFromKeyEvent(event) {
+  if (event.ctrlKey || event.metaKey) {
+    const c = event.key.toLowerCase();
+    if (c >= "a" && c <= "z") return String.fromCharCode(c.charCodeAt(0) - 96);
+    if (c === "@") return "\x00";
+    if (c === "[") return "\x1b";
+    if (c === "\\") return "\x1c";
+    if (c === "]") return "\x1d";
+    if (c === "^" || c === "6") return "\x1e";
+    if (c === "_" || c === "-") return "\x1f";
+  }
+  if (event.key === "Enter") return "\n";
+  if (event.key === "Backspace") return "\x7f";
+  if (event.key === "Tab") return "\t";
+  if (event.key.length === 1) return event.key;
+  return null;
+}
+
+function sendToSerial(data) {
+  if (!wsClient) {
+    showToast("Not connected. Select a session and connect.", "error");
+    return false;
+  }
+  const sent = wsClient.send({ type: "data", data });
+  if (!sent) {
+    showToast("Connection not ready. Wait for \"Connected\" status.", "error");
+    return false;
+  }
+  return true;
+}
+
+function appendLocalEcho(char) {
+  if (!elements.terminal) return;
+  if (terminalBuffer.length === 0) terminalBuffer.push("");
+  if (char === "\n") {
+    terminalBuffer.push("");
+  } else {
+    terminalBuffer[terminalBuffer.length - 1] += char;
+  }
+  if (terminalBuffer.length > MAX_TERMINAL_LINES) {
+    terminalBuffer = terminalBuffer.slice(-MAX_TERMINAL_LINES);
+  }
+  elements.terminal.textContent = terminalBuffer.join("\n");
+  elements.terminal.scrollTop = elements.terminal.scrollHeight;
+}
+
 function setupTerminalInput() {
   if (!elements.terminal || terminalInputReady) return;
-  elements.terminal.tabIndex = 0;
-  elements.terminal.addEventListener("keydown", (event) => {
-    if (!wsClient) return;
-    let data = null;
-    if (event.key === "Enter") data = "\n";
-    else if (event.key === "Backspace") data = "\x7f";
-    else if (event.key.length === 1) data = event.key;
-    if (data !== null) {
-      event.preventDefault();
-      wsClient.send({ type: "data", data });
-    }
-  });
+  const input = elements.terminalInput;
+  const wrapper = elements.terminal?.closest(".console-window-wrapper");
+  if (wrapper) wrapper.tabIndex = 0;
+  if (input) {
+    input.addEventListener("keydown", (event) => {
+      const char = charFromKeyEvent(event);
+      if (char !== null) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (sendToSerial(char)) {
+          appendLocalEcho(char);
+        }
+      }
+    });
+    wrapper?.addEventListener("click", () => input?.focus());
+  } else {
+    elements.terminal.tabIndex = 0;
+    elements.terminal.addEventListener("keydown", (event) => {
+      const char = charFromKeyEvent(event);
+      if (char !== null) {
+        event.preventDefault();
+        if (sendToSerial(char)) appendLocalEcho(char);
+      }
+    });
+  }
   terminalInputReady = true;
 }
 
 function focusTerminal() {
-  if (elements.terminal) elements.terminal.focus();
+  (elements.terminalInput || elements.terminal)?.focus();
 }
 
 async function configureSerial(deviceId) {

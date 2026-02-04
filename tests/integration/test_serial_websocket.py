@@ -24,6 +24,7 @@ class MockSerialPort:
     def __init__(self, *args, **kwargs):
         self.in_waiting = 0
         self._closed = False
+        self.writes = []
 
     def read(self, size=1):
         if self._closed:
@@ -33,7 +34,11 @@ class MockSerialPort:
     def write(self, data):
         if self._closed:
             raise OSError("Port closed")
+        self.writes.append(data)
         return len(data)
+
+    def flush(self):
+        pass
 
     def close(self):
         self._closed = True
@@ -192,6 +197,7 @@ def test_serial_websocket_with_live_server(monkeypatch, tmp_path):
 
             received = []
             try:
+                ws.send(json.dumps({"type": "data", "data": "test"}))
                 deadline = time.time() + 3
                 while time.time() < deadline and len(received) < 5:
                     try:
@@ -208,6 +214,8 @@ def test_serial_websocket_with_live_server(monkeypatch, tmp_path):
                 except Exception:
                     pass
 
+            assert len(mock_port.writes) >= 1
+            assert b"test" in mock_port.writes
             msg_types = [m.get("type") for m in received]
             assert "error" not in msg_types or len(received) == 1
         finally:

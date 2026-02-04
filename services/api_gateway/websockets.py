@@ -200,12 +200,16 @@ def register_websockets(sock: Sock) -> None:
                     ws.send(json.dumps({"type": "error", "message": "Invalid JSON"}))
                     continue
                 msg_type = payload.get("type")
-                if msg_type == "data":
+                if msg_type == "ping":
+                    ws.send(json.dumps({"type": "pong"}))
+                elif msg_type == "data":
                     data = payload.get("data", "")
                     if data:
-                        raw = data.encode()
+                        raw = data.encode("utf-8", errors="replace")
                         ser.write(raw)
+                        ser.flush()
                         serial_manager.record_tx(session_id, raw)
+                        logger.debug("serial_console: sent %d byte(s) to %s", len(raw), session.device_id)
                 elif msg_type == "control":
                     action = payload.get("action")
                     if action == "pause_logging":

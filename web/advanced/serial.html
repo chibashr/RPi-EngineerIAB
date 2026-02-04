@@ -165,8 +165,21 @@
               </div>
             </div>
             <div class="console-status" id="serial-status">Disconnected</div>
-            <div class="console-window" id="terminal-placeholder">
-              Click here to focus, then type to send data.
+            <div class="console-window-wrapper">
+              <div class="console-window" id="terminal-placeholder">
+                Click here to focus, then type to send data.
+              </div>
+              <input
+                type="text"
+                id="serial-terminal-input"
+                class="console-input-overlay"
+                aria-label="Serial console input"
+                placeholder=""
+                autocomplete="off"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+              />
             </div>
           </section>
 
