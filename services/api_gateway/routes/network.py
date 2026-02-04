@@ -2,10 +2,12 @@
 
 from flask import Blueprint, request
 
+from lib.module_logger import get_service_logger
 from services.network_manager import NetworkManager
 
 from ..response import error_response, success_response
 
+logger = get_service_logger(__name__)
 network_bp = Blueprint("network", __name__, url_prefix="/api/v1/network")
 _network_manager = NetworkManager()
 
@@ -29,11 +31,15 @@ def update_interface(interface_id: str):
     payload = request.get_json(silent=True) or {}
     try:
         data = _network_manager.update_interface(interface_id, payload)
+        logger.info("Interface updated via API: %s mode=%s", interface_id, data.get("mode"))
     except KeyError as exc:
+        logger.warning("Interface update not found: %s", interface_id)
         return error_response("NOT_FOUND", str(exc), status_code=404)
     except ValueError as exc:
+        logger.warning("Interface update validation: %s", exc)
         return error_response("VALIDATION_ERROR", str(exc), status_code=400)
     except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Interface update failed %s: %s", interface_id, exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     return success_response(data)
 
@@ -70,9 +76,12 @@ def save_profile():
     payload = request.get_json(silent=True) or {}
     try:
         data = _network_manager.save_profile(payload)
+        logger.info("Network profile saved via API: %s", data.get("name"))
     except ValueError as exc:
+        logger.warning("Profile save validation: %s", exc)
         return error_response("VALIDATION_ERROR", str(exc), status_code=400)
     except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Profile save failed: %s", exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     return success_response(data, status_code=201)
 
@@ -81,9 +90,12 @@ def save_profile():
 def load_profile(profile_name: str):
     try:
         data = _network_manager.load_profile(profile_name)
+        logger.info("Network profile loaded via API: %s", profile_name)
     except KeyError as exc:
+        logger.warning("Profile load not found: %s", profile_name)
         return error_response("NOT_FOUND", str(exc), status_code=404)
     except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Profile load failed %s: %s", profile_name, exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     return success_response(data)
 
@@ -134,9 +146,12 @@ def reset_network():
     preserve_hotspot = payload.get("preserve_hotspot", False)
     try:
         result = _network_manager.reset_network(preserve_hotspot=preserve_hotspot)
+        logger.info("Network reset via API (preserve_hotspot=%s)", preserve_hotspot)
     except RuntimeError as exc:
+        logger.error("Network reset failed: %s", exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Network reset failed: %s", exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     return success_response(result)
 
@@ -160,10 +175,14 @@ def configure_hotspot():
     payload = request.get_json(silent=True) or {}
     try:
         result = _network_manager.configure_hotspot(payload)
+        logger.info("Hotspot configured via API: ssid=%s", result.get("ssid"))
     except ValueError as exc:
+        logger.warning("Hotspot config validation: %s", exc)
         return error_response("VALIDATION_ERROR", str(exc), status_code=400)
     except RuntimeError as exc:
+        logger.error("Hotspot config failed: %s", exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Hotspot config failed: %s", exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     return success_response(result)

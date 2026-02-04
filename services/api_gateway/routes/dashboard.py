@@ -2,6 +2,7 @@
 
 from flask import Blueprint
 
+from lib.module_logger import get_service_logger
 from services.system_manager import SystemManager
 from services.monitor_service import MonitorService
 from services.logging_service import logging_service
@@ -12,6 +13,7 @@ from services.remote_access_manager import RemoteAccessManager
 
 from ..response import success_response
 
+logger = get_service_logger(__name__)
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/api/v1/dashboard")
 _system_manager = SystemManager()
 _monitor_service = MonitorService()
@@ -40,9 +42,10 @@ def get_dashboard_status():
                 key=lambda a: (a.get("timestamp") or ""), reverse=True
             )
             data["alerts"] = data["alerts"][:50]
-        except Exception:
-            pass
-    except Exception:
+        except Exception as exc:
+            logger.debug("Dashboard alerts fetch failed: %s", exc)
+    except Exception as exc:
+        logger.warning("Dashboard system status failed: %s", exc)
         data["resources"] = {}
         data["services"] = {}
         data["alerts"] = []
@@ -52,25 +55,29 @@ def get_dashboard_status():
         data["interfaces"] = _network_manager.list_interfaces().get(
             "interfaces", []
         )
-    except Exception:
+    except Exception as exc:
+        logger.debug("Dashboard interfaces fetch failed: %s", exc)
         data["interfaces"] = []
 
     # Active captures
     try:
         data["captures"] = capture_manager.list_active().get("captures", [])
-    except Exception:
+    except Exception as exc:
+        logger.debug("Dashboard captures fetch failed: %s", exc)
         data["captures"] = []
 
     # Serial devices
     try:
         data["devices"] = serial_manager.list_devices().get("devices", [])
-    except Exception:
+    except Exception as exc:
+        logger.debug("Dashboard devices fetch failed: %s", exc)
         data["devices"] = []
 
     # Remote access
     try:
         data["tools"] = _remote_manager.get_status().get("tools", [])
-    except Exception:
+    except Exception as exc:
+        logger.debug("Dashboard remote tools fetch failed: %s", exc)
         data["tools"] = []
 
     return success_response(data)

@@ -2,12 +2,14 @@
 
 from flask import Blueprint, request
 
+from lib.module_logger import get_service_logger
 from services.system_manager import SystemManager
 from services.monitor_service import MonitorService
 from services.logging_service import logging_service
 
 from ..response import error_response, success_response
 
+logger = get_service_logger(__name__)
 system_bp = Blueprint("system", __name__, url_prefix="/api/v1/system")
 _system_manager = SystemManager()
 _monitor_service = MonitorService()
@@ -56,11 +58,15 @@ def control_service():
         )
     try:
         result = _system_manager.control_service(service, action)
+        logger.info("Service control via API: %s %s", action, service)
     except ValueError as exc:
+        logger.warning("Service control validation: %s", exc)
         return error_response("VALIDATION_ERROR", str(exc), status_code=400)
     except RuntimeError as exc:
+        logger.error("Service control failed %s %s: %s", action, service, exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Service control failed %s %s: %s", action, service, exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     return success_response(result)
 
@@ -78,11 +84,15 @@ def control_services_bulk():
         )
     try:
         results = _system_manager.control_services_bulk(services, action)
+        logger.info("Bulk service control via API: %s (%d services)", action, len(services))
     except ValueError as exc:
+        logger.warning("Bulk service control validation: %s", exc)
         return error_response("VALIDATION_ERROR", str(exc), status_code=400)
     except RuntimeError as exc:
+        logger.error("Bulk service control failed: %s", exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Bulk service control failed: %s", exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     return success_response({"results": results})
 
@@ -97,11 +107,15 @@ def power_action():
         )
     try:
         result = _system_manager.power_action(action)
+        logger.warning("Power action via API: %s", action)
     except ValueError as exc:
+        logger.warning("Power action validation: %s", exc)
         return error_response("VALIDATION_ERROR", str(exc), status_code=400)
     except RuntimeError as exc:
+        logger.error("Power action failed: %s", exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Power action failed: %s", exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     return success_response(result)
 
@@ -116,10 +130,14 @@ def save_settings():
     payload = request.get_json(silent=True) or {}
     try:
         result = _system_manager.save_settings(payload)
+        logger.info("System settings saved via API")
     except ValueError as exc:
+        logger.warning("System settings validation: %s", exc)
         return error_response("VALIDATION_ERROR", str(exc), status_code=400)
     except RuntimeError as exc:
+        logger.error("System settings save failed: %s", exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("System settings save failed: %s", exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     return success_response(result)

@@ -131,6 +131,7 @@ def get_status() -> Dict[str, object]:
 def apply_config(payload: Dict[str, object]) -> Dict[str, object]:
     config = _merge_config(payload)
     save_config(config)
+    logger.info("File share config applied: ftp=%s sftp=%s path=%s", config.get("enable_ftp"), config.get("enable_sftp_scp"), config.get("share_path"))
     _restart_services(config)
     return config
 

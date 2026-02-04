@@ -115,6 +115,7 @@ class NetworkManager:
         }
         path = PROFILE_DIR / f"{name}.json"
         path.write_text(json.dumps(data, indent=2))
+        logger.info("Network profile saved: %s", name)
         return {"name": name, "description": description}
 
     def load_profile(self, name: str) -> Dict[str, object]:
@@ -129,6 +130,7 @@ class NetworkManager:
             config = iface.get("config")
             if iface_id and config:
                 self.update_interface(iface_id, config)
+        logger.info("Network profile loaded: %s", name)
         return {"name": name, "applied": True}
 
     def _find_profile_by_name(self, name: str) -> Optional[Path]:
@@ -149,6 +151,7 @@ class NetworkManager:
         if not path:
             raise KeyError("Profile not found")
         path.unlink()
+        logger.info("Network profile deleted: %s", name)
         return {"name": name, "deleted": True}
 
     def update_profile(self, name: str, payload: Dict[str, object]) -> Dict[str, object]:
@@ -231,6 +234,7 @@ class NetworkManager:
             check=True,
         )
         subprocess.run(["ip", "link", "set", vlan_name, "up"], check=True)
+        logger.info("VLAN created: %s on %s (id=%s)", vlan_name, parent, vlan_id)
         return {"parent": parent, "vlan_id": vlan_id, "name": vlan_name, "applied": True}
 
     def configure_hotspot(self, payload: Dict[str, object]) -> Dict[str, object]:

@@ -7,9 +7,12 @@ from typing import Dict, List, Optional
 
 from flask import Blueprint, request
 
+from lib.module_logger import get_module_logger
 from services.api_gateway.response import error_response, success_response
 
 from . import main, user_store
+
+logger = get_module_logger(__name__)
 
 fileshare_bp = Blueprint("file_share", __name__, url_prefix="/api/v1/fileshare")
 
@@ -54,7 +57,9 @@ def update_config():
         return error_response("VALIDATION_ERROR", "Invalid configuration payload", 400)
     try:
         config = main.apply_config(payload)
+        logger.info("File share config updated via API")
     except ValueError as exc:
+        logger.warning("File share config validation: %s", exc)
         return error_response("VALIDATION_ERROR", str(exc), 400)
     return success_response(config)
 
@@ -76,7 +81,9 @@ def create_user():
         return error_response("VALIDATION_ERROR", "ssh_public_keys must be a list", 400)
     try:
         user_store.create_user(username, password, keys)
+        logger.info("File share user created: %s", username)
     except ValueError as exc:
+        logger.warning("File share user create validation: %s", exc)
         return error_response("VALIDATION_ERROR", str(exc), 400)
     return success_response({"created": username})
 
@@ -85,7 +92,9 @@ def create_user():
 def delete_user(username: str):
     try:
         user_store.delete_user(username)
+        logger.info("File share user deleted: %s", username)
     except ValueError as exc:
+        logger.warning("File share user delete: %s", exc)
         return error_response("VALIDATION_ERROR", str(exc), 400)
     return success_response({"deleted": username})
 
@@ -122,6 +131,7 @@ def upload_file():
     filename = Path(file.filename).name
     destination = target_dir / filename
     file.save(str(destination))
+    logger.info("File share upload: %s to %s", filename, subpath or "/")
     return success_response({"uploaded": filename, "path": str(destination.relative_to(share_root))})
 
 

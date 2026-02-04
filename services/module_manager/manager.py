@@ -190,6 +190,7 @@ class ModuleManager:
             raise ValueError("module_id or module_url is required")
         module_path = self._install_from_archive(str(module_url))
         self.discover_modules()
+        logger.info("Module installed from archive: %s", module_path.name)
         return {"installed": True, "module_id": module_path.name}
 
     def uninstall_module(self, module_id: str) -> Dict[str, object]:
@@ -201,6 +202,7 @@ class ModuleManager:
         shutil.rmtree(record.path, ignore_errors=True)
         self._registry.pop(module_id, None)
         self._save_enabled_modules()
+        logger.info("Module uninstalled: %s", module_id)
         return {"uninstalled": True, "module_id": module_id}
 
     def enable_module(self, module_id: str) -> Dict[str, object]:
@@ -268,14 +270,16 @@ class ModuleManager:
             return
         try:
             module = importlib.import_module(f"{record.module_id}.api")
-        except Exception:
+        except Exception as exc:
+            logger.warning("Module API import failed %s: %s", record.module_id, exc)
             record.state = "error"
             return
         if module and hasattr(module, "register_routes"):
             try:
                 module.register_routes(self._app)
                 record.routes_registered = True
-            except Exception:
+            except Exception as exc:
+                logger.warning("Module route registration failed %s: %s", record.module_id, exc)
                 record.state = "error"
 
     def _start_module(self, record: ModuleRecord) -> None:
@@ -300,13 +304,16 @@ class ModuleManager:
             return
         try:
             module = importlib.import_module(f"{record.module_id}.main")
-        except Exception:
+        except Exception as exc:
+            logger.warning("Module main import for shutdown %s: %s", record.module_id, exc)
             record.state = "error"
             return
         if module and hasattr(module, "shutdown"):
             try:
                 module.shutdown()
-            except Exception:
+                logger.debug("Module shutdown: %s", record.module_id)
+            except Exception as exc:
+                logger.warning("Module shutdown failed %s: %s", record.module_id, exc)
                 record.state = "error"
 
     def _load_enabled_modules(self) -> List[str]:
@@ -503,6 +510,7 @@ class ModuleManager:
             raise KeyError("Module not found")
         self._download_repo_module(module_id)
         self.discover_modules()
+        logger.info("Module updated from repo: %s", module_id)
         return {"updated": True, "module_id": module_id}
 
     def _install_from_archive(self, module_url: str) -> Path:

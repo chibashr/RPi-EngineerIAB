@@ -1,9 +1,8 @@
 import { apiGet, extractData } from "../api.js";
-import { initTabs, createStatusItem } from "../components.js";
+import { initTabs } from "../components.js";
 import { setAlerts, formatAlertTimestamp } from "../notifications.js";
 
 const elements = {
-  logList: document.getElementById("log-file-list"),
   logSelect: document.getElementById("log-file-select"),
   logTail: document.getElementById("log-tail"),
   logLevel: document.getElementById("log-level"),
@@ -28,10 +27,6 @@ function showToast(message, variant = "info") {
 }
 
 function renderLogs(files) {
-  if (!elements.logList) {
-    return;
-  }
-  elements.logList.textContent = "";
   if (elements.logSelect) {
     const current = elements.logSelect.value;
     elements.logSelect.textContent = "";
@@ -59,18 +54,6 @@ function renderLogs(files) {
       elements.logSelect.appendChild(option);
     }
   }
-  if (!files.length) {
-    const item = document.createElement("li");
-    item.textContent = "No log files available.";
-    elements.logList.appendChild(item);
-    return;
-  }
-
-  files.forEach((file) => {
-    const label = file.name || "Log file";
-    const value = file.modified || "Unknown";
-    elements.logList.appendChild(createStatusItem(label, value));
-  });
 }
 
 function setMetric(element, value, unit, maxValue = 100) {

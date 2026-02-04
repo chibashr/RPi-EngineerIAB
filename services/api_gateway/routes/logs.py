@@ -2,10 +2,12 @@
 
 from flask import Blueprint, request, send_file
 
+from lib.module_logger import get_service_logger
 from services.logging_service import logging_service
 
 from ..response import error_response, success_response
 
+logger = get_service_logger(__name__)
 logs_bp = Blueprint("logs", __name__, url_prefix="/api/v1/logs")
 
 
@@ -29,10 +31,13 @@ def list_system_logs():
         else:
             payload = logging_service.list_logs()
     except ValueError as exc:
+        logger.warning("Logs validation error: %s", exc)
         return error_response("VALIDATION_ERROR", str(exc), status_code=400)
     except FileNotFoundError:
+        logger.warning("Log file not found: %s", file_name or "all")
         return error_response("NOT_FOUND", "Log file not found", status_code=404)
     except Exception as exc:
+        logger.exception("Logs read failed: %s", exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     return success_response(payload)
 
@@ -42,7 +47,9 @@ def export_logs():
     files = request.args.getlist("files")
     try:
         export_path = logging_service.export_logs(files if files else None)
+        logger.info("Logs exported: %s", export_path.name)
     except Exception as exc:
+        logger.exception("Logs export failed: %s", exc)
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
     return send_file(
         export_path,

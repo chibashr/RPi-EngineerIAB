@@ -216,6 +216,7 @@ def apply_config(new_config: Dict[str, object]) -> None:
     )
     restart_needed = any(previous.get(key) != updated.get(key) for key in restart_keys)
     if restart_needed:
+        logger.info("SNMP trap config applied: enabled=%s port=%s", updated.get("enabled"), updated.get("port"))
         stop_receiver()
         if updated.get("enabled", True):
             start_receiver()

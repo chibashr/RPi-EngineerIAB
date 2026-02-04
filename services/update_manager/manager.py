@@ -140,6 +140,8 @@ class UpdateManager:
                         available_since = commit_info.get("date")
                         available_commit_message = commit_info.get("message") or None
                         available_commit_author = commit_info.get("author") or None
+                if update_available:
+                    logger.info("Update check: available %s -> %s (%d files)", local_hash[:7] if local_hash else "", available_hash[:7] if available_hash else "", len(files_changed))
                 return self._check_response(
                     current_version=local_hash,
                     update_available=update_available,
@@ -316,6 +318,7 @@ class UpdateManager:
                 ) from exc
             raise RuntimeError(f"Update failed; rollback attempted: {exc}") from exc
         emit("Done.")
+        logger.info("Update applied: %s -> %s", previous_version[:7] if previous_version else previous_version, target_version[:7] if target_version else target_version)
         return {
             "status": "applied",
             "dry_run": False,

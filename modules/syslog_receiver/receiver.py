@@ -310,6 +310,7 @@ def apply_config(new_config: Dict[str, object]) -> None:
     )
     restart_needed = any(previous.get(key) != updated.get(key) for key in restart_keys)
     if restart_needed:
+        logger.info("Syslog config applied: enabled=%s udp=%s tcp=%s", updated.get("enabled"), updated.get("port_udp"), updated.get("port_tcp"))
         stop_receiver()
         if updated.get("enabled", True):
             start_receiver()

@@ -133,6 +133,7 @@ class CaptureManager:
             raise KeyError("Completed capture not found")
         if job.file_path and job.file_path.exists():
             job.file_path.unlink()
+        logger.info("Completed capture deleted: %s (%s)", capture_id[:8], job.name)
         return {"capture_id": capture_id, "deleted": True}
 
     def get_stats(self, capture_id: str) -> Dict[str, object]:
