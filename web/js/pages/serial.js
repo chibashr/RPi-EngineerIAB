@@ -170,10 +170,41 @@ function updateBanner(message, isVisible = true) {
   elements.banner.classList.toggle("is-visible", isVisible);
 }
 
+function ensureTerminalLine() {
+  if (terminalBuffer.length === 0) terminalBuffer.push("");
+}
+
+function processReceivedChar(c, i, s) {
+  ensureTerminalLine();
+  const line = terminalBuffer[terminalBuffer.length - 1];
+  if (c === "\n") {
+    terminalBuffer.push("");
+  } else if (c === "\r") {
+    if (i + 1 < s.length && s[i + 1] === "\n") {
+      terminalBuffer.push("");
+      return 1;
+    }
+    terminalBuffer[terminalBuffer.length - 1] = "";
+  } else if (c === "\x7f" || c === "\x08") {
+    if (line.length > 0) {
+      terminalBuffer[terminalBuffer.length - 1] = line.slice(0, -1);
+    }
+  } else if (c === "\t") {
+    terminalBuffer[terminalBuffer.length - 1] += "    ";
+  } else if (c >= " " || c === "\t") {
+    terminalBuffer[terminalBuffer.length - 1] += c;
+  }
+  return 0;
+}
+
 function updateTerminal(text) {
   if (!elements.terminal) return;
-  const lines = String(text).split("\n");
-  terminalBuffer = terminalBuffer.concat(lines);
+  const s = String(text);
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    const skip = processReceivedChar(c, i, s);
+    if (skip) i += skip;
+  }
   if (terminalBuffer.length > MAX_TERMINAL_LINES) {
     terminalBuffer = terminalBuffer.slice(-MAX_TERMINAL_LINES);
   }
@@ -354,9 +385,16 @@ function sendToSerial(data) {
 
 function appendLocalEcho(char) {
   if (!elements.terminal) return;
-  if (terminalBuffer.length === 0) terminalBuffer.push("");
+  ensureTerminalLine();
   if (char === "\n") {
     terminalBuffer.push("");
+  } else if (char === "\x7f" || char === "\x08") {
+    const line = terminalBuffer[terminalBuffer.length - 1];
+    if (line.length > 0) {
+      terminalBuffer[terminalBuffer.length - 1] = line.slice(0, -1);
+    }
+  } else if (char === "\t") {
+    terminalBuffer[terminalBuffer.length - 1] += "    ";
   } else {
     terminalBuffer[terminalBuffer.length - 1] += char;
   }
