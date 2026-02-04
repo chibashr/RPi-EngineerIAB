@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import zipfile
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Deque, Dict, Iterable, List, Optional
+from typing import Deque, Dict, Iterable, List, Optional, Tuple
 
 
 def _timestamp(ts: Optional[float] = None) -> str:
@@ -123,4 +124,81 @@ class LoggingService:
                     continue
                 buffer.append(line.rstrip("\n"))
         return list(buffer)
+
+    def get_recent_log_alerts(
+        self, limit: int = 50
+    ) -> List[Dict[str, object]]:
+        """
+        Read recent WARNING and ERROR lines from all log files and return
+        them as alert-shaped dicts for unified alerting.
+        Returns list of {severity, message, timestamp} (newest first).
+        """
+        alerts: List[Dict[str, object]] = []
+        # Match common formats: "DATE TIME - name - LEVEL - msg" or "LEVEL - msg"
+        level_pattern = re.compile(
+            r"^(?P<prefix>.*?)\s+-\s+(?:ERROR|WARNING)\s+-\s+(?P<message>.+)$",
+            re.IGNORECASE,
+        )
+        simple_level = re.compile(
+            r"^(?P<prefix>.*?)\s+(?:ERROR|WARNING)\s+[:\-]?\s*(?P<message>.+)$",
+            re.IGNORECASE,
+        )
+        # Optional leading timestamp: 2025-02-03 12:34:56,789 or 2025-02-03 12:34:56
+        ts_pattern = re.compile(
+            r"^(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2}(?:,\d+)?)"
+        )
+
+        def parse_line(line: str) -> Optional[Tuple[str, str, str]]:
+            line_lower = line.lower()
+            if " error " in line_lower or " - error - " in line_lower:
+                severity = "critical"
+            elif " warning " in line_lower or " - warning - " in line_lower:
+                severity = "warning"
+            else:
+                return None
+            message = line
+            for pattern in (level_pattern, simple_level):
+                m = pattern.search(line)
+                if m:
+                    message = (m.group("message") or "").strip() or line
+                    break
+            ts_str = _timestamp()
+            ts_match = ts_pattern.match(line.strip())
+            if ts_match:
+                try:
+                    raw = ts_match.group(1).replace("T", " ").replace(",", ".")
+                    dt = datetime.strptime(raw[:19], "%Y-%m-%d %H:%M:%S")
+                    ts_str = dt.replace(tzinfo=timezone.utc).isoformat()
+                except (ValueError, TypeError):
+                    pass
+            return (severity, message, ts_str)
+
+        if not self._log_dir.exists():
+            return []
+        read_limit = 300
+        for path in sorted(self._log_dir.glob("*.log"), reverse=True):
+            if len(alerts) >= limit:
+                break
+            try:
+                lines = self._tail_lines(
+                    path, read_limit, level=None, search=None, service=None
+                )
+            except (OSError, ValueError):
+                continue
+            for line in reversed(lines):
+                if len(alerts) >= limit:
+                    break
+                parsed = parse_line(line)
+                if parsed:
+                    severity, message, ts_str = parsed
+                    alerts.append(
+                        {
+                            "severity": severity,
+                            "message": message[:500],
+                            "timestamp": ts_str,
+                            "source": "log",
+                        }
+                    )
+        alerts.sort(key=lambda a: (a.get("timestamp") or ""), reverse=True)
+        return alerts[:limit]
 

@@ -15,6 +15,8 @@ from services.capture_manager.manager import split_bpf_filter
 from services.serial_manager import serial_manager
 from services.system_manager import SystemManager
 from services.network_manager import NetworkManager
+from services.monitor_service import MonitorService
+from services.logging_service import logging_service
 from services.update_manager import update_manager
 
 try:
@@ -26,7 +28,28 @@ except ImportError:  # pragma: no cover - optional dependency
 def register_websockets(sock: Sock) -> None:
     system_manager = SystemManager()
     network_manager = NetworkManager()
+    monitor_service = MonitorService()
     logger = logging.getLogger(__name__)
+
+    def _merged_monitor_payload() -> dict:
+        """Build monitor payload with health alerts + recent log alerts (same as GET /system/status)."""
+        try:
+            monitor = monitor_service.get_status()
+            alerts = list(monitor.get("alerts", []))
+        except Exception:
+            monitor = {}
+            alerts = []
+        try:
+            log_alerts = logging_service.get_recent_log_alerts(limit=30)
+            alerts.extend(log_alerts)
+            alerts.sort(key=lambda a: (a.get("timestamp") or ""), reverse=True)
+            alerts = alerts[:50]
+        except Exception:
+            pass
+        if monitor:
+            monitor = dict(monitor)
+            monitor["alerts"] = alerts
+        return monitor or {"alerts": alerts, "health": None}
 
     @sock.route("/ws/status")
     def status_stream(ws) -> None:  # type: ignore[no-untyped-def]
@@ -72,6 +95,9 @@ def register_websockets(sock: Sock) -> None:
             if not safe_send(
                 {"type": "network_interfaces", "data": network_interfaces}
             ):
+                break
+            monitor_payload = _merged_monitor_payload()
+            if not safe_send({"type": "monitor_status", "data": monitor_payload}):
                 break
             time.sleep(2)
 

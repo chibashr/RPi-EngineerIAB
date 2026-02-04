@@ -1,0 +1,112 @@
+{
+  "name": "file_share",
+  "display_name": "File Share",
+  "version": "1.0.0",
+  "description": "File sharing over FTP and SFTP/SCP with module-managed users.",
+  "author": "chibashr",
+  "license": "MIT",
+  "type": "service",
+  "dependencies": {
+    "system": [],
+    "python": ["pyftpdlib>=1.5.9", "paramiko>=3.4.0"],
+    "modules": []
+  },
+  "api_routes": [
+    {
+      "path": "/api/v1/fileshare/status",
+      "methods": ["GET"],
+      "description": "Get file share status"
+    },
+    {
+      "path": "/api/v1/fileshare/config",
+      "methods": ["GET", "PUT"],
+      "description": "Get or update file share configuration"
+    },
+    {
+      "path": "/api/v1/fileshare/users",
+      "methods": ["GET", "POST"],
+      "description": "List or create file share users"
+    },
+    {
+      "path": "/api/v1/fileshare/users/<username>",
+      "methods": ["DELETE"],
+      "description": "Delete a file share user"
+    },
+    {
+      "path": "/api/v1/fileshare/users/<username>/password",
+      "methods": ["PUT"],
+      "description": "Update a file share user's password"
+    },
+    {
+      "path": "/api/v1/fileshare/upload",
+      "methods": ["POST"],
+      "description": "Upload a file to the share folder"
+    },
+    {
+      "path": "/api/v1/fileshare/files",
+      "methods": ["GET"],
+      "description": "List files in the share folder"
+    }
+  ],
+  "web_components": [
+    {
+      "name": "File Share",
+      "path": "/advanced/fileshare.html",
+      "menu": "Modules",
+      "menu_order": 35,
+      "icon": "folder"
+    }
+  ],
+  "config_schema": {
+    "share_path": {
+      "type": "string",
+      "default": "",
+      "description": "Absolute path to the share folder (defaults to app data directory)."
+    },
+    "enable_ftp": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable FTP server (explicit opt-in)."
+    },
+    "enable_sftp_scp": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable SSH file access (SFTP + SCP) (explicit opt-in)."
+    },
+    "ftp_bind_addresses": {
+      "type": "string",
+      "default": "0.0.0.0",
+      "description": "Comma-separated IPs to bind FTP to (e.g. 192.168.50.1)."
+    },
+    "sftp_bind_addresses": {
+      "type": "string",
+      "default": "0.0.0.0",
+      "description": "Comma-separated IPs to bind SFTP/SCP to."
+    },
+    "ftp_port": {
+      "type": "integer",
+      "default": 2121,
+      "description": "FTP port."
+    },
+    "sftp_port": {
+      "type": "integer",
+      "default": 2222,
+      "description": "SFTP/SCP port."
+    },
+    "ftp_anonymous": {
+      "type": "string",
+      "enum": ["off", "readonly", "readwrite"],
+      "default": "off",
+      "description": "Anonymous FTP access level."
+    },
+    "ftp_anonymous_write_dir": {
+      "type": "string",
+      "default": "",
+      "description": "Optional subdir for anonymous write access."
+    }
+  },
+  "permissions": {
+    "network": true
+  },
+  "enabled_by_default": false
+}

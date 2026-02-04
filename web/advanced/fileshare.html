@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RPi Engineer-in-a-Box - File Share</title>
+    <meta
+      name="description"
+      content="Configure FTP and SFTP/SCP file sharing with a shared folder."
+    />
+    <script>
+      (function () {
+        try {
+          var storedTheme = localStorage.getItem("rpi-theme");
+          if (storedTheme) {
+            document.documentElement.setAttribute("data-theme", storedTheme);
+          }
+        } catch (error) {
+          // Ignore storage failures.
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="/css/base.css" />
+    <link rel="stylesheet" href="/css/theme.css" />
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="/css/pages/advanced.css" />
+    <link rel="stylesheet" href="/css/pages/fileshare.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="brand">
+            <div class="brand-mark" aria-hidden="true">RPi</div>
+            <div class="brand-text">
+              <div class="brand-title">RPi Engineer-in-a-Box</div>
+              <div class="brand-subtitle">Advanced Mode</div>
+            </div>
+          </div>
+        </div>
+        <nav class="sidebar-nav" aria-label="Primary">
+          <a class="nav-item" href="/advanced/" data-page="dashboard"
+            >Dashboard</a
+          >
+          <a class="nav-item" href="/advanced/network.html" data-page="network"
+            >Network</a
+          >
+          <a class="nav-item" href="/advanced/serial.html" data-page="serial"
+            >Serial</a
+          >
+          <a class="nav-item" href="/advanced/capture.html" data-page="capture"
+            >Capture</a
+          >
+          <a class="nav-item" href="/advanced/snmp.html" data-page="snmp"
+            >SNMP</a
+          >
+          <a class="nav-item" href="/advanced/syslog.html" data-page="syslog"
+            >Syslog</a
+          >
+          <a class="nav-item" href="/advanced/fileshare.html" data-page="fileshare"
+            >File Share</a
+          >
+          <a class="nav-item" href="/advanced/system.html" data-page="system"
+            >System</a
+          >
+          <a class="nav-item" href="/advanced/updates.html" data-page="updates"
+            >Updates</a
+          >
+          <a class="nav-item" href="/advanced/modules.html" data-page="modules"
+            >Modules</a
+          >
+          <a class="nav-item" href="/advanced/logs.html" data-page="logs"
+            >Logs</a
+          >
+          <a class="nav-item" href="/advanced/docs.html" data-page="docs"
+            >Documentation</a
+          >
+        </nav>
+        <div class="sidebar-footer">
+          <button class="btn btn-secondary" id="switch-simple">
+            Switch to Simple Mode
+          </button>
+        </div>
+      </aside>
+
+      <div class="shell-content">
+        <header class="topbar">
+          <button
+            class="btn btn-ghost"
+            id="sidebar-toggle"
+            aria-expanded="false"
+            aria-controls="sidebar"
+          >
+            Menu
+          </button>
+          <div class="breadcrumb" id="breadcrumb">File Share</div>
+          <div class="topbar-actions">
+            <label class="field theme-field" for="theme-select">
+              <span class="field-label">Theme</span>
+              <select id="theme-select" class="select">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="auto">Auto</option>
+              </select>
+            </label>
+          </div>
+        </header>
+
+        <main id="main-content" class="main-content">
+          <div class="page-header">
+            <div>
+              <h1>File Share</h1>
+              <p class="page-subtitle">
+                Upload files to the share folder and enable FTP or SFTP/SCP when
+                ready.
+              </p>
+            </div>
+            <div class="toolbar">
+              <button class="btn btn-secondary" id="refresh-fileshare">
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <section class="card">
+            <div class="section-header">
+              <h2>Configuration</h2>
+              <button class="btn btn-primary" id="fileshare-save-config" type="button">
+                Save
+              </button>
+            </div>
+            <div class="field-grid">
+              <label class="field">
+                <span class="field-label">Share folder</span>
+                <input class="input" id="fileshare-share-path" type="text" />
+                <span class="field-helper">Defaults to the app data share folder.</span>
+              </label>
+              <label class="field toggle-field">
+                <span class="field-label">Enable FTP</span>
+                <input id="fileshare-enable-ftp" type="checkbox" />
+              </label>
+              <label class="field">
+                <span class="field-label">FTP bind addresses</span>
+                <input class="input" id="fileshare-ftp-bind" type="text" />
+                <span class="field-helper">Comma-separated IPs.</span>
+              </label>
+              <label class="field">
+                <span class="field-label">FTP port</span>
+                <input class="input" id="fileshare-ftp-port" type="number" />
+              </label>
+              <label class="field">
+                <span class="field-label">Anonymous FTP</span>
+                <select class="select" id="fileshare-ftp-anon">
+                  <option value="off">Off</option>
+                  <option value="readonly">Read-only</option>
+                  <option value="readwrite">Read/Write</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field-label">Anonymous write subdir</span>
+                <input class="input" id="fileshare-ftp-anon-dir" type="text" />
+              </label>
+              <label class="field toggle-field">
+                <span class="field-label">Enable SFTP/SCP</span>
+                <input id="fileshare-enable-sftp" type="checkbox" />
+              </label>
+              <label class="field">
+                <span class="field-label">SFTP/SCP bind addresses</span>
+                <input class="input" id="fileshare-sftp-bind" type="text" />
+              </label>
+              <label class="field">
+                <span class="field-label">SFTP/SCP port</span>
+                <input class="input" id="fileshare-sftp-port" type="number" />
+              </label>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-header">
+              <h2>Status</h2>
+            </div>
+            <div class="status-grid">
+              <div class="status-item">
+                <span class="status-label">FTP</span>
+                <span class="status-value" id="fileshare-status-ftp">--</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">SFTP/SCP</span>
+                <span class="status-value" id="fileshare-status-sftp">--</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">Last error</span>
+                <span class="status-value" id="fileshare-status-error">--</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-header">
+              <h2>Users</h2>
+            </div>
+            <div class="field-grid">
+              <label class="field">
+                <span class="field-label">Username</span>
+                <input class="input" id="fileshare-user-name" type="text" />
+              </label>
+              <label class="field">
+                <span class="field-label">Password</span>
+                <input class="input" id="fileshare-user-password" type="password" />
+              </label>
+              <label class="field field-span">
+                <span class="field-label">SSH public keys (optional)</span>
+                <textarea class="textarea" id="fileshare-user-keys" rows="3"></textarea>
+                <span class="field-helper">One key per line.</span>
+              </label>
+              <div class="field-actions">
+                <button class="btn btn-primary" id="fileshare-add-user" type="button">
+                  Add user
+                </button>
+              </div>
+            </div>
+            <ul class="status-list" id="fileshare-user-list"></ul>
+          </section>
+
+          <section class="card">
+            <div class="section-header">
+              <h2>Share folder</h2>
+            </div>
+            <div class="dropzone" id="fileshare-dropzone">
+              <p>Drag and drop files here or choose a file to upload.</p>
+              <input class="input" id="fileshare-file" type="file" />
+              <button class="btn btn-secondary" id="fileshare-upload" type="button">
+                Upload
+              </button>
+            </div>
+            <ul class="status-list" id="fileshare-file-list"></ul>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="/js/pages/fileshare.js"></script>
+    <script type="module" src="/js/theme.js"></script>
+    <script type="module" src="/js/mode.js"></script>
+    <script type="module" src="/js/components.js"></script>
+    <div class="toast-region" id="toast-region" aria-live="polite"></div>
+  </body>
+</html>

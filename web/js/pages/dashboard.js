@@ -1,5 +1,6 @@
 import { apiGet, extractData } from "../api.js";
 import { createWebSocketClient } from "../websocket.js";
+import { setAlerts } from "../notifications.js";
 
 const elements = {
   metrics: {
@@ -343,7 +344,9 @@ async function loadAlertsWithOptions(options) {
   try {
     const payload = await apiGet("/api/v1/system/status");
     const data = extractData(payload) || {};
-    renderAlerts(data.alerts || data.monitor?.alerts || []);
+    const alerts = data.alerts || data.monitor?.alerts || [];
+    renderAlerts(alerts);
+    setAlerts(alerts);
   } catch (error) {
     elements.alerts.summary.textContent = "Alerts unavailable.";
     if (!options.suppressError) {
@@ -436,6 +439,12 @@ function initStatusWebSocket() {
   statusWs.on("network_interfaces", (message) => {
     const data = message.data || {};
     renderNetwork(data.interfaces || []);
+  });
+  statusWs.on("monitor_status", (message) => {
+    const data = message.data || {};
+    const alerts = data.alerts || [];
+    renderAlerts(alerts);
+    setAlerts(alerts);
   });
   statusWs.connect();
 }

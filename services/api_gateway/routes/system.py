@@ -4,6 +4,7 @@ from flask import Blueprint, request
 
 from services.system_manager import SystemManager
 from services.monitor_service import MonitorService
+from services.logging_service import logging_service
 
 from ..response import error_response, success_response
 
@@ -21,8 +22,19 @@ def get_status():
         monitor = {}
     if monitor:
         status["health"] = monitor.get("health")
-        status["alerts"] = monitor.get("alerts", [])
+        status["alerts"] = list(monitor.get("alerts", []))
         status["monitor"] = monitor
+    else:
+        status["alerts"] = []
+    try:
+        log_alerts = logging_service.get_recent_log_alerts(limit=30)
+        status["alerts"].extend(log_alerts)
+        status["alerts"].sort(
+            key=lambda a: (a.get("timestamp") or ""), reverse=True
+        )
+        status["alerts"] = status["alerts"][:50]
+    except Exception:
+        pass
     return success_response(status)
 
 

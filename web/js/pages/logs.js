@@ -1,5 +1,6 @@
 import { apiGet, extractData } from "../api.js";
 import { initTabs, createStatusItem } from "../components.js";
+import { setAlerts } from "../notifications.js";
 
 const elements = {
   logList: document.getElementById("log-file-list"),
@@ -166,8 +167,10 @@ async function loadMonitor() {
     const payload = await apiGet("/api/v1/system/status");
     const data = extractData(payload) || {};
     const monitor = data.monitor || {};
+    const alerts = data.alerts || monitor.alerts || [];
     renderMetrics(monitor.metrics || data.resources);
-    renderAlerts(monitor.alerts || data.alerts);
+    renderAlerts(alerts);
+    setAlerts(alerts);
   } catch (error) {
     showToast("Unable to load monitoring data.", "error");
   }
