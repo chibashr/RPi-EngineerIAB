@@ -56,8 +56,9 @@ function setupModeSwitch() {
   if (!button) {
     return;
   }
-  button.addEventListener("click", () => {
-    if (!confirmModeSwitch("simple")) {
+  button.addEventListener("click", async () => {
+    const confirmed = await confirmModeSwitch("simple");
+    if (!confirmed) {
       return;
     }
     setMode("simple");

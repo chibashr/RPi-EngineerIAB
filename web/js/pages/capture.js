@@ -1,6 +1,7 @@
 import { apiGet, apiPost, extractData } from "../api.js";
 import { createStatusItem } from "../components.js";
 import { createWebSocketClient } from "../websocket.js";
+import { modalForm } from "../modal.js";
 
 const elements = {
   interfaceSelect: document.getElementById("capture-interface"),
@@ -134,17 +135,24 @@ function connectLiveView() {
 function setupActions() {
   const newButton = document.getElementById("new-capture");
   if (newButton) {
-    newButton.addEventListener("click", () => {
-      const interfaceValue = window.prompt(
-        "Interface to capture (e.g., eth0):",
-        elements.interfaceSelect?.value || ""
+    newButton.addEventListener("click", async () => {
+      const form = await modalForm(
+        [
+          {
+            name: "interface",
+            label: "Interface to capture (e.g., eth0)",
+            default: elements.interfaceSelect?.value || "",
+          },
+          { name: "name", label: "Capture name", default: "Field run" },
+          { name: "filter", label: "BPF filter (optional)", default: "" },
+        ],
+        "New capture"
       );
-      if (!interfaceValue) {
+      if (!form) {
         return;
       }
-      const nameValue = window.prompt("Capture name:", "Field run") || "";
-      const filterValue = window.prompt("BPF filter (optional):", "") || "";
-      startCapture(interfaceValue, nameValue, filterValue);
+      const { interface: interfaceValue, name: nameValue, filter: filterValue } = form;
+      startCapture(interfaceValue, nameValue || "", filterValue || "");
     });
   }
 

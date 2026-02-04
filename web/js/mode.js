@@ -40,12 +40,19 @@ export function ensureAdvancedMode() {
   }
 }
 
-export function confirmModeSwitch(targetMode) {
+/**
+ * Returns a Promise that resolves to true if the user confirms the mode switch, false otherwise.
+ * For "advanced" mode, shows an in-page confirm modal; for "simple", resolves true without prompting.
+ * @param {string} targetMode - "simple" or "advanced"
+ * @returns {Promise<boolean>}
+ */
+export async function confirmModeSwitch(targetMode) {
   if (targetMode !== "advanced") {
     return true;
   }
 
-  return window.confirm(
+  const { modalConfirm } = await import("./modal.js");
+  return modalConfirm(
     "Advanced Mode exposes system configuration and diagnostic tools. Continue?"
   );
 }

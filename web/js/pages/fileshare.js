@@ -1,4 +1,5 @@
 import { apiDelete, apiGet, apiPost, apiPut, apiUpload, extractData } from "../api.js";
+import { modalPrompt } from "../modal.js";
 
 const elements = {
   refresh: document.getElementById("refresh-fileshare"),
@@ -168,8 +169,10 @@ async function deleteUser(username) {
 }
 
 async function resetPassword(username) {
-  const password = window.prompt(`New password for ${username}:`, "");
-  if (!password) {
+  const password = await modalPrompt(`New password for ${username}`, "", {
+    label: "New password",
+  });
+  if (password === null || password === "") {
     return;
   }
   await apiPut(`/api/v1/fileshare/users/${encodeURIComponent(username)}/password`, { password });

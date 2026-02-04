@@ -1,5 +1,6 @@
 import { apiGet, apiPost, apiPut, extractData } from "../api.js";
 import { initTabs, createStatusItem } from "../components.js";
+import { modalConfirm, modalForm } from "../modal.js";
 
 const elements = {
   interfaceTable: document.getElementById("interface-table-body"),
@@ -51,8 +52,8 @@ function setupActions() {
   const resetButton = document.getElementById("reset-network");
   const preserveCheckbox = document.getElementById("preserve-hotspot");
   if (resetButton) {
-    resetButton.addEventListener("click", () => {
-      const confirmed = window.confirm(
+    resetButton.addEventListener("click", async () => {
+      const confirmed = await modalConfirm(
         "Reset network settings to factory defaults?"
       );
       if (!confirmed) {
@@ -74,35 +75,43 @@ function setupActions() {
   }
 }
 
-function configureInterface() {
+async function configureInterface() {
   if (!interfaceCache.length) {
     showToast("No interfaces available to configure.", "error");
     return;
   }
-  const interfaceId = window.prompt(
-    "Interface to configure:",
-    interfaceCache[0]?.id || interfaceCache[0]?.name || ""
+  const defaultIface = interfaceCache[0]?.id || interfaceCache[0]?.name || "";
+  const form = await modalForm(
+    [
+      { name: "interface_id", label: "Interface", default: defaultIface },
+      { name: "mode", label: "Mode (dhcp/static)", default: "dhcp" },
+      { name: "ip_address", label: "IP address (if static)", default: "" },
+      { name: "netmask", label: "Netmask (if static)", default: "255.255.255.0" },
+      { name: "gateway", label: "Gateway (optional)", default: "" },
+    ],
+    "Configure interface"
   );
-  if (!interfaceId) {
+  if (!form) {
     return;
   }
-  const mode = window.prompt("Mode (dhcp/static):", "dhcp");
-  if (!mode || !["dhcp", "static"].includes(mode)) {
+  const { interface_id: interfaceId, mode, ip_address: ipAddress, netmask, gateway } = form;
+  if (!interfaceId.trim()) {
+    showToast("Interface is required.", "error");
+    return;
+  }
+  if (!["dhcp", "static"].includes(mode)) {
     showToast("Mode must be dhcp or static.", "error");
     return;
   }
   const payload = { mode };
   if (mode === "static") {
-    const ipAddress = window.prompt("IP address:", "");
-    const netmask = window.prompt("Netmask:", "255.255.255.0");
-    const gateway = window.prompt("Gateway (optional):", "");
-    if (!ipAddress || !netmask) {
-      showToast("IP address and netmask are required.", "error");
+    if (!ipAddress.trim() || !netmask.trim()) {
+      showToast("IP address and netmask are required for static mode.", "error");
       return;
     }
     payload.ip_address = ipAddress;
     payload.netmask = netmask;
-    if (gateway) {
+    if (gateway.trim()) {
       payload.gateway = gateway;
     }
   }
@@ -114,19 +123,29 @@ function configureInterface() {
     .catch(() => showToast("Unable to update interface.", "error"));
 }
 
-function addRoute() {
-  const destination = window.prompt("Route destination (CIDR):", "10.0.0.0/8");
-  if (!destination) {
+async function addRoute() {
+  const form = await modalForm(
+    [
+      { name: "destination", label: "Route destination (CIDR)", default: "10.0.0.0/8" },
+      { name: "gateway", label: "Gateway", default: "" },
+      { name: "interface", label: "Interface (optional)", default: "" },
+    ],
+    "Add route"
+  );
+  if (!form) {
     return;
   }
-  const gateway = window.prompt("Gateway:", "");
-  if (!gateway) {
+  const { destination, gateway: gw, interface: iface } = form;
+  if (!destination.trim()) {
+    showToast("Destination is required.", "error");
+    return;
+  }
+  if (!gw.trim()) {
     showToast("Gateway is required.", "error");
     return;
   }
-  const iface = window.prompt("Interface (optional):", "");
-  const payload = { destination, gateway };
-  if (iface) {
+  const payload = { destination, gateway: gw };
+  if (iface.trim()) {
     payload.interface = iface;
   }
   apiPost("/api/v1/network/routes", payload)
@@ -137,14 +156,23 @@ function addRoute() {
     .catch(() => showToast("Unable to add route.", "error"));
 }
 
-function saveProfile() {
-  const name = window.prompt("Profile name:", "");
-  if (!name) {
+async function saveProfile() {
+  const form = await modalForm(
+    [
+      { name: "name", label: "Profile name", default: "" },
+      { name: "description", label: "Profile description (optional)", default: "" },
+    ],
+    "Save profile"
+  );
+  if (!form) {
+    return;
+  }
+  const { name, description } = form;
+  if (!name.trim()) {
     showToast("Profile name is required.", "error");
     return;
   }
-  const description = window.prompt("Profile description (optional):", "") || "";
-  apiPost("/api/v1/network/profiles", { name, description })
+  apiPost("/api/v1/network/profiles", { name, description: description || "" })
     .then(() => {
       showToast("Profile saved.", "success");
       loadNetworkData();
@@ -152,20 +180,26 @@ function saveProfile() {
     .catch(() => showToast("Unable to save profile.", "error"));
 }
 
-function addVlan() {
+async function addVlan() {
   if (!interfaceCache.length) {
     showToast("No interfaces available.", "error");
     return;
   }
-  const parent = window.prompt(
-    "Parent interface:",
-    interfaceCache[0]?.id || interfaceCache[0]?.name || ""
+  const defaultParent = interfaceCache[0]?.id || interfaceCache[0]?.name || "";
+  const form = await modalForm(
+    [
+      { name: "parent", label: "Parent interface", default: defaultParent },
+      { name: "vlan_id", label: "VLAN ID (1-4094)", default: "" },
+      { name: "name", label: "VLAN name (optional)", default: "" },
+    ],
+    "Add VLAN"
   );
-  if (!parent) {
+  if (!form) {
     return;
   }
-  const vlanIdStr = window.prompt("VLAN ID (1-4094):", "");
-  if (!vlanIdStr) {
+  const { parent, vlan_id: vlanIdStr, name } = form;
+  if (!parent.trim()) {
+    showToast("Parent interface is required.", "error");
     return;
   }
   const vlanId = parseInt(vlanIdStr, 10);
@@ -173,8 +207,11 @@ function addVlan() {
     showToast("VLAN ID must be between 1 and 4094.", "error");
     return;
   }
-  const name = window.prompt("VLAN name (optional):", "") || undefined;
-  apiPost("/api/v1/network/vlans", { parent, vlan_id: vlanId, name })
+  const payload = { parent, vlan_id: vlanId };
+  if (name.trim()) {
+    payload.name = name;
+  }
+  apiPost("/api/v1/network/vlans", payload)
     .then(() => {
       showToast("VLAN created.", "success");
       loadNetworkData();
@@ -182,16 +219,29 @@ function addVlan() {
     .catch(() => showToast("Unable to create VLAN.", "error"));
 }
 
-function configureHotspot() {
-  const ssid = window.prompt("SSID:", "");
-  if (!ssid) {
+async function configureHotspot() {
+  const form = await modalForm(
+    [
+      { name: "ssid", label: "SSID", default: "" },
+      { name: "password", label: "Password (optional)", default: "" },
+      { name: "channel", label: "Channel (1-11, default 6)", default: "6" },
+    ],
+    "Configure hotspot"
+  );
+  if (!form) {
+    return;
+  }
+  const { ssid, password, channel: channelStr } = form;
+  if (!ssid.trim()) {
     showToast("SSID is required.", "error");
     return;
   }
-  const password = window.prompt("Password (optional):", "") || undefined;
-  const channelStr = window.prompt("Channel (1-11, default 6):", "6");
   const channel = channelStr ? parseInt(channelStr, 10) : 6;
-  apiPost("/api/v1/network/hotspot", { ssid, password, channel })
+  const payload = { ssid, channel: isNaN(channel) ? 6 : channel };
+  if (password.trim()) {
+    payload.password = password;
+  }
+  apiPost("/api/v1/network/hotspot", payload)
     .then(() => {
       showToast("Hotspot configured.", "success");
       loadNetworkData();

@@ -1,0 +1,296 @@
+/**
+ * In-page modal dialogs. Replaces browser prompt/confirm so all input
+ * happens inside the app (no native popups).
+ *
+ * - modalConfirm(message) → Promise<boolean>
+ * - modalPrompt(message, defaultValue, options?) → Promise<string|null>
+ * - modalForm(fields, title) → Promise<Record<string, string>|null>
+ */
+
+const CONTAINER_ID = "rpi-modal-container";
+
+/**
+ * @returns {HTMLElement}
+ */
+function getContainer() {
+  let el = document.getElementById(CONTAINER_ID);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = CONTAINER_ID;
+    el.className = "modal-container";
+    el.setAttribute("aria-hidden", "true");
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+/**
+ * @param {HTMLElement} overlay
+ * @param {() => void} onClose
+ */
+function bindEscape(overlay, onClose) {
+  const handler = (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+      document.removeEventListener("keydown", handler);
+    }
+  };
+  document.addEventListener("keydown", handler);
+}
+
+/**
+ * Focus trap: keep focus inside the dialog while open.
+ * @param {HTMLElement} dialog
+ */
+function trapFocus(dialog) {
+  const focusables = dialog.querySelectorAll(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  );
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  if (!first) return;
+
+  const trap = (e) => {
+    if (e.key !== "Tab") return;
+    if (e.shiftKey) {
+      if (document.activeElement === first) {
+        e.preventDefault();
+        last?.focus();
+      }
+    } else {
+      if (document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  };
+  dialog.addEventListener("keydown", trap);
+  first.focus();
+}
+
+/**
+ * Show a confirm dialog (OK / Cancel).
+ * @param {string} message
+ * @returns {Promise<boolean>}
+ */
+export function modalConfirm(message) {
+  const container = getContainer();
+  container.setAttribute("aria-hidden", "false");
+  container.innerHTML = "";
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-labelledby", "modal-confirm-title");
+
+  let resolveRef;
+  const promise = new Promise((resolve) => {
+    resolveRef = resolve;
+  });
+
+  const close = (value) => {
+    overlay.remove();
+    if (container.children.length === 0) {
+      container.setAttribute("aria-hidden", "true");
+    }
+    resolveRef(value);
+  };
+
+  overlay.innerHTML = `
+    <div class="modal-dialog modal-dialog-confirm">
+      <h2 id="modal-confirm-title" class="modal-title">Confirm</h2>
+      <p class="modal-message">${escapeHtml(message)}</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary modal-ok">OK</button>
+      </div>
+    </div>
+  `;
+
+  overlay.querySelector(".modal-cancel").addEventListener("click", () => close(false));
+  overlay.querySelector(".modal-ok").addEventListener("click", () => close(true));
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close(false);
+  });
+
+  bindEscape(overlay, () => close(false));
+  container.appendChild(overlay);
+  trapFocus(overlay.querySelector(".modal-dialog"));
+
+  return promise;
+}
+
+/**
+ * Show a single-input prompt dialog.
+ * @param {string} message
+ * @param {string} defaultValue
+ * @param {{ label?: string }} [options]
+ * @returns {Promise<string|null>}
+ */
+export function modalPrompt(message, defaultValue = "", options = {}) {
+  const container = getContainer();
+  container.setAttribute("aria-hidden", "false");
+  container.innerHTML = "";
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-labelledby", "modal-prompt-title");
+
+  const label = options.label != null ? options.label : "Value";
+  const inputId = "modal-prompt-input";
+
+  let resolveRef;
+  const promise = new Promise((resolve) => {
+    resolveRef = resolve;
+  });
+
+  const close = (value) => {
+    overlay.remove();
+    if (container.children.length === 0) {
+      container.setAttribute("aria-hidden", "true");
+    }
+    resolveRef(value);
+  };
+
+  overlay.innerHTML = `
+    <div class="modal-dialog modal-dialog-prompt">
+      <h2 id="modal-prompt-title" class="modal-title">${escapeHtml(message)}</h2>
+      <div class="field">
+        <label class="field-label" for="${inputId}">${escapeHtml(label)}</label>
+        <input type="text" id="${inputId}" class="modal-input" value="${escapeHtml(defaultValue)}" />
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary modal-ok">OK</button>
+      </div>
+    </div>
+  `;
+
+  const input = overlay.querySelector(`#${inputId}`);
+
+  const submit = () => {
+    close(input.value.trim());
+  };
+
+  overlay.querySelector(".modal-cancel").addEventListener("click", () => close(null));
+  overlay.querySelector(".modal-ok").addEventListener("click", submit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submit();
+    }
+  });
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close(null);
+  });
+
+  bindEscape(overlay, () => close(null));
+  container.appendChild(overlay);
+  trapFocus(overlay.querySelector(".modal-dialog"));
+  input.focus();
+  input.select();
+
+  return promise;
+}
+
+/**
+ * @typedef {{ name: string, label: string, default?: string, type?: string, placeholder?: string }} ModalField
+ */
+
+/**
+ * Show a form modal with multiple fields. Submit returns an object of field names to values; Cancel returns null.
+ * @param {ModalField[]} fields
+ * @param {string} title
+ * @returns {Promise<Record<string, string>|null>}
+ */
+export function modalForm(fields, title) {
+  const container = getContainer();
+  container.setAttribute("aria-hidden", "false");
+  container.innerHTML = "";
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-labelledby", "modal-form-title");
+
+  let resolveRef;
+  const promise = new Promise((resolve) => {
+    resolveRef = resolve;
+  });
+
+  const close = (value) => {
+    overlay.remove();
+    if (container.children.length === 0) {
+      container.setAttribute("aria-hidden", "true");
+    }
+    resolveRef(value);
+  };
+
+  const formRows = fields
+    .map((f) => {
+      const id = `modal-form-${f.name}`;
+      const type = f.type || "text";
+      const def = f.default != null ? escapeHtml(f.default) : "";
+      const ph = f.placeholder != null ? ` placeholder="${escapeHtml(f.placeholder)}"` : "";
+      return `
+        <div class="field">
+          <label class="field-label" for="${id}">${escapeHtml(f.label)}</label>
+          <input type="${escapeHtml(type)}" id="${id}" name="${escapeHtml(f.name)}" class="modal-input" value="${def}"${ph} />
+        </div>
+      `;
+    })
+    .join("");
+
+  overlay.innerHTML = `
+    <div class="modal-dialog modal-dialog-form">
+      <h2 id="modal-form-title" class="modal-title">${escapeHtml(title)}</h2>
+      <form class="modal-form" id="modal-form-form">
+        ${formRows}
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Submit</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  const form = overlay.querySelector("#modal-form-form");
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const result = {};
+    fields.forEach((f) => {
+      const input = overlay.querySelector(`#modal-form-${f.name}`);
+      result[f.name] = input ? input.value.trim() : "";
+    });
+    close(result);
+  });
+
+  overlay.querySelector(".modal-cancel").addEventListener("click", () => close(null));
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close(null);
+  });
+
+  bindEscape(overlay, () => close(null));
+  container.appendChild(overlay);
+  trapFocus(overlay.querySelector(".modal-dialog"));
+  const firstInput = overlay.querySelector(".modal-input");
+  if (firstInput) {
+    firstInput.focus();
+    firstInput.select();
+  }
+
+  return promise;
+}
+
+function escapeHtml(str) {
+  if (str == null) return "";
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}

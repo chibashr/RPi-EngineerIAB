@@ -1,6 +1,7 @@
 import { apiGet, apiPost, apiPut, extractData } from "../api.js";
 import { createStatusItem } from "../components.js";
 import { createWebSocketClient } from "../websocket.js";
+import { modalForm, modalPrompt } from "../modal.js";
 
 const elements = {
   deviceList: document.getElementById("serial-device-list"),
@@ -205,25 +206,40 @@ function focusTerminal() {
   }
 }
 
-function configureSerial() {
+async function configureSerial() {
   if (!deviceCache.length) {
     showToast("No serial devices available.", "error");
     return;
   }
-  const deviceId = window.prompt(
-    "Device ID to configure:",
-    deviceCache[0]?.id || ""
+  const defaultId = deviceCache[0]?.id || "";
+  const form = await modalForm(
+    [
+      { name: "device_id", label: "Device ID to configure", default: defaultId },
+      { name: "friendly_name", label: "Friendly name (optional)", default: "" },
+      { name: "baud_rate", label: "Baud rate", default: "9600" },
+      { name: "data_bits", label: "Data bits", default: "8" },
+      { name: "parity", label: "Parity (none/even/odd)", default: "none" },
+      { name: "stop_bits", label: "Stop bits", default: "1" },
+    ],
+    "Configure serial device"
   );
-  if (!deviceId) {
+  if (!form) {
     return;
   }
-  const friendlyName = window.prompt("Friendly name (optional):", "") || "";
-  const baudRate = window.prompt("Baud rate:", "9600");
-  const dataBits = window.prompt("Data bits:", "8");
-  const parity = window.prompt("Parity (none/even/odd):", "none");
-  const stopBits = window.prompt("Stop bits:", "1");
+  const {
+    device_id: deviceId,
+    friendly_name: friendlyName,
+    baud_rate: baudRate,
+    data_bits: dataBits,
+    parity: parity,
+    stop_bits: stopBits,
+  } = form;
+  if (!deviceId.trim()) {
+    showToast("Device ID is required.", "error");
+    return;
+  }
   const payload = {};
-  if (friendlyName) {
+  if (friendlyName.trim()) {
     payload.friendly_name = friendlyName;
   }
   if (baudRate) {
@@ -268,11 +284,13 @@ async function saveSerialLog() {
 }
 
 async function exportSerialLogs() {
-  const idsInput = window.prompt(
-    "Session IDs to export (comma-separated):",
-    activeSessions.map((session) => session.session_id).join(",")
+  const defaultIds = activeSessions.map((session) => session.session_id).join(",");
+  const idsInput = await modalPrompt(
+    "Session IDs to export (comma-separated)",
+    defaultIds,
+    { label: "Session IDs" }
   );
-  if (!idsInput) {
+  if (idsInput === null || !idsInput.trim()) {
     return;
   }
   const logIds = idsInput

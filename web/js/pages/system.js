@@ -1,5 +1,6 @@
 import { apiGet, apiPost, extractData } from "../api.js";
 import { initTabs } from "../components.js";
+import { modalConfirm } from "../modal.js";
 
 const elements = {
   serviceTable: document.getElementById("service-table-body"),
@@ -248,8 +249,8 @@ function setupActions() {
 
   const restartSystem = document.getElementById("restart-system");
   if (restartSystem) {
-    restartSystem.addEventListener("click", () => {
-      const confirmed = window.confirm("Restart the system now?");
+    restartSystem.addEventListener("click", async () => {
+      const confirmed = await modalConfirm("Restart the system now?");
       if (!confirmed) {
         return;
       }
@@ -261,8 +262,8 @@ function setupActions() {
 
   const shutdownSystem = document.getElementById("shutdown-system");
   if (shutdownSystem) {
-    shutdownSystem.addEventListener("click", () => {
-      const confirmed = window.confirm("Shut down the system now?");
+    shutdownSystem.addEventListener("click", async () => {
+      const confirmed = await modalConfirm("Shut down the system now?");
       if (!confirmed) {
         return;
       }

@@ -392,8 +392,9 @@ function setupModeSwitch() {
   ];
 
   buttons.forEach((button) => {
-    button.addEventListener("click", () => {
-      if (!confirmModeSwitch("advanced")) {
+    button.addEventListener("click", async () => {
+      const confirmed = await confirmModeSwitch("advanced");
+      if (!confirmed) {
         return;
       }
       setMode("advanced");

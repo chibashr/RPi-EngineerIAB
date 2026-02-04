@@ -1,5 +1,6 @@
 import { apiDelete, apiGet, apiPost, extractData } from "../api.js";
 import { initTabs } from "../components.js";
+import { modalPrompt } from "../modal.js";
 
 const elements = {
   installed: document.getElementById("installed-modules"),
@@ -220,8 +221,10 @@ function setupActions() {
   const uploadButton = document.getElementById("upload-module");
   if (uploadButton) {
     uploadButton.addEventListener("click", async () => {
-      const moduleUrl = window.prompt("Enter module archive path or URL:");
-      if (!moduleUrl) {
+      const moduleUrl = await modalPrompt("Enter module archive path or URL", "", {
+        label: "Path or URL",
+      });
+      if (moduleUrl === null || !moduleUrl.trim()) {
         return;
       }
       try {
