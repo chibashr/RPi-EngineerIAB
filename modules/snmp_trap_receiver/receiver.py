@@ -51,7 +51,7 @@ def _db_path() -> Path:
 
 
 def get_storage_info() -> Dict[str, object]:
-    """Return storage directory path and list of files (name, size, mtime) for the explorer."""
+    """Return storage directory path, list of files (name, size, mtime), and stored trap count."""
     data = _data_dir()
     files: List[Dict[str, object]] = []
     for p in sorted(data.iterdir()):
@@ -62,7 +62,9 @@ def get_storage_info() -> Dict[str, object]:
                 "size": stat.st_size,
                 "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
             })
-    return {"path": str(data), "files": files}
+    with _state.lock:
+        stored_count = _state.stored_count
+    return {"path": str(data), "files": files, "stored_count": stored_count}
 
 
 def _utc_now() -> str:

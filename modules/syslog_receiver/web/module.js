@@ -9,7 +9,6 @@ const statusEls = {
 };
 
 const configIds = {
-  enabled: "syslog-config-enabled",
   bind_address: "syslog-config-bind",
   port_udp: "syslog-config-port-udp",
   port_tcp: "syslog-config-port-tcp",
@@ -20,7 +19,6 @@ const configIds = {
 
 function getConfigFormValues() {
   return {
-    enabled: document.getElementById(configIds.enabled)?.checked ?? true,
     bind_address: document.getElementById(configIds.bind_address)?.value?.trim() || "0.0.0.0",
     port_udp: parseInt(document.getElementById(configIds.port_udp)?.value || "1514", 10),
     port_tcp: parseInt(document.getElementById(configIds.port_tcp)?.value || "1514", 10),
@@ -32,7 +30,6 @@ function getConfigFormValues() {
 
 function setConfigFormValues(config) {
   const el = (id) => document.getElementById(id);
-  if (el(configIds.enabled)) el(configIds.enabled).checked = !!config.enabled;
   if (el(configIds.bind_address)) el(configIds.bind_address).value = config.bind_address ?? "0.0.0.0";
   if (el(configIds.port_udp)) el(configIds.port_udp).value = String(config.port_udp ?? 1514);
   if (el(configIds.port_tcp)) el(configIds.port_tcp).value = String(config.port_tcp ?? 1514);
@@ -51,12 +48,15 @@ async function loadConfig() {
 }
 
 async function saveConfig() {
-  const payload = getConfigFormValues();
-  if (payload.port_udp < 1 || payload.port_udp > 65535 || payload.port_tcp < 1 || payload.port_tcp > 65535) {
+  const formValues = getConfigFormValues();
+  if (formValues.port_udp < 1 || formValues.port_udp > 65535 || formValues.port_tcp < 1 || formValues.port_tcp > 65535) {
     showToast("Ports must be between 1 and 65535.", "error");
     return;
   }
   try {
+    const current = await fetchJson("/api/v1/syslog/config");
+    const payload = { ...current, ...formValues };
+    payload.enabled = !!current.enabled;
     await fetch("/api/v1/syslog/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -117,6 +117,18 @@ function renderRows(tableBody, items) {
   });
 }
 
+function updateControlButtons(running) {
+  const startBtn = document.getElementById("syslog-start");
+  const stopBtn = document.getElementById("syslog-stop");
+  const restartBtn = document.getElementById("syslog-restart");
+  if (startBtn) startBtn.disabled = !!running;
+  if (stopBtn) stopBtn.disabled = !running;
+  if (restartBtn) {
+    restartBtn.disabled = !running;
+    restartBtn.style.display = running ? "" : "none";
+  }
+}
+
 async function refresh() {
   try {
     const status = await fetchJson("/api/v1/syslog/status");
@@ -125,8 +137,9 @@ async function refresh() {
         ? "Running"
         : status.enabled
         ? "Stopped"
-        : "Disabled";
+        : "Stopped";
     }
+    updateControlButtons(!!status.running);
     if (statusEls.bind) {
       statusEls.bind.textContent = status.bind_address || "--";
     }
@@ -191,9 +204,81 @@ async function clearBuffers() {
   }
 }
 
+async function startReceiver() {
+  try {
+    await fetch("/api/v1/syslog/start", { method: "POST" });
+    showToast("Receiver started.", "success");
+    refresh();
+  } catch (err) {
+    showToast("Failed to start receiver.", "error");
+  }
+}
+
+async function stopReceiver() {
+  try {
+    await fetch("/api/v1/syslog/stop", { method: "POST" });
+    showToast("Receiver stopped.", "success");
+    refresh();
+  } catch (err) {
+    showToast("Failed to stop receiver.", "error");
+  }
+}
+
+async function restartReceiver() {
+  try {
+    await fetch("/api/v1/syslog/restart", { method: "POST" });
+    showToast("Receiver restarted.", "success");
+    refresh();
+  } catch (err) {
+    showToast("Failed to restart receiver.", "error");
+  }
+}
+
+function formatBytes(n) {
+  if (n >= 1073741824) return (n / 1073741824).toFixed(1) + " GB";
+  if (n >= 1048576) return (n / 1048576).toFixed(1) + " MB";
+  if (n >= 1024) return (n / 1024).toFixed(1) + " KB";
+  return String(n);
+}
+
+async function loadStorage() {
+  const pathEl = document.getElementById("syslog-storage-path");
+  const tbody = document.querySelector("#syslog-storage-files tbody");
+  if (!pathEl || !tbody) return;
+  try {
+    const data = await fetchJson("/api/v1/syslog/storage");
+    pathEl.textContent = data.path || "--";
+    const summaryEl = document.getElementById("syslog-storage-summary");
+    if (summaryEl) summaryEl.textContent = `Stored messages: ${data.stored_count ?? "--"} (see Stored Messages table above)`;
+    tbody.textContent = "";
+    const files = data.files || [];
+    if (!files.length) {
+      const row = document.createElement("tr");
+      row.innerHTML = "<td colspan=\"3\">No files</td>";
+      tbody.appendChild(row);
+      return;
+    }
+    files.forEach((f) => {
+      const row = document.createElement("tr");
+      const name = document.createElement("td");
+      name.textContent = f.name || "--";
+      const size = document.createElement("td");
+      size.textContent = formatBytes(f.size ?? 0);
+      const mod = document.createElement("td");
+      mod.textContent = f.modified ? new Date(f.modified).toLocaleString() : "--";
+      row.append(name, size, mod);
+      tbody.appendChild(row);
+    });
+  } catch (err) {
+    pathEl.textContent = "Failed to load";
+    tbody.textContent = "";
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   loadConfig();
   refresh();
+  loadStorage();
   setInterval(refresh, 5000);
 
   const refreshBtn = document.getElementById("refresh-syslog");
@@ -204,4 +289,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const saveConfigBtn = document.getElementById("syslog-save-config");
   if (saveConfigBtn) saveConfigBtn.addEventListener("click", saveConfig);
+
+  const startBtn = document.getElementById("syslog-start");
+  if (startBtn) startBtn.addEventListener("click", startReceiver);
+  const stopBtn = document.getElementById("syslog-stop");
+  if (stopBtn) stopBtn.addEventListener("click", stopReceiver);
+  const restartBtn = document.getElementById("syslog-restart");
+  if (restartBtn) restartBtn.addEventListener("click", restartReceiver);
+
+  const refreshStorageBtn = document.getElementById("syslog-refresh-storage");
+  if (refreshStorageBtn) refreshStorageBtn.addEventListener("click", loadStorage);
 });

@@ -36,6 +36,26 @@
       "path": "/api/v1/snmp_traps/clear",
       "methods": ["POST"],
       "description": "Clear SNMP trap buffers"
+    },
+    {
+      "path": "/api/v1/snmp_traps/start",
+      "methods": ["POST"],
+      "description": "Start SNMP trap receiver"
+    },
+    {
+      "path": "/api/v1/snmp_traps/stop",
+      "methods": ["POST"],
+      "description": "Stop SNMP trap receiver"
+    },
+    {
+      "path": "/api/v1/snmp_traps/restart",
+      "methods": ["POST"],
+      "description": "Restart SNMP trap receiver"
+    },
+    {
+      "path": "/api/v1/snmp_traps/storage",
+      "methods": ["GET"],
+      "description": "Get persistence storage path and file list"
     }
   ],
   "web_components": [

@@ -119,14 +119,15 @@
           <section class="card" id="snmp-config-section">
             <div class="section-header">
               <h2>Configuration</h2>
-              <button class="btn btn-primary" id="snmp-save-config" type="button">Save</button>
+              <div class="receiver-actions">
+                <button class="btn btn-primary" id="snmp-start" type="button">Start</button>
+                <button class="btn btn-secondary" id="snmp-stop" type="button">Stop</button>
+                <button class="btn btn-secondary" id="snmp-restart" type="button">Restart</button>
+                <button class="btn btn-primary" id="snmp-save-config" type="button">Save</button>
+              </div>
             </div>
             <form id="snmp-config-form" class="snmp-config-form">
               <div class="form-row">
-                <label class="field" for="snmp-config-enabled">
-                  <span class="field-label">Enabled</span>
-                  <input type="checkbox" id="snmp-config-enabled" name="enabled" />
-                </label>
                 <label class="field" for="snmp-config-persist">
                   <span class="field-label">Persist to storage</span>
                   <input type="checkbox" id="snmp-config-persist" name="persist" />
@@ -218,6 +219,31 @@
                 </thead>
                 <tbody></tbody>
               </table>
+            </div>
+          </section>
+
+          <section class="card" id="snmp-storage-section">
+            <div class="section-header">
+              <h2>Persistence storage</h2>
+              <button class="btn btn-ghost" id="snmp-refresh-storage" type="button">Refresh</button>
+            </div>
+            <p class="storage-path" id="snmp-storage-path">--</p>
+            <div class="storage-explorer">
+              <h3 class="storage-subtitle">Stored data</h3>
+              <p class="storage-summary" id="snmp-storage-summary">Stored traps: -- (see Stored Traps table above)</p>
+              <h3 class="storage-subtitle">Files</h3>
+              <div class="table-wrap">
+                <table class="receiver-table" id="snmp-storage-files">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Size</th>
+                      <th>Modified</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
             </div>
           </section>
         </main>

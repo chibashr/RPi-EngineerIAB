@@ -36,6 +36,26 @@
       "path": "/api/v1/syslog/clear",
       "methods": ["POST"],
       "description": "Clear syslog buffers"
+    },
+    {
+      "path": "/api/v1/syslog/start",
+      "methods": ["POST"],
+      "description": "Start syslog receiver"
+    },
+    {
+      "path": "/api/v1/syslog/stop",
+      "methods": ["POST"],
+      "description": "Stop syslog receiver"
+    },
+    {
+      "path": "/api/v1/syslog/restart",
+      "methods": ["POST"],
+      "description": "Restart syslog receiver"
+    },
+    {
+      "path": "/api/v1/syslog/storage",
+      "methods": ["GET"],
+      "description": "Get persistence storage path and file list"
     }
   ],
   "web_components": [

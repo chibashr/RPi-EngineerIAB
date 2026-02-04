@@ -119,14 +119,15 @@
           <section class="card" id="syslog-config-section">
             <div class="section-header">
               <h2>Configuration</h2>
-              <button class="btn btn-primary" id="syslog-save-config" type="button">Save</button>
+              <div class="receiver-actions">
+                <button class="btn btn-primary" id="syslog-start" type="button">Start</button>
+                <button class="btn btn-secondary" id="syslog-stop" type="button">Stop</button>
+                <button class="btn btn-secondary" id="syslog-restart" type="button">Restart</button>
+                <button class="btn btn-primary" id="syslog-save-config" type="button">Save</button>
+              </div>
             </div>
             <form id="syslog-config-form" class="syslog-config-form">
               <div class="form-row">
-                <label class="field" for="syslog-config-enabled">
-                  <span class="field-label">Enabled</span>
-                  <input type="checkbox" id="syslog-config-enabled" name="enabled" />
-                </label>
                 <label class="field" for="syslog-config-persist">
                   <span class="field-label">Persist to storage</span>
                   <input type="checkbox" id="syslog-config-persist" name="persist" />
@@ -236,6 +237,31 @@
                 </thead>
                 <tbody></tbody>
               </table>
+            </div>
+          </section>
+
+          <section class="card" id="syslog-storage-section">
+            <div class="section-header">
+              <h2>Persistence storage</h2>
+              <button class="btn btn-ghost" id="syslog-refresh-storage" type="button">Refresh</button>
+            </div>
+            <p class="storage-path" id="syslog-storage-path">--</p>
+            <div class="storage-explorer">
+              <h3 class="storage-subtitle">Stored data</h3>
+              <p class="storage-summary" id="syslog-storage-summary">Stored messages: -- (see Stored Messages table above)</p>
+              <h3 class="storage-subtitle">Files</h3>
+              <div class="table-wrap">
+                <table class="receiver-table" id="syslog-storage-files">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Size</th>
+                      <th>Modified</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
             </div>
           </section>
         </main>
