@@ -44,6 +44,15 @@ class TestSystemServices:
         assert "services" in data["data"]
         assert isinstance(data["data"]["services"], list)
 
+    def test_services_have_name_status_category(self, client):
+        r = client.get("/api/v1/system/services")
+        data = r.get_json()["data"]["services"]
+        for item in data:
+            assert "name" in item
+            assert "status" in item
+            assert "category" in item
+            assert item["category"] in ("core", "system", "optional")
+
 
 class TestSystemControlService:
     """Tests for POST /api/v1/system/services."""
@@ -71,6 +80,46 @@ class TestSystemControlService:
             content_type="application/json",
         )
         assert r.status_code == 400
+
+
+class TestSystemControlServicesBulk:
+    """Tests for POST /api/v1/system/services/bulk."""
+
+    def test_missing_services_returns_400(self, client):
+        r = client.post(
+            "/api/v1/system/services/bulk",
+            json={"action": "restart"},
+            content_type="application/json",
+        )
+        assert r.status_code == 400
+
+    def test_missing_action_returns_400(self, client):
+        r = client.post(
+            "/api/v1/system/services/bulk",
+            json={"services": ["api_gateway"]},
+            content_type="application/json",
+        )
+        assert r.status_code == 400
+
+    def test_invalid_action_returns_400(self, client):
+        r = client.post(
+            "/api/v1/system/services/bulk",
+            json={"services": ["api_gateway"], "action": "pause"},
+            content_type="application/json",
+        )
+        assert r.status_code == 400
+
+    def test_returns_results_array(self, client):
+        r = client.post(
+            "/api/v1/system/services/bulk",
+            json={"services": ["api_gateway"], "action": "restart"},
+            content_type="application/json",
+        )
+        if r.status_code == 200:
+            data = r.get_json()
+            assert "data" in data
+            assert "results" in data["data"]
+            assert isinstance(data["data"]["results"], list)
 
 
 class TestSystemPower:

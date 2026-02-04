@@ -23,18 +23,41 @@ class ServiceStatus:
     status: str
 
 
-# Logical names (API/UI) -> systemd unit name (no .service suffix).
-# Must match units created by bin/install.sh configure_services().
-SERVICE_UNIT_MAP = {
-    "api_gateway": "rpi-engineer-api",
-    "system_manager": "rpi-engineer-system",
-    "network_manager": "rpi-engineer-network",
-    "serial_manager": "rpi-engineer-serial",
-    "capture_manager": "rpi-engineer-capture",
-    "update_manager": "rpi-engineer-update",
-    "logging_service": "rpi-engineer-logging",
-    "monitor_service": "rpi-engineer-monitor",
-}
+# Service definitions: logical name, systemd unit (no .service suffix), category.
+# Core = app services from bin/install.sh configure_services(); system = nginx, hotspot, etc.;
+# optional = remote access tools that may not be installed.
+SERVICE_DEFINITIONS = [
+    # Core app services (must match bin/install.sh configure_services())
+    ("api_gateway", "rpi-engineer-api", "core"),
+    ("system_manager", "rpi-engineer-system", "core"),
+    ("network_manager", "rpi-engineer-network", "core"),
+    ("serial_manager", "rpi-engineer-serial", "core"),
+    ("capture_manager", "rpi-engineer-capture", "core"),
+    ("update_manager", "rpi-engineer-update", "core"),
+    ("logging_service", "rpi-engineer-logging", "core"),
+    ("monitor_service", "rpi-engineer-monitor", "core"),
+    ("rpi_engineer_master", "rpi-engineer", "core"),
+    # System services the app and modules rely on
+    ("nginx", "nginx", "system"),
+    ("wlan0_setup", "rpi-engineer-wlan0", "system"),
+    ("hostapd", "hostapd", "system"),
+    ("dnsmasq", "dnsmasq", "system"),
+    # Optional (remote access; may not be installed)
+    ("anydesk", "anydesk", "optional"),
+    ("teamviewer", "teamviewerd", "optional"),
+    ("vnc", "vncserver@1", "optional"),
+]
+
+# Logical name -> systemd unit, for control and state lookup.
+SERVICE_UNIT_MAP = {name: unit for name, unit, _ in SERVICE_DEFINITIONS}
+
+
+def _category_for_service(name: str) -> str:
+    """Return category for a logical service name."""
+    for n, _, cat in SERVICE_DEFINITIONS:
+        if n == name:
+            return cat
+    return "core"
 
 
 class SystemManager:
@@ -68,7 +91,11 @@ class SystemManager:
 
     def list_services(self) -> Dict[str, List[Dict[str, str]]]:
         services = [
-            {"name": name, "status": self._get_service_state(name)}
+            {
+                "name": name,
+                "status": self._get_service_state(name),
+                "category": _category_for_service(name),
+            }
             for name in self._service_names
         ]
         return {"services": services}
@@ -86,6 +113,28 @@ class SystemManager:
             stderr=subprocess.DEVNULL,
         )
         return {"service": service, "action": action, "status": "ok"}
+
+    def control_services_bulk(
+        self, services: List[str], action: str
+    ) -> List[Dict[str, object]]:
+        """Run start/stop/restart on multiple services; returns one result per service."""
+        if action not in {"start", "stop", "restart"}:
+            raise ValueError("Unsupported action")
+        results: List[Dict[str, object]] = []
+        for service in services:
+            try:
+                result = self.control_service(service, action)
+                results.append({**result, "error": None})
+            except (ValueError, RuntimeError) as exc:
+                results.append(
+                    {
+                        "service": service,
+                        "action": action,
+                        "status": "error",
+                        "error": str(exc),
+                    }
+                )
+        return results
 
     def power_action(self, action: str) -> Dict[str, object]:
         if action not in {"shutdown", "reboot"}:

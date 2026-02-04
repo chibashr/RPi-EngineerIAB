@@ -131,49 +131,55 @@
                 Save
               </button>
             </div>
-            <div class="field-grid">
-              <label class="field">
-                <span class="field-label">Share folder</span>
-                <input class="input" id="fileshare-share-path" type="text" />
-                <span class="field-helper">Defaults to the app data share folder.</span>
-              </label>
-              <label class="field toggle-field">
-                <span class="field-label">Enable FTP</span>
-                <input id="fileshare-enable-ftp" type="checkbox" />
-              </label>
-              <label class="field">
-                <span class="field-label">FTP bind addresses</span>
-                <input class="input" id="fileshare-ftp-bind" type="text" />
-                <span class="field-helper">Comma-separated IPs.</span>
-              </label>
-              <label class="field">
-                <span class="field-label">FTP port</span>
-                <input class="input" id="fileshare-ftp-port" type="number" />
-              </label>
-              <label class="field">
-                <span class="field-label">Anonymous FTP</span>
-                <select class="select" id="fileshare-ftp-anon">
-                  <option value="off">Off</option>
-                  <option value="readonly">Read-only</option>
-                  <option value="readwrite">Read/Write</option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="field-label">Anonymous write subdir</span>
-                <input class="input" id="fileshare-ftp-anon-dir" type="text" />
-              </label>
-              <label class="field toggle-field">
-                <span class="field-label">Enable SFTP/SCP</span>
-                <input id="fileshare-enable-sftp" type="checkbox" />
-              </label>
-              <label class="field">
-                <span class="field-label">SFTP/SCP bind addresses</span>
-                <input class="input" id="fileshare-sftp-bind" type="text" />
-              </label>
-              <label class="field">
-                <span class="field-label">SFTP/SCP port</span>
-                <input class="input" id="fileshare-sftp-port" type="number" />
-              </label>
+            <div class="fileshare-config-form">
+              <div class="form-row">
+                <label class="field field-span">
+                  <span class="field-label">Share folder</span>
+                  <input class="input" id="fileshare-share-path" type="text" />
+                  <span class="field-helper">Defaults to the app data share folder.</span>
+                </label>
+              </div>
+              <div class="form-row">
+                <label class="field toggle-field">
+                  <span class="field-label">Enable FTP</span>
+                  <input id="fileshare-enable-ftp" type="checkbox" />
+                </label>
+                <label class="field">
+                  <span class="field-label">FTP bind addresses</span>
+                  <input class="input" id="fileshare-ftp-bind" type="text" />
+                  <span class="field-helper">Comma-separated IPs.</span>
+                </label>
+                <label class="field">
+                  <span class="field-label">FTP port</span>
+                  <input class="input" id="fileshare-ftp-port" type="number" />
+                </label>
+                <label class="field">
+                  <span class="field-label">Anonymous FTP</span>
+                  <select class="select" id="fileshare-ftp-anon">
+                    <option value="off">Off</option>
+                    <option value="readonly">Read-only</option>
+                    <option value="readwrite">Read/Write</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">Anonymous write subdir</span>
+                  <input class="input" id="fileshare-ftp-anon-dir" type="text" />
+                </label>
+              </div>
+              <div class="form-row">
+                <label class="field toggle-field">
+                  <span class="field-label">Enable SFTP/SCP</span>
+                  <input id="fileshare-enable-sftp" type="checkbox" />
+                </label>
+                <label class="field">
+                  <span class="field-label">SFTP/SCP bind addresses</span>
+                  <input class="input" id="fileshare-sftp-bind" type="text" />
+                </label>
+                <label class="field">
+                  <span class="field-label">SFTP/SCP port</span>
+                  <input class="input" id="fileshare-sftp-port" type="number" />
+                </label>
+              </div>
             </div>
           </section>
 
@@ -181,7 +187,7 @@
             <div class="section-header">
               <h2>Status</h2>
             </div>
-            <div class="status-grid">
+            <div class="receiver-status">
               <div class="status-item">
                 <span class="status-label">FTP</span>
                 <span class="status-value" id="fileshare-status-ftp">--</span>
@@ -201,24 +207,28 @@
             <div class="section-header">
               <h2>Users</h2>
             </div>
-            <div class="field-grid">
-              <label class="field">
-                <span class="field-label">Username</span>
-                <input class="input" id="fileshare-user-name" type="text" />
-              </label>
-              <label class="field">
-                <span class="field-label">Password</span>
-                <input class="input" id="fileshare-user-password" type="password" />
-              </label>
-              <label class="field field-span">
-                <span class="field-label">SSH public keys (optional)</span>
-                <textarea class="textarea" id="fileshare-user-keys" rows="3"></textarea>
-                <span class="field-helper">One key per line.</span>
-              </label>
-              <div class="field-actions">
-                <button class="btn btn-primary" id="fileshare-add-user" type="button">
-                  Add user
-                </button>
+            <div class="fileshare-config-form">
+              <div class="form-row">
+                <label class="field">
+                  <span class="field-label">Username</span>
+                  <input class="input" id="fileshare-user-name" type="text" />
+                </label>
+                <label class="field">
+                  <span class="field-label">Password</span>
+                  <input class="input" id="fileshare-user-password" type="password" />
+                </label>
+                <div class="field-actions">
+                  <button class="btn btn-primary" id="fileshare-add-user" type="button">
+                    Add user
+                  </button>
+                </div>
+              </div>
+              <div class="form-row">
+                <label class="field field-span">
+                  <span class="field-label">SSH public keys (optional)</span>
+                  <textarea class="textarea" id="fileshare-user-keys" rows="3"></textarea>
+                  <span class="field-helper">One key per line.</span>
+                </label>
               </div>
             </div>
             <ul class="status-list" id="fileshare-user-list"></ul>

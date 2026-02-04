@@ -131,20 +131,37 @@
           <section class="card" data-tab-panel="services">
             <div class="section-header">
               <h2>Services</h2>
-              <button class="btn btn-secondary" id="restart-selected">
-                Restart Selected
-              </button>
+              <div class="services-toolbar">
+                <button class="btn btn-secondary" id="service-start-selected" type="button">
+                  Start selected
+                </button>
+                <button class="btn btn-secondary" id="service-stop-selected" type="button">
+                  Stop selected
+                </button>
+                <button class="btn btn-secondary" id="service-restart-selected" type="button">
+                  Restart selected
+                </button>
+                <button class="btn btn-ghost" id="service-select-all" type="button">
+                  Select all
+                </button>
+                <button class="btn btn-ghost" id="service-select-none" type="button">
+                  Select none
+                </button>
+              </div>
             </div>
-            <table class="status-table">
+            <table class="status-table services-table">
               <thead>
                 <tr>
+                  <th class="col-check"><span class="sr-only">Select</span></th>
                   <th>Name</th>
+                  <th>Category</th>
                   <th>Status</th>
+                  <th class="col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody id="service-table-body">
                 <tr>
-                  <td colspan="2">Loading services...</td>
+                  <td colspan="5">Loading services...</td>
                 </tr>
               </tbody>
             </table>

@@ -65,6 +65,28 @@ def control_service():
     return success_response(result)
 
 
+@system_bp.post("/services/bulk")
+def control_services_bulk():
+    payload = request.get_json(silent=True) or {}
+    services = payload.get("services")
+    action = payload.get("action")
+    if not services or not isinstance(services, list) or not action:
+        return error_response(
+            "VALIDATION_ERROR",
+            "services (array) and action are required",
+            status_code=400,
+        )
+    try:
+        results = _system_manager.control_services_bulk(services, action)
+    except ValueError as exc:
+        return error_response("VALIDATION_ERROR", str(exc), status_code=400)
+    except RuntimeError as exc:
+        return error_response("INTERNAL_ERROR", str(exc), status_code=500)
+    except Exception as exc:  # pragma: no cover - defensive
+        return error_response("INTERNAL_ERROR", str(exc), status_code=500)
+    return success_response({"results": results})
+
+
 @system_bp.post("/power")
 def power_action():
     payload = request.get_json(silent=True) or {}

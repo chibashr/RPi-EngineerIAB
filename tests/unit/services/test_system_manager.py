@@ -79,3 +79,28 @@ def test_power_action_dry_run(monkeypatch):
 
     assert result["action"] == "shutdown"
     assert result["scheduled"] is False
+
+
+@pytest.mark.unit
+def test_control_services_bulk_rejects_invalid_action():
+    manager = SystemManager()
+    with pytest.raises(ValueError):
+        manager.control_services_bulk(["api_gateway"], "pause")
+
+
+@pytest.mark.unit
+def test_control_services_bulk_returns_one_result_per_service(monkeypatch):
+    manager = SystemManager()
+    monkeypatch.setattr(manager, "_systemctl_available", lambda: True)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0),
+    )
+    results = manager.control_services_bulk(
+        ["api_gateway", "system_manager"], "restart"
+    )
+    assert len(results) == 2
+    assert all("service" in r and "action" in r and "status" in r for r in results)
+    assert results[0]["service"] == "api_gateway"
+    assert results[1]["service"] == "system_manager"

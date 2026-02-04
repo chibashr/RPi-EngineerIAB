@@ -15,7 +15,6 @@ const elements = {
     preferredMode: document.getElementById("preferred-mode"),
   },
 };
-let serviceNames = [];
 
 function showToast(message, variant = "info") {
   const toastRegion = document.getElementById("toast-region");
@@ -29,30 +28,144 @@ function showToast(message, variant = "info") {
   setTimeout(() => toast.remove(), 4000);
 }
 
-function renderServices(services) {
+function categoryLabel(category) {
+  if (category === "core") return "Core app";
+  if (category === "system") return "System";
+  if (category === "optional") return "Optional";
+  return category || "--";
+}
+
+function renderServices(servicesList) {
   if (!elements.serviceTable) {
     return;
   }
-  serviceNames = services ? Object.keys(services) : [];
   elements.serviceTable.textContent = "";
-  if (!services || Object.keys(services).length === 0) {
+  if (!servicesList || !Array.isArray(servicesList) || servicesList.length === 0) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 2;
+    cell.colSpan = 5;
     cell.textContent = "No services reported.";
     row.appendChild(cell);
     elements.serviceTable.appendChild(row);
     return;
   }
 
-  Object.entries(services).forEach(([name, status]) => {
+  servicesList.forEach(({ name, status, category }) => {
     const row = document.createElement("tr");
-    [name, status].forEach((value) => {
-      const cell = document.createElement("td");
-      cell.textContent = value || "--";
-      row.appendChild(cell);
+    row.dataset.serviceName = name;
+
+    const checkCell = document.createElement("td");
+    checkCell.className = "col-check";
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.className = "service-checkbox";
+    check.dataset.serviceName = name;
+    check.setAttribute("aria-label", `Select ${name}`);
+    checkCell.appendChild(check);
+    row.appendChild(checkCell);
+
+    const nameCell = document.createElement("td");
+    nameCell.textContent = name || "--";
+    row.appendChild(nameCell);
+
+    const catCell = document.createElement("td");
+    catCell.textContent = categoryLabel(category);
+    row.appendChild(catCell);
+
+    const statusCell = document.createElement("td");
+    statusCell.textContent = status || "unknown";
+    statusCell.className = "service-status";
+    row.appendChild(statusCell);
+
+    const actionsCell = document.createElement("td");
+    actionsCell.className = "col-actions service-actions";
+    ["start", "stop", "restart"].forEach((action) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-ghost btn-service-action";
+      btn.textContent = action.charAt(0).toUpperCase() + action.slice(1);
+      btn.dataset.serviceName = name;
+      btn.dataset.action = action;
+      actionsCell.appendChild(btn);
     });
+    row.appendChild(actionsCell);
+
     elements.serviceTable.appendChild(row);
+  });
+}
+
+function getSelectedServiceNames() {
+  const checkboxes = document.querySelectorAll(".service-checkbox:checked");
+  return Array.from(checkboxes).map((cb) => cb.dataset.serviceName).filter(Boolean);
+}
+
+function setAllServiceCheckboxes(checked) {
+  document.querySelectorAll(".service-checkbox").forEach((cb) => {
+    cb.checked = !!checked;
+  });
+}
+
+function runBulkAction(action) {
+  const services = getSelectedServiceNames();
+  if (services.length === 0) {
+    showToast("Select one or more services first.", "error");
+    return;
+  }
+  apiPost("/api/v1/system/services/bulk", { services, action })
+    .then((payload) => {
+      const data = extractData(payload) || {};
+      const results = data.results || [];
+      const failed = results.filter((r) => r.status === "error");
+      if (failed.length > 0) {
+        const msg = failed.map((r) => `${r.service}: ${r.error || "failed"}`).join("; ");
+        showToast(msg, "error");
+      } else {
+        showToast(`${action} completed for ${services.length} service(s).`, "success");
+      }
+      loadServices();
+    })
+    .catch(() => showToast(`Unable to ${action} selected services.`, "error"));
+}
+
+function runSingleAction(serviceName, action) {
+  apiPost("/api/v1/system/services", { service: serviceName, action })
+    .then(() => {
+      showToast(`${action} completed for ${serviceName}.`, "success");
+      loadServices();
+    })
+    .catch(() => showToast(`Unable to ${action} ${serviceName}.`, "error"));
+}
+
+function loadServices() {
+  apiGet("/api/v1/system/services")
+    .then((payload) => {
+      const data = extractData(payload) || {};
+      renderServices(data.services);
+      setupServiceActionListeners();
+    })
+    .catch(() => {
+      showToast("Unable to load services.", "error");
+      if (elements.serviceTable) {
+        elements.serviceTable.innerHTML = "";
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 5;
+        cell.textContent = "Unable to load services.";
+        row.appendChild(cell);
+        elements.serviceTable.appendChild(row);
+      }
+    });
+}
+
+function setupServiceActionListeners() {
+  document.querySelectorAll(".btn-service-action").forEach((btn) => {
+    btn.replaceWith(btn.cloneNode(true));
+  });
+  document.querySelectorAll(".btn-service-action").forEach((btn) => {
+    const name = btn.dataset.serviceName;
+    const action = btn.dataset.action;
+    if (!name || !action) return;
+    btn.addEventListener("click", () => runSingleAction(name, action));
   });
 }
 
@@ -67,14 +180,7 @@ function renderInfo(info) {
 }
 
 async function loadSystemData() {
-  try {
-    const payload = await apiGet("/api/v1/system/status");
-    const data = extractData(payload) || {};
-    renderServices(data.services);
-  } catch (error) {
-    showToast("Unable to load services.", "error");
-  }
-
+  loadServices();
   try {
     const payload = await apiGet("/api/v1/system/info");
     const data = extractData(payload) || {};
@@ -85,23 +191,25 @@ async function loadSystemData() {
 }
 
 function setupActions() {
-  const restartSelected = document.getElementById("restart-selected");
+  const startSelected = document.getElementById("service-start-selected");
+  if (startSelected) {
+    startSelected.addEventListener("click", () => runBulkAction("start"));
+  }
+  const stopSelected = document.getElementById("service-stop-selected");
+  if (stopSelected) {
+    stopSelected.addEventListener("click", () => runBulkAction("stop"));
+  }
+  const restartSelected = document.getElementById("service-restart-selected");
   if (restartSelected) {
-    restartSelected.addEventListener("click", () => {
-      const service = window.prompt(
-        "Enter the service to restart:",
-        serviceNames[0] || ""
-      );
-      if (!service) {
-        return;
-      }
-      apiPost("/api/v1/system/services", { service, action: "restart" })
-        .then(() => {
-          showToast(`Restarted ${service}.`, "success");
-          loadSystemData();
-        })
-        .catch(() => showToast("Unable to restart service.", "error"));
-    });
+    restartSelected.addEventListener("click", () => runBulkAction("restart"));
+  }
+  const selectAll = document.getElementById("service-select-all");
+  if (selectAll) {
+    selectAll.addEventListener("click", () => setAllServiceCheckboxes(true));
+  }
+  const selectNone = document.getElementById("service-select-none");
+  if (selectNone) {
+    selectNone.addEventListener("click", () => setAllServiceCheckboxes(false));
   }
 
   const restartSystem = document.getElementById("restart-system");

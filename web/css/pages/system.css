@@ -4,6 +4,34 @@
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.services-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.services-table .col-check {
+  width: 2.5rem;
+  vertical-align: middle;
+}
+
+.services-table .col-actions {
+  white-space: nowrap;
+}
+
+.service-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.service-actions .btn-service-action {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
 }
 
 .status-table {

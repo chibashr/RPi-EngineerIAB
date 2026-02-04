@@ -26,6 +26,18 @@ const elements = {
   fileList: document.getElementById("fileshare-file-list"),
 };
 
+const DEFAULTS = {
+  share_path: "",
+  enable_ftp: false,
+  enable_sftp_scp: false,
+  ftp_bind_addresses: "0.0.0.0",
+  sftp_bind_addresses: "0.0.0.0",
+  ftp_port: 2121,
+  sftp_port: 2222,
+  ftp_anonymous: "off",
+  ftp_anonymous_write_dir: "",
+};
+
 function showToast(message, variant = "info") {
   const toastRegion = document.getElementById("toast-region");
   if (!toastRegion) {
@@ -40,16 +52,16 @@ function showToast(message, variant = "info") {
 
 async function loadConfig() {
   const payload = await apiGet("/api/v1/fileshare/config");
-  const data = extractData(payload) || {};
+  const data = { ...DEFAULTS, ...(extractData(payload) || {}) };
   if (elements.sharePath) elements.sharePath.value = data.share_path || "";
   if (elements.enableFtp) elements.enableFtp.checked = Boolean(data.enable_ftp);
-  if (elements.ftpBind) elements.ftpBind.value = data.ftp_bind_addresses || "";
-  if (elements.ftpPort) elements.ftpPort.value = data.ftp_port || "";
-  if (elements.ftpAnon) elements.ftpAnon.value = data.ftp_anonymous || "off";
+  if (elements.ftpBind) elements.ftpBind.value = data.ftp_bind_addresses || DEFAULTS.ftp_bind_addresses;
+  if (elements.ftpPort) elements.ftpPort.value = data.ftp_port || DEFAULTS.ftp_port;
+  if (elements.ftpAnon) elements.ftpAnon.value = data.ftp_anonymous || DEFAULTS.ftp_anonymous;
   if (elements.ftpAnonDir) elements.ftpAnonDir.value = data.ftp_anonymous_write_dir || "";
   if (elements.enableSftp) elements.enableSftp.checked = Boolean(data.enable_sftp_scp);
-  if (elements.sftpBind) elements.sftpBind.value = data.sftp_bind_addresses || "";
-  if (elements.sftpPort) elements.sftpPort.value = data.sftp_port || "";
+  if (elements.sftpBind) elements.sftpBind.value = data.sftp_bind_addresses || DEFAULTS.sftp_bind_addresses;
+  if (elements.sftpPort) elements.sftpPort.value = data.sftp_port || DEFAULTS.sftp_port;
 }
 
 async function loadStatus() {
@@ -120,13 +132,13 @@ async function saveConfig() {
   const payload = {
     share_path: elements.sharePath?.value || "",
     enable_ftp: Boolean(elements.enableFtp?.checked),
-    ftp_bind_addresses: elements.ftpBind?.value || "",
-    ftp_port: Number(elements.ftpPort?.value || 0),
+    ftp_bind_addresses: elements.ftpBind?.value || DEFAULTS.ftp_bind_addresses,
+    ftp_port: Number(elements.ftpPort?.value || DEFAULTS.ftp_port),
     ftp_anonymous: elements.ftpAnon?.value || "off",
     ftp_anonymous_write_dir: elements.ftpAnonDir?.value || "",
     enable_sftp_scp: Boolean(elements.enableSftp?.checked),
-    sftp_bind_addresses: elements.sftpBind?.value || "",
-    sftp_port: Number(elements.sftpPort?.value || 0),
+    sftp_bind_addresses: elements.sftpBind?.value || DEFAULTS.sftp_bind_addresses,
+    sftp_port: Number(elements.sftpPort?.value || DEFAULTS.sftp_port),
   };
   await apiPut("/api/v1/fileshare/config", payload);
   showToast("Configuration saved.", "success");
