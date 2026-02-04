@@ -103,12 +103,15 @@ def register_websockets(sock: Sock) -> None:
 
     @sock.route("/ws/serial/<session_id>")
     def serial_console(ws, session_id: str) -> None:  # type: ignore[no-untyped-def]
+        logger.info("serial_console: WebSocket connect request session_id=%s", session_id[:8] if session_id else "?")
         try:
             session = serial_manager.get_session_record(session_id)
-        except KeyError:
+        except KeyError as exc:
+            logger.warning("serial_console: session %s not found: %s", session_id[:8] if session_id else "?", exc)
             ws.send(json.dumps({"type": "error", "message": "Session not found"}))
             return
         if not serial:
+            logger.error("serial_console: pyserial not installed")
             ws.send(json.dumps({"type": "error", "message": "pyserial not installed"}))
             return
         config = session.config or {}
@@ -117,6 +120,7 @@ def register_websockets(sock: Sock) -> None:
         parity = str(config.get("parity", "none")).upper()
         stop_bits = int(config.get("stop_bits", 1))
         timeout = 0.1
+        logger.info("serial_console: opening %s baud=%s data_bits=%s parity=%s stop_bits=%s", session.device_id, baud_rate, data_bits, parity, stop_bits)
         parity_map = {
             "NONE": serial.PARITY_NONE,
             "N": serial.PARITY_NONE,
@@ -142,9 +146,11 @@ def register_websockets(sock: Sock) -> None:
                 timeout=timeout,
             )
         except Exception as exc:
+            logger.exception("serial_console: failed to open %s: %s", session.device_id, exc)
             ws.send(json.dumps({"type": "error", "message": str(exc)}))
             return
 
+        logger.info("serial_console: port opened, starting reader for session %s", session_id[:8])
         session.websocket_connected = True
         stop_event = threading.Event()
         send_lock = threading.Lock()
@@ -154,7 +160,8 @@ def register_websockets(sock: Sock) -> None:
             while not stop_event.is_set():
                 try:
                     data = ser.read(ser.in_waiting or 1)
-                except Exception:
+                except Exception as read_exc:
+                    logger.warning("serial_console: reader error on %s: %s", session.device_id, read_exc)
                     break
                 if data:
                     serial_manager.record_rx(session_id, data)
@@ -184,10 +191,12 @@ def register_websockets(sock: Sock) -> None:
             while True:
                 message = ws.receive()
                 if message is None:
+                    logger.info("serial_console: client disconnected session=%s", session_id[:8])
                     break
                 try:
                     payload = json.loads(message)
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as je:
+                    logger.warning("serial_console: invalid JSON from client: %s", je)
                     ws.send(json.dumps({"type": "error", "message": "Invalid JSON"}))
                     continue
                 msg_type = payload.get("type")
@@ -204,11 +213,15 @@ def register_websockets(sock: Sock) -> None:
                     if action == "resume_logging":
                         serial_manager.update_session(session_id, {"logging_paused": False})
         except Exception as exc:
-            logger.debug("Serial WebSocket loop exited: %s", exc)
+            logger.info("serial_console: main loop exited session=%s: %s", session_id[:8], exc)
         finally:
             stop_event.set()
             session.websocket_connected = False
-            ser.close()
+            try:
+                ser.close()
+                logger.info("serial_console: closed session %s device %s", session_id[:8], session.device_id)
+            except Exception as close_exc:
+                logger.warning("serial_console: error closing port %s: %s", session.device_id, close_exc)
 
     @sock.route("/ws/updates/apply")
     def updates_apply_stream(ws) -> None:  # type: ignore[no-untyped-def]

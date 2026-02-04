@@ -60,6 +60,7 @@ def list_sessions():
 @serial_bp.post("/sessions")
 def create_session():
     payload = request.get_json(silent=True) or {}
+    logger.info("create_session API: device_id=%s", payload.get("device_id"))
     try:
         data = serial_manager.create_session(payload)
         logger.info("Serial session created via API: %s for %s", data.get("session_id", "")[:8], data.get("device_id"))

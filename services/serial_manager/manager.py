@@ -53,20 +53,24 @@ class SerialManager:
         self._sessions: Dict[str, SerialSession] = {}
 
     def list_devices(self) -> Dict[str, List[Dict[str, object]]]:
+        raw = self._scan_devices()
+        logger.debug("list_devices: scanned %d raw device(s)", len(raw))
         devices = []
-        for device in self._scan_devices():
+        for device in raw:
             config = self._device_configs.get(device["id"], {})
+            status = "in_use" if self._device_in_use(device["id"]) else "available"
             devices.append(
                 {
                     "id": device["id"],
                     "path": device["path"],
                     "friendly_name": config.get("friendly_name", device["friendly_name"]),
                     "chipset": device["chipset"],
-                    "status": "in_use" if self._device_in_use(device["id"]) else "available",
+                    "status": status,
                     "baud_rate": config.get("baud_rate", 9600),
                     "config": config,
                 }
             )
+        logger.debug("list_devices: returning %d device(s)", len(devices))
         return {"devices": devices}
 
     def get_device(self, device_id: str) -> Dict[str, object]:
@@ -121,15 +125,21 @@ class SerialManager:
     def create_session(self, payload: Dict[str, object]) -> Dict[str, object]:
         device_id = payload.get("device_id")
         config = payload.get("config", {}) or {}
+        logger.info("create_session: request device_id=%r config_keys=%s", device_id, list(config.keys()) if config else [])
         if not device_id:
+            logger.warning("create_session: device_id missing")
             raise ValueError("device_id is required")
         if not serial:
+            logger.error("create_session: pyserial not installed")
             raise RuntimeError("pyserial not installed")
         if len(self._sessions) >= MAX_SESSIONS:
+            logger.warning("create_session: max sessions (%d) reached", MAX_SESSIONS)
             raise RuntimeError("Maximum sessions reached")
         if self._device_in_use(device_id):
+            logger.warning("create_session: device %s already in use", device_id)
             raise RuntimeError("Device already in use")
         if not self._device_by_id(device_id):
+            logger.warning("create_session: device %s not found in scan", device_id)
             raise KeyError("Device not found")
         session_id = str(uuid.uuid4())
         LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -144,7 +154,7 @@ class SerialManager:
             log_path=log_path,
         )
         self._sessions[session_id] = session
-        logger.info("Session created: %s for device %s", session_id[:8], device_id)
+        logger.info("Session created: %s for device %s (baud=%s)", session_id[:8], device_id, merged_config.get("baud_rate", 9600))
         return {
             "session_id": session_id,
             "device_id": device_id,
@@ -289,6 +299,7 @@ class SerialManager:
     def get_session_record(self, session_id: str) -> SerialSession:
         session = self._sessions.get(session_id)
         if not session:
+            logger.warning("get_session_record: session %s not found (active: %s)", session_id[:8] if session_id else "?", list(self._sessions.keys())[:3])
             raise KeyError("Session not found")
         return session
 
@@ -332,9 +343,14 @@ class SerialManager:
     def _scan_devices(self) -> List[Dict[str, object]]:
         devices = []
         if serial:
-            for port in serial.tools.list_ports.comports():
-                devices.append(self._port_to_device(port.device, port.description, port.vid))
+            ports = list(serial.tools.list_ports.comports())
+            logger.debug("_scan_devices: pyserial found %d port(s)", len(ports))
+            for port in ports:
+                dev = self._port_to_device(port.device, port.description, port.vid)
+                devices.append(dev)
+                logger.debug("_scan_devices: port %s -> %s", port.device, dev.get("friendly_name"))
         if pyudev and not devices:
+            logger.debug("_scan_devices: pyserial empty, trying pyudev")
             context = pyudev.Context()
             for device in context.list_devices(subsystem="tty"):
                 node = device.device_node
@@ -345,6 +361,7 @@ class SerialManager:
                 )
         dev_root = Path("/dev")
         if not devices and dev_root.exists():
+            logger.debug("_scan_devices: fallback to /dev/ttyUSB* and ttyACM*")
             for path in dev_root.glob("ttyUSB*"):
                 devices.append(self._port_to_device(str(path), "Serial Device", None))
             for path in dev_root.glob("ttyACM*"):
