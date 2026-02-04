@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import calendar
+import json
 import os
 import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 try:
     import pyudev  # type: ignore
@@ -196,22 +198,68 @@ class SerialManager:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         logs = []
         for path in sorted(LOG_DIR.glob("*.log")):
-            if device and device not in path.read_text(errors="ignore"):
+            content = path.read_text(errors="ignore")
+            if device and device not in content:
                 continue
             modified = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(path.stat().st_mtime))
             if since and modified < since:
                 continue
+            device_id, created = self._parse_log_header(content)
+            duration_sec = None
+            if created:
+                try:
+                    created_ts = calendar.timegm(
+                        time.strptime(created[:19], "%Y-%m-%dT%H:%M:%S")
+                    )
+                    modified_ts = path.stat().st_mtime
+                    duration_sec = max(0, int(modified_ts - created_ts))
+                except (ValueError, OSError):
+                    pass
+            display_name = self._get_log_display_name(path.stem)
             logs.append(
                 {
                     "id": path.stem,
-                    "device": device or "",
-                    "size_bytes": path.stat().st_size,
+                    "name": display_name or path.stem,
+                    "device": device_id or device or "",
+                    "created": created or modified,
                     "modified": modified,
+                    "duration_seconds": duration_sec,
+                    "size_bytes": path.stat().st_size,
                 }
             )
         if limit:
             logs = logs[:limit]
         return {"logs": logs}
+
+    def _parse_log_header(self, content: str) -> Tuple[Optional[str], Optional[str]]:
+        """Parse Device and Created from log header. Returns (device_id, created_iso)."""
+        device_id = None
+        created = None
+        for line in content.split("\n")[:5]:
+            if line.startswith("Device:"):
+                device_id = line[7:].strip()
+            elif line.startswith("Created:"):
+                created = line[8:].strip()
+        return (device_id, created)
+
+    def _get_log_display_name(self, log_id: str) -> Optional[str]:
+        """Read display name from metadata file if present."""
+        meta_path = LOG_DIR / f"{log_id}.meta.json"
+        if not meta_path.exists():
+            return None
+        try:
+            data = json.loads(meta_path.read_text(encoding="utf-8"))
+            return data.get("display_name")
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def rename_log(self, log_id: str, display_name: str) -> Dict[str, object]:
+        path = LOG_DIR / f"{log_id}.log"
+        if not path.exists():
+            raise KeyError("Log not found")
+        meta_path = LOG_DIR / f"{log_id}.meta.json"
+        meta_path.write_text(json.dumps({"display_name": display_name.strip()}), encoding="utf-8")
+        return {"id": log_id, "name": display_name.strip()}
 
     def get_log_content(self, log_id: str) -> Dict[str, object]:
         path = LOG_DIR / f"{log_id}.log"

@@ -1,28 +1,27 @@
-import { apiGet, apiPost, apiPut, extractData } from "../api.js";
-import { createStatusItem } from "../components.js";
+import { apiGet, apiPost, apiPut, apiDelete, extractData } from "../api.js";
 import { createWebSocketClient } from "../websocket.js";
-import { modalForm, modalPrompt } from "../modal.js";
+import { modalForm, modalPrompt, modalConfirm } from "../modal.js";
 
 const elements = {
-  deviceList: document.getElementById("serial-device-list"),
-  sessionList: document.getElementById("serial-session-list"),
+  deviceTable: document.getElementById("serial-device-table-body"),
+  sessionSelect: document.getElementById("serial-session-select"),
   terminal: document.getElementById("terminal-placeholder"),
   banner: document.getElementById("serial-connection-banner"),
   status: document.getElementById("serial-status"),
+  logsTable: document.getElementById("serial-logs-table-body"),
 };
 
 let activeSessions = [];
-let wsClient = null;
 let deviceCache = [];
+let wsClient = null;
+let currentSessionId = null;
 const MAX_TERMINAL_LINES = 500;
 let terminalBuffer = [];
 let terminalInputReady = false;
 
 function showToast(message, variant = "info") {
   const toastRegion = document.getElementById("toast-region");
-  if (!toastRegion) {
-    return;
-  }
+  if (!toastRegion) return;
   const toast = document.createElement("div");
   toast.className = `toast ${variant}`;
   toast.textContent = message;
@@ -30,60 +29,104 @@ function showToast(message, variant = "info") {
   setTimeout(() => toast.remove(), 4000);
 }
 
+function getSessionForDevice(deviceId) {
+  return activeSessions.find((s) => s.device_id === deviceId);
+}
+
 function renderDevices(devices) {
-  if (!elements.deviceList) {
-    return;
-  }
+  if (!elements.deviceTable) return;
   deviceCache = devices;
-  elements.deviceList.textContent = "";
+  elements.deviceTable.textContent = "";
+
   if (!devices.length) {
-    const item = document.createElement("li");
-    item.textContent = "No serial devices detected.";
-    elements.deviceList.appendChild(item);
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 5;
+    cell.textContent = "No serial devices detected.";
+    row.appendChild(cell);
+    elements.deviceTable.appendChild(row);
     return;
   }
 
   devices.forEach((device) => {
-    const label = device.friendly_name || device.path || device.id;
-    const value = `${device.status || "unknown"} • ${
-      device.chipset || "chipset"
-    }`;
-    elements.deviceList.appendChild(createStatusItem(label, value));
+    const session = getSessionForDevice(device.id);
+    const row = document.createElement("tr");
+    const name = device.friendly_name || device.path || device.id;
+    const status = device.status || "unknown";
+    const chipset = device.chipset || "--";
+    const sessionInfo = session
+      ? `${session.session_id.slice(0, 8)}... (${session.status || "active"})`
+      : "--";
+
+    [name, status, chipset, sessionInfo].forEach((value) => {
+      const cell = document.createElement("td");
+      cell.textContent = value || "--";
+      row.appendChild(cell);
+    });
+
+    const actionCell = document.createElement("td");
+    actionCell.className = "device-actions";
+
+    const connectBtn = document.createElement("button");
+    connectBtn.className = "btn btn-primary btn-sm";
+    connectBtn.textContent = "Connect";
+    connectBtn.type = "button";
+    connectBtn.disabled = !!session || status === "in_use";
+    connectBtn.addEventListener("click", () => connectDevice(device.id));
+
+    const disconnectBtn = document.createElement("button");
+    disconnectBtn.className = "btn btn-secondary btn-sm";
+    disconnectBtn.textContent = "Disconnect";
+    disconnectBtn.type = "button";
+    disconnectBtn.disabled = !session;
+    disconnectBtn.addEventListener("click", () => disconnectDevice(session?.session_id));
+
+    const configBtn = document.createElement("button");
+    configBtn.className = "btn btn-ghost btn-sm";
+    configBtn.textContent = "Configure";
+    configBtn.type = "button";
+    configBtn.addEventListener("click", () => configureSerial(device.id));
+
+    actionCell.append(connectBtn, disconnectBtn, configBtn);
+    row.appendChild(actionCell);
+    elements.deviceTable.appendChild(row);
   });
 }
 
-function renderSessions(sessions) {
-  if (!elements.sessionList) {
-    return;
-  }
-  activeSessions = sessions;
-  elements.sessionList.textContent = "";
-  if (!sessions.length) {
-    const item = document.createElement("li");
-    item.textContent = "No active sessions.";
-    elements.sessionList.appendChild(item);
-    return;
-  }
+function renderSessionSelect() {
+  if (!elements.sessionSelect) return;
+  const current = elements.sessionSelect.value;
+  elements.sessionSelect.textContent = "";
+  const empty = document.createElement("option");
+  empty.value = "";
+  empty.textContent = "No session selected";
+  elements.sessionSelect.appendChild(empty);
 
-  sessions.forEach((session) => {
-    const label = session.name || session.session_id || session.device_id || "Session";
-    const value = session.status || "active";
-    elements.sessionList.appendChild(createStatusItem(label, value));
+  activeSessions.forEach((session) => {
+    const opt = document.createElement("option");
+    opt.value = session.session_id;
+    const deviceName =
+      deviceCache.find((d) => d.id === session.device_id)?.friendly_name ||
+      session.device_id;
+    opt.textContent = `${deviceName} (${session.session_id.slice(0, 8)}...)`;
+    elements.sessionSelect.appendChild(opt);
   });
+
+  if (current && activeSessions.some((s) => s.session_id === current)) {
+    elements.sessionSelect.value = current;
+  } else if (activeSessions.length && !current) {
+    elements.sessionSelect.value = activeSessions[0].session_id;
+  }
 }
 
 function updateBanner(message, isVisible = true) {
-  if (!elements.banner) {
-    return;
-  }
+  if (!elements.banner) return;
   elements.banner.textContent = message;
   elements.banner.classList.toggle("is-visible", isVisible);
 }
 
 function updateTerminal(text) {
-  if (!elements.terminal) {
-    return;
-  }
+  if (!elements.terminal) return;
   const lines = String(text).split("\n");
   terminalBuffer = terminalBuffer.concat(lines);
   if (terminalBuffer.length > MAX_TERMINAL_LINES) {
@@ -93,20 +136,16 @@ function updateTerminal(text) {
   elements.terminal.scrollTop = elements.terminal.scrollHeight;
 }
 
-function connectWebSocket() {
-  if (!activeSessions.length) {
-    showToast("No active session available to connect.", "error");
-    return;
-  }
-  const sessionId = activeSessions[0].session_id;
+function connectWebSocket(sessionId) {
   if (!sessionId) {
-    showToast("Session ID unavailable.", "error");
+    showToast("No session selected.", "error");
     return;
   }
-
   if (wsClient) {
     wsClient.close();
+    wsClient = null;
   }
+  currentSessionId = sessionId;
   wsClient = createWebSocketClient(`/ws/serial/${sessionId}`);
   wsClient.onStatus((status) => {
     if (elements.status) {
@@ -127,9 +166,7 @@ function connectWebSocket() {
   });
   wsClient.on("status", (message) => {
     if (elements.status) {
-      elements.status.textContent = `Tx ${message.bytes_tx || 0} / Rx ${
-        message.bytes_rx || 0
-      }`;
+      elements.status.textContent = `Tx ${message.bytes_tx || 0} / Rx ${message.bytes_rx || 0}`;
     }
   });
   wsClient.connect();
@@ -141,57 +178,105 @@ function disconnectWebSocket() {
     wsClient.close();
     wsClient = null;
   }
+  currentSessionId = null;
+  if (elements.status) elements.status.textContent = "Disconnected";
   updateBanner("Serial console disconnected.", true);
 }
 
+async function connectDevice(deviceId) {
+  try {
+    const payload = await apiPost("/api/v1/serial/sessions", {
+      device_id: deviceId,
+      config: {},
+    });
+    const data = extractData(payload) || {};
+    showToast("Session created. Connect via console dropdown.", "success");
+    await loadSessions();
+    renderSessionSelect();
+    if (elements.sessionSelect) {
+      elements.sessionSelect.value = data.session_id;
+      connectWebSocket(data.session_id);
+    }
+  } catch (error) {
+    showToast(error?.message || "Unable to create session.", "error");
+  }
+}
+
+async function disconnectDevice(sessionId) {
+  if (!sessionId) return;
+  if (currentSessionId === sessionId) {
+    disconnectWebSocket();
+  }
+  try {
+    await apiDelete(`/api/v1/serial/sessions/${encodeURIComponent(sessionId)}`);
+    showToast("Session closed.", "success");
+    await loadSessions();
+    renderSessionSelect();
+    if (currentSessionId === sessionId) {
+      currentSessionId = null;
+    }
+  } catch (error) {
+    showToast(error?.message || "Unable to close session.", "error");
+  }
+}
+
 function setupActions() {
-  const actions = [
-    { id: "open-console", message: "Select a session then connect." },
-    { id: "configure-serial", action: configureSerial },
-    { id: "serial-connect", action: connectWebSocket },
-    { id: "serial-disconnect", action: disconnectWebSocket },
-    { id: "serial-clear", action: () => {
-      if (elements.terminal) {
-        elements.terminal.textContent = "";
-        terminalBuffer = [];
+  const sessionSelect = document.getElementById("serial-session-select");
+  if (sessionSelect) {
+    sessionSelect.addEventListener("change", () => {
+      const sessionId = sessionSelect.value;
+      if (sessionId) {
+        connectWebSocket(sessionId);
+      } else {
+        disconnectWebSocket();
       }
-    }},
+    });
+  }
+
+  const actions = [
+    {
+      id: "open-console",
+      action: () => {
+        if (elements.terminal) elements.terminal.focus();
+        if (activeSessions.length && !currentSessionId && elements.sessionSelect) {
+          elements.sessionSelect.value = activeSessions[0].session_id;
+          connectWebSocket(activeSessions[0].session_id);
+        } else if (activeSessions.length) {
+          showToast("Select a session from the dropdown to connect.", "info");
+        } else {
+          showToast("Connect a device first to open the console.", "info");
+        }
+      },
+    },
+    { id: "configure-serial", action: () => configureSerial() },
+    {
+      id: "serial-clear",
+      action: () => {
+        if (elements.terminal) {
+          elements.terminal.textContent = "";
+          terminalBuffer = [];
+        }
+      },
+    },
     { id: "serial-save-log", action: saveSerialLog },
-    { id: "export-serial-logs", action: exportSerialLogs },
   ];
 
   actions.forEach((action) => {
     const button = document.getElementById(action.id);
-    if (!button) {
-      return;
-    }
-    button.addEventListener("click", () => {
-      if (action.action) {
-        action.action();
-      } else {
-        showToast(action.message, "info");
-      }
-    });
+    if (!button) return;
+    button.addEventListener("click", () => action.action());
   });
 }
 
 function setupTerminalInput() {
-  if (!elements.terminal || terminalInputReady) {
-    return;
-  }
+  if (!elements.terminal || terminalInputReady) return;
   elements.terminal.tabIndex = 0;
   elements.terminal.addEventListener("keydown", (event) => {
-    if (!wsClient) {
-      return;
-    }
+    if (!wsClient) return;
     let data = null;
-    if (event.key === "Enter") {
-      data = "\n";
-    } else if (event.key === "Backspace") {
-      data = "\x7f";
-    } else if (event.key.length === 1) {
-      data = event.key;
-    }
+    if (event.key === "Enter") data = "\n";
+    else if (event.key === "Backspace") data = "\x7f";
+    else if (event.key.length === 1) data = event.key;
     if (data !== null) {
       event.preventDefault();
       wsClient.send({ type: "data", data });
@@ -201,120 +286,215 @@ function setupTerminalInput() {
 }
 
 function focusTerminal() {
-  if (elements.terminal) {
-    elements.terminal.focus();
-  }
+  if (elements.terminal) elements.terminal.focus();
 }
 
-async function configureSerial() {
-  if (!deviceCache.length) {
+async function configureSerial(deviceId) {
+  const devices = deviceCache.length ? deviceCache : [];
+  if (!devices.length) {
     showToast("No serial devices available.", "error");
     return;
   }
-  const defaultId = deviceCache[0]?.id || "";
+  const targetId = deviceId || devices[0]?.id || "";
+  const device = devices.find((d) => d.id === targetId) || devices[0];
   const form = await modalForm(
     [
-      { name: "device_id", label: "Device ID to configure", default: defaultId },
-      { name: "friendly_name", label: "Friendly name (optional)", default: "" },
-      { name: "baud_rate", label: "Baud rate", default: "9600" },
+      {
+        name: "device_id",
+        label: "Device ID to configure",
+        default: device?.id || "",
+      },
+      {
+        name: "friendly_name",
+        label: "Friendly name (optional)",
+        default: device?.friendly_name || "",
+      },
+      { name: "baud_rate", label: "Baud rate", default: String(device?.baud_rate || 9600) },
       { name: "data_bits", label: "Data bits", default: "8" },
-      { name: "parity", label: "Parity (none/even/odd)", default: "none" },
+      {
+        name: "parity",
+        label: "Parity (none/even/odd)",
+        default: "none",
+      },
       { name: "stop_bits", label: "Stop bits", default: "1" },
     ],
     "Configure serial device"
   );
-  if (!form) {
-    return;
-  }
+  if (!form) return;
   const {
-    device_id: deviceId,
+    device_id: devId,
     friendly_name: friendlyName,
     baud_rate: baudRate,
     data_bits: dataBits,
     parity: parity,
     stop_bits: stopBits,
   } = form;
-  if (!deviceId.trim()) {
+  if (!devId.trim()) {
     showToast("Device ID is required.", "error");
     return;
   }
   const payload = {};
-  if (friendlyName.trim()) {
-    payload.friendly_name = friendlyName;
+  if (friendlyName.trim()) payload.friendly_name = friendlyName;
+  if (baudRate) payload.baud_rate = Number(baudRate);
+  if (dataBits) payload.data_bits = Number(dataBits);
+  if (parity) payload.parity = parity;
+  if (stopBits) payload.stop_bits = Number(stopBits);
+  try {
+    await apiPut(
+      `/api/v1/serial/devices/${encodeURIComponent(devId)}`,
+      payload
+    );
+    showToast("Serial device updated.", "success");
+    loadDevices();
+  } catch {
+    showToast("Unable to update device.", "error");
   }
-  if (baudRate) {
-    payload.baud_rate = Number(baudRate);
-  }
-  if (dataBits) {
-    payload.data_bits = Number(dataBits);
-  }
-  if (parity) {
-    payload.parity = parity;
-  }
-  if (stopBits) {
-    payload.stop_bits = Number(stopBits);
-  }
-  apiPut(`/api/v1/serial/devices/${encodeURIComponent(deviceId)}`, payload)
-    .then(() => {
-      showToast("Serial device updated.", "success");
-      loadDevices();
-    })
-    .catch(() => showToast("Unable to update device.", "error"));
 }
 
 function activeSessionId() {
-  return activeSessions[0]?.session_id || "";
+  return currentSessionId || elements.sessionSelect?.value || "";
 }
 
 async function saveSerialLog() {
   const sessionId = activeSessionId();
   if (!sessionId) {
-    showToast("No active session available.", "error");
+    showToast("Select a session first.", "error");
     return;
   }
   try {
-    const payload = await apiGet(`/api/v1/serial/logs/${sessionId}/content`);
+    const payload = await apiGet(
+      `/api/v1/serial/logs/${encodeURIComponent(sessionId)}/content`
+    );
     const data = extractData(payload) || {};
     const content = data.content || "";
     downloadText(`serial-${sessionId}.log`, content);
     showToast("Log downloaded.", "success");
-  } catch (error) {
+  } catch {
     showToast("Unable to download log.", "error");
   }
 }
 
-async function exportSerialLogs() {
-  const defaultIds = activeSessions.map((session) => session.session_id).join(",");
-  const idsInput = await modalPrompt(
-    "Session IDs to export (comma-separated)",
-    defaultIds,
-    { label: "Session IDs" }
+function formatDuration(seconds) {
+  if (seconds == null || seconds < 0) return "--";
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+}
+
+function formatSize(bytes) {
+  if (bytes == null) return "--";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(iso) {
+  if (!iso) return "--";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString();
+  } catch {
+    return iso;
+  }
+}
+
+function renderLogs(logs) {
+  if (!elements.logsTable) return;
+  elements.logsTable.textContent = "";
+
+  if (!logs.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 6;
+    cell.textContent = "No recorded sessions.";
+    row.appendChild(cell);
+    elements.logsTable.appendChild(row);
+    return;
+  }
+
+  logs.forEach((log) => {
+    const row = document.createElement("tr");
+    const name = log.name || log.id;
+    const device = log.device || "--";
+    const when = formatDate(log.created || log.modified);
+    const duration = formatDuration(log.duration_seconds);
+    const size = formatSize(log.size_bytes);
+
+    [name, device, when, duration, size].forEach((value) => {
+      const cell = document.createElement("td");
+      cell.textContent = value || "--";
+      row.appendChild(cell);
+    });
+
+    const actionCell = document.createElement("td");
+    const renameBtn = document.createElement("button");
+    renameBtn.className = "btn btn-ghost btn-sm";
+    renameBtn.textContent = "Rename";
+    renameBtn.type = "button";
+    renameBtn.addEventListener("click", () => renameLog(log.id));
+
+    const exportBtn = document.createElement("button");
+    exportBtn.className = "btn btn-secondary btn-sm";
+    exportBtn.textContent = "Export";
+    exportBtn.type = "button";
+    exportBtn.addEventListener("click", () => exportLog(log.id));
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "btn btn-ghost btn-sm";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.type = "button";
+    deleteBtn.addEventListener("click", () => deleteLog(log.id));
+
+    actionCell.append(renameBtn, exportBtn, deleteBtn);
+    row.appendChild(actionCell);
+    elements.logsTable.appendChild(row);
+  });
+}
+
+async function renameLog(logId) {
+  const name = await modalPrompt("New name", logId, { label: "Name" });
+  if (name === null || !name.trim()) return;
+  try {
+    await apiPut(`/api/v1/serial/logs/${encodeURIComponent(logId)}`, {
+      name: name.trim(),
+    });
+    showToast("Log renamed.", "success");
+    loadLogs();
+  } catch {
+    showToast("Unable to rename log.", "error");
+  }
+}
+
+async function deleteLog(logId) {
+  const confirmed = await modalConfirm(
+    `Delete session log "${logId}"? This cannot be undone.`
   );
-  if (idsInput === null || !idsInput.trim()) {
-    return;
+  if (!confirmed) return;
+  try {
+    await apiDelete(`/api/v1/serial/logs/${encodeURIComponent(logId)}`);
+    showToast("Log deleted.", "success");
+    loadLogs();
+  } catch {
+    showToast("Unable to delete log.", "error");
   }
-  const logIds = idsInput
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  if (!logIds.length) {
-    showToast("No session IDs provided.", "error");
-    return;
-  }
+}
+
+async function exportLog(logId) {
   try {
     const payload = await apiPost("/api/v1/serial/logs/export", {
-      log_ids: logIds,
+      log_ids: [logId],
     });
     const data = extractData(payload) || {};
     const archivePath = data.archive || "";
-    const archiveName = archivePath.split("/").pop();
+    const archiveName = archivePath.split(/[/\\]/).pop();
     if (archiveName) {
       window.location.assign(`/api/v1/serial/logs/export/${archiveName}`);
+      showToast("Export started.", "success");
     } else {
       showToast("Export created.", "success");
     }
-  } catch (error) {
-    showToast("Unable to export logs.", "error");
+  } catch {
+    showToast("Unable to export log.", "error");
   }
 }
 
@@ -334,7 +514,7 @@ async function loadDevices() {
     const payload = await apiGet("/api/v1/serial/devices");
     const data = extractData(payload) || {};
     renderDevices(data.devices || []);
-  } catch (error) {
+  } catch {
     showToast("Unable to load serial devices.", "error");
   }
 }
@@ -343,9 +523,21 @@ async function loadSessions() {
   try {
     const payload = await apiGet("/api/v1/serial/sessions");
     const data = extractData(payload) || {};
-    renderSessions(data.sessions || []);
-  } catch (error) {
+    activeSessions = data.sessions || [];
+    renderDevices(deviceCache);
+    renderSessionSelect();
+  } catch {
     showToast("Unable to load serial sessions.", "error");
+  }
+}
+
+async function loadLogs() {
+  try {
+    const payload = await apiGet("/api/v1/serial/logs");
+    const data = extractData(payload) || {};
+    renderLogs(data.logs || []);
+  } catch {
+    showToast("Unable to load session logs.", "error");
   }
 }
 
@@ -355,17 +547,17 @@ function init() {
     refresh.addEventListener("click", () => {
       loadDevices();
       loadSessions();
+      loadLogs();
     });
   }
   setupActions();
   setupTerminalInput();
   loadDevices();
   loadSessions();
+  loadLogs();
 }
 
 document.addEventListener("DOMContentLoaded", init);
 window.addEventListener("beforeunload", () => {
-  if (wsClient) {
-    wsClient.close();
-  }
+  if (wsClient) wsClient.close();
 });

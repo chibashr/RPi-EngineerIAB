@@ -59,3 +59,23 @@ class TestSerialLogs:
     def test_returns_200(self, client):
         r = client.get("/api/v1/serial/logs")
         assert r.status_code == 200
+
+
+class TestSerialRenameLog:
+    """Tests for PUT /api/v1/serial/logs/<log_id>."""
+
+    def test_missing_name_returns_400(self, client):
+        r = client.put(
+            "/api/v1/serial/logs/nonexistent",
+            json={},
+            content_type="application/json",
+        )
+        assert r.status_code == 400
+
+    def test_nonexistent_log_returns_404(self, client):
+        r = client.put(
+            "/api/v1/serial/logs/nonexistent",
+            json={"name": "My Log"},
+            content_type="application/json",
+        )
+        assert r.status_code == 404

@@ -111,38 +111,55 @@
                 Detect devices, manage sessions, and open live consoles.
               </p>
             </div>
-            <div class="toolbar">
-              <button class="btn btn-secondary" id="refresh-serial">
-                Refresh
-              </button>
-              <button class="btn btn-primary" id="open-console">
-                Open Console
-              </button>
-            </div>
           </div>
 
           <section class="card">
             <div class="section-header">
               <h2>Detected Devices</h2>
-              <button class="btn btn-secondary" id="configure-serial">
-                Configure Settings
-              </button>
+              <div class="section-actions">
+                <button class="btn btn-secondary" id="refresh-serial">
+                  Refresh
+                </button>
+                <button class="btn btn-primary" id="open-console">
+                  Open Console
+                </button>
+                <button class="btn btn-secondary" id="configure-serial">
+                  Configure Settings
+                </button>
+              </div>
             </div>
-            <ul class="status-list" id="serial-device-list"></ul>
+            <div class="section-body">
+              <table class="status-table">
+                <thead>
+                  <tr>
+                    <th>Device</th>
+                    <th>Status</th>
+                    <th>Chipset</th>
+                    <th>Session</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="serial-device-table-body">
+                  <tr>
+                    <td colspan="5">Loading devices...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section class="card console-card">
             <div class="section-header">
               <h2>Console</h2>
               <div class="console-controls">
-                <button class="btn btn-ghost" id="serial-connect">
-                  Connect
-                </button>
-                <button class="btn btn-ghost" id="serial-disconnect">
-                  Disconnect
-                </button>
-                <button class="btn btn-ghost" id="serial-clear">Clear</button>
-                <button class="btn btn-ghost" id="serial-save-log">
+                <label class="field" for="serial-session-select">
+                  <span class="field-label">Session</span>
+                  <select id="serial-session-select" class="select">
+                    <option value="">No session selected</option>
+                  </select>
+                </label>
+                <button class="btn btn-secondary" id="serial-clear">Clear</button>
+                <button class="btn btn-secondary" id="serial-save-log">
                   Save Log
                 </button>
               </div>
@@ -155,20 +172,26 @@
 
           <section class="card">
             <div class="section-header">
-              <h2>Active Sessions</h2>
-            </div>
-            <ul class="status-list" id="serial-session-list"></ul>
-          </section>
-
-          <section class="card">
-            <div class="section-header">
               <h2>Session Logs</h2>
-              <button class="btn btn-ghost" id="export-serial-logs">
-                Export Logs
-              </button>
             </div>
-            <div class="empty-state">
-              Log export will be available once sessions are recorded.
+            <div class="section-body">
+              <table class="status-table" id="serial-logs-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Device</th>
+                    <th>When</th>
+                    <th>Duration</th>
+                    <th>Size</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="serial-logs-table-body">
+                  <tr>
+                    <td colspan="6">No recorded sessions.</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </section>
         </main>

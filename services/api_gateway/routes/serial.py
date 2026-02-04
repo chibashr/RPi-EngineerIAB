@@ -131,6 +131,19 @@ def delete_log(log_id: str):
     return success_response(data)
 
 
+@serial_bp.put("/logs/<log_id>")
+def rename_log(log_id: str):
+    payload = request.get_json(silent=True) or {}
+    display_name = payload.get("name") or payload.get("display_name")
+    if not display_name or not str(display_name).strip():
+        return error_response("VALIDATION_ERROR", "name is required", status_code=400)
+    try:
+        data = serial_manager.rename_log(log_id, str(display_name))
+    except KeyError as exc:
+        return error_response("NOT_FOUND", str(exc), status_code=404)
+    return success_response(data)
+
+
 @serial_bp.post("/logs/export")
 def export_logs():
     payload = request.get_json(silent=True) or {}
