@@ -13,6 +13,11 @@
 <p><strong>Common causes:</strong> The service user needs to be in <code>dialout</code> and/or <code>plugdev</code> to access serial ports (ttyUSB*, ttyACM*). On many systems, udev assigns USB serial devices to <code>plugdev</code>.</p>
 <p><strong>Resolution:</strong> The installer adds the service user to <code>dialout</code> and <code>plugdev</code> automatically. If you installed before this was added, or permissions were skipped: re-run the installer, or manually run <code>sudo usermod -a -G dialout rpi-engineer</code> and <code>sudo usermod -a -G plugdev rpi-engineer</code>, then <code>sudo systemctl restart rpi-engineer-api</code>. A reboot also applies new group membership.</p>
 
+<h2>No output (Tx &gt; 0, Rx = 0)</h2>
+<p><strong>Symptom:</strong> You can type and send commands, but no prompt or response appears from the device.</p>
+<p><strong>Common causes:</strong> Baud rate mismatch. Many devices use 9600 for console; others use 115200 or 38400.</p>
+<p><strong>Resolution:</strong> Click <strong>Configure</strong> on the device, set the baud rate to match the target (e.g. 9600, 115200), then disconnect and reconnect the session.</p>
+
 <h2>Garbled output</h2>
 <p><strong>Symptom:</strong> Output is unreadable.</p>
 <p><strong>Common causes:</strong> Incorrect baud rate or parity.</p>

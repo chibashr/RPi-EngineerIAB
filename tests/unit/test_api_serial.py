@@ -5,6 +5,58 @@ from __future__ import annotations
 import pytest
 
 
+class TestSerialUpdateDevice:
+    """Tests for PUT /api/v1/serial/devices/<device_id>."""
+
+    def test_update_device_applies_config(self, client, monkeypatch):
+        """Device config is saved and returned."""
+        from services import serial_manager
+
+        def fake_scan():
+            return [
+                {
+                    "id": "COM3",
+                    "path": "COM3",
+                    "friendly_name": "FTDI",
+                    "chipset": "FTDI",
+                }
+            ]
+
+        monkeypatch.setattr(
+            serial_manager.serial_manager,
+            "_scan_devices",
+            fake_scan,
+        )
+        r = client.put(
+            "/api/v1/serial/devices/COM3",
+            json={"baud_rate": 115200, "friendly_name": "Router Console"},
+            content_type="application/json",
+        )
+        assert r.status_code == 200
+        data = r.get_json()
+        assert "data" in data
+        assert data["data"]["config"]["baud_rate"] == 115200
+        assert data["data"]["config"]["friendly_name"] == "Router Console"
+
+    def test_update_device_not_found_returns_404(self, client, monkeypatch):
+        def fake_scan():
+            return []
+
+        from services import serial_manager
+
+        monkeypatch.setattr(
+            serial_manager.serial_manager,
+            "_scan_devices",
+            fake_scan,
+        )
+        r = client.put(
+            "/api/v1/serial/devices/COM99",
+            json={"baud_rate": 115200},
+            content_type="application/json",
+        )
+        assert r.status_code == 404
+
+
 class TestSerialDevices:
     """Tests for GET /api/v1/serial/devices."""
 

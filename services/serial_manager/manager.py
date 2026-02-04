@@ -33,6 +33,7 @@ from lib.module_logger import get_service_logger
 logger = get_service_logger(__name__)
 LOG_DIR = Path("/opt/rpi-engineer/data/serial_logs")
 EXPORT_DIR = LOG_DIR / "exports"
+CONFIG_PATH = LOG_DIR.parent / "serial_devices.json"
 MAX_SESSIONS = 8
 
 
@@ -57,6 +58,7 @@ class SerialManager:
     def __init__(self) -> None:
         self._device_configs: Dict[str, Dict[str, object]] = {}
         self._sessions: Dict[str, SerialSession] = {}
+        self._load_device_configs()
         logger.info("Serial manager started")
 
     def list_devices(self) -> Dict[str, List[Dict[str, object]]]:
@@ -105,11 +107,18 @@ class SerialManager:
             "stop_bits",
             "flow_control",
         }
-        config = self._device_configs.get(device_id, {})
+        config = dict(self._device_configs.get(device_id, {}))
         for key, value in payload.items():
-            if key in allowed:
-                config[key] = value
+            if key in allowed and value is not None:
+                if key in ("baud_rate", "data_bits", "stop_bits"):
+                    try:
+                        config[key] = int(value)
+                    except (TypeError, ValueError):
+                        config[key] = value
+                else:
+                    config[key] = value
         self._device_configs[device_id] = config
+        self._save_device_configs()
         return {"id": device_id, "config": config}
 
     def test_device(self, device_id: str) -> Dict[str, object]:
@@ -336,6 +345,28 @@ class SerialManager:
 
     def _log_header(self, device_id: str) -> str:
         return f"Device: {device_id}\nCreated: {_timestamp()}\n---\n"
+
+    def _load_device_configs(self) -> None:
+        """Load device configs from disk. Survives service restarts."""
+        if not CONFIG_PATH.exists():
+            return
+        try:
+            data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            configs = data.get("devices", {})
+            if isinstance(configs, dict):
+                self._device_configs.update(configs)
+                logger.info("Loaded %d serial device config(s) from %s", len(configs), CONFIG_PATH)
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Could not load serial device configs from %s: %s", CONFIG_PATH, exc)
+
+    def _save_device_configs(self) -> None:
+        """Persist device configs to disk."""
+        try:
+            CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            data = {"devices": self._device_configs, "version": 1}
+            CONFIG_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except OSError as exc:
+            logger.warning("Could not save serial device configs to %s: %s", CONFIG_PATH, exc)
 
     def _device_in_use(self, device_id: str) -> bool:
         return any(session.device_id == device_id for session in self._sessions.values())

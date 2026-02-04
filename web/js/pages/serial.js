@@ -16,7 +16,7 @@ let activeSessions = [];
 let deviceCache = [];
 let wsClient = null;
 let currentSessionId = null;
-const MAX_TERMINAL_LINES = 500;
+const MAX_TERMINAL_LINES = 100;
 let terminalBuffer = [];
 let terminalInputReady = false;
 let lastNotConnectedToast = 0;
@@ -250,7 +250,12 @@ function connectWebSocket(sessionId) {
   });
   wsClient.on("status", (message) => {
     if (elements.status) {
-      elements.status.textContent = `Tx ${message.bytes_tx || 0} / Rx ${message.bytes_rx || 0}`;
+      const tx = message.bytes_tx || 0;
+      const rx = message.bytes_rx || 0;
+      elements.status.textContent = `Tx ${tx} / Rx ${rx}`;
+      elements.status.title = tx > 0 && rx === 0
+        ? "No output yet. Verify baud rate in Configure if the device should respond."
+        : "";
     }
   });
   wsClient.on("error", (message) => {
@@ -421,6 +426,10 @@ function setupTerminalInput() {
         }
       }
     });
+    input.addEventListener("wheel", (e) => {
+      wrapper.scrollTop += e.deltaY;
+      e.preventDefault();
+    }, { passive: false });
     wrapper?.addEventListener("click", () => input?.focus());
   } else {
     elements.terminal.tabIndex = 0;
@@ -483,12 +492,13 @@ async function configureSerial(deviceId) {
     showToast("Device ID is required.", "error");
     return;
   }
-  const payload = {};
+  const payload = {
+    baud_rate: Number(baudRate) || 9600,
+    data_bits: Number(dataBits) || 8,
+    parity: (parity || "none").toLowerCase(),
+    stop_bits: Number(stopBits) || 1,
+  };
   if (friendlyName.trim()) payload.friendly_name = friendlyName;
-  if (baudRate) payload.baud_rate = Number(baudRate);
-  if (dataBits) payload.data_bits = Number(dataBits);
-  if (parity) payload.parity = parity;
-  if (stopBits) payload.stop_bits = Number(stopBits);
   try {
     await apiPut(
       `/api/v1/serial/devices/${encodeURIComponent(devId)}`,

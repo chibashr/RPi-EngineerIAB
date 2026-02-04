@@ -91,6 +91,8 @@
   border: 1px solid var(--color-border);
   border-radius: 12px;
   min-height: 220px;
+  max-height: 24em;
+  overflow-y: auto;
 }
 
 .console-window-wrapper:focus-within {
@@ -106,6 +108,7 @@
   font-family: "Courier New", monospace;
   white-space: pre-wrap;
   word-break: break-all;
+  line-height: 1.2;
 }
 
 .console-input-overlay {
