@@ -20,6 +20,7 @@ const MAX_TERMINAL_LINES = 100;
 let terminalBuffer = [];
 let terminalInputReady = false;
 let lastNotConnectedToast = 0;
+let localEchoEnabled = false;
 
 function showToast(message, variant = "info") {
   const toastRegion = document.getElementById("toast-region");
@@ -329,6 +330,18 @@ function setupActions() {
     });
   }
 
+  const localEchoCheckbox = document.getElementById("serial-local-echo");
+  if (localEchoCheckbox) {
+    localEchoCheckbox.checked = localEchoEnabled;
+    localEchoCheckbox.addEventListener("change", () => {
+      localEchoEnabled = localEchoCheckbox.checked;
+      showToast(
+        localEchoEnabled ? "Local echo on (for devices that do not echo)" : "Local echo off (device echoes)",
+        "info"
+      );
+    });
+  }
+
   const actions = [
     {
       id: "serial-clear",
@@ -435,7 +448,7 @@ function setupTerminalInput() {
       if (char !== null) {
         event.preventDefault();
         event.stopPropagation();
-        if (sendToSerial(char)) {
+        if (sendToSerial(char) && localEchoEnabled) {
           appendLocalEcho(char);
         }
       }
@@ -451,7 +464,7 @@ function setupTerminalInput() {
       const char = charFromKeyEvent(event);
       if (char !== null) {
         event.preventDefault();
-        if (sendToSerial(char)) appendLocalEcho(char);
+        if (sendToSerial(char) && localEchoEnabled) appendLocalEcho(char);
       }
     });
   }
