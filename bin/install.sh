@@ -1151,7 +1151,8 @@ configure_services() {
     log_step "Configuring systemd services"
     create_master_service
     local api_env="Environment=RPI_ENGINEER_ROOT=${INSTALL_DIR}
-Environment=RPI_ENGINEER_DRY_RUN=0"
+Environment=RPI_ENGINEER_DRY_RUN=0
+Environment=RPI_ENGINEER_USE_GEVENT=1"
     create_service_unit "rpi-engineer-api" "RPi Engineer API Gateway" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/api_gateway/main.py" "$SERVICE_USER" "$api_env"
     create_service_unit "rpi-engineer-network" "RPi Engineer Network Manager" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/network_manager/manager.py" "root"
     create_service_unit "rpi-engineer-serial" "RPi Engineer Serial Manager" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/serial_manager/manager.py" "$SERVICE_USER"
@@ -1220,6 +1221,8 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
         proxy_read_timeout 86400;
         proxy_send_timeout 86400;

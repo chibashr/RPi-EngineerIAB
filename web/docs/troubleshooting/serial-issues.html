@@ -18,10 +18,21 @@
 <p><strong>Common causes:</strong> Incorrect baud rate or parity.</p>
 <p><strong>Resolution:</strong> Update device settings to match the target device.</p>
 
+<h2>WebSocket "Invalid frame header" or connection fails</h2>
+<p><strong>Symptom:</strong> Serial console shows disconnected and the browser console reports <code>WebSocket connection failed: Invalid frame header</code>.</p>
+<p><strong>Common causes:</strong> The API server needs gevent for reliable WebSocket support; nginx proxy may be misconfigured.</p>
+<p><strong>Resolution:</strong></p>
+<ol>
+  <li>Ensure <code>gevent</code> is installed: <code>pip install gevent</code> (or re-run the installer).</li>
+  <li>Set <code>RPI_ENGINEER_USE_GEVENT=1</code> in the API service environment (the installer does this by default).</li>
+  <li>Restart the API: <code>sudo systemctl restart rpi-engineer-api</code>.</li>
+  <li>If behind nginx, ensure <code>/ws/</code> has <code>proxy_http_version 1.1</code>, <code>Upgrade</code>, and <code>Connection "upgrade"</code> headers. Run <code>sudo /opt/rpi-engineer/bin/apply-web-permissions.sh</code> to re-apply the nginx config.</li>
+</ol>
+
 <h2>Related</h2>
 <ul>
   <li><a href="../features/serial-console.html">Serial console</a></li>
   <li><a href="../devices/cisco.html">Cisco device connection guide</a></li>
 </ul>
 
-<p><strong>Last updated:</strong> 2026-02-02</p>
+<p><strong>Last updated:</strong> 2026-02-04</p>

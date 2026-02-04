@@ -123,5 +123,21 @@ if __name__ == "__main__":
     host = os.getenv("RPI_ENGINEER_API_HOST", "0.0.0.0")
     port = int(os.getenv("RPI_ENGINEER_API_PORT", "5000"))
     debug = os.getenv("RPI_ENGINEER_DEBUG", "0") == "1"
-    logger.info("API Gateway starting on %s:%s", host, port)
-    app.run(host=host, port=port, debug=debug)
+    use_gevent = os.getenv("RPI_ENGINEER_USE_GEVENT", "1") == "1"
+
+    if use_gevent and not debug:
+        try:
+            from gevent import monkey
+
+            monkey.patch_all()
+            from gevent.pywsgi import WSGIServer
+
+            logger.info("API Gateway starting on %s:%s (gevent)", host, port)
+            WSGIServer((host, port), app).serve_forever()
+        except ImportError:
+            logger.info("gevent not installed; falling back to Flask dev server")
+            logger.info("API Gateway starting on %s:%s", host, port)
+            app.run(host=host, port=port, debug=debug)
+    else:
+        logger.info("API Gateway starting on %s:%s", host, port)
+        app.run(host=host, port=port, debug=debug)

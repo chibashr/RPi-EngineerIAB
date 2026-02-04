@@ -146,7 +146,9 @@ function connectWebSocket(sessionId) {
     wsClient = null;
   }
   currentSessionId = sessionId;
-  wsClient = createWebSocketClient(`/ws/serial/${sessionId}`);
+  wsClient = createWebSocketClient(`/ws/serial/${sessionId}`, {
+    autoReconnect: false,
+  });
   wsClient.onStatus((status) => {
     if (elements.status) {
       elements.status.textContent = status;
