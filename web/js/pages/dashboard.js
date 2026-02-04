@@ -323,7 +323,7 @@ function setupCaptureStopDelegation() {
     try {
       await apiPost(`/api/v1/capture/active/${encodeURIComponent(captureId)}/stop`);
       showToast("Capture stopped.", "success");
-      loadCapturesWithOptions({ suppressError: true });
+      loadDashboard({ suppressError: true });
     } catch (error) {
       showToast("Unable to stop capture.", "error");
       button.disabled = false;
@@ -332,8 +332,74 @@ function setupCaptureStopDelegation() {
   });
 }
 
-async function loadSystemStatus() {
-  return loadSystemStatusWithOptions({});
+function applyDashboardData(data) {
+  const d = data || {};
+  setMetric(elements.metrics.cpu, d.resources?.cpu_percent, "%");
+  setMetric(elements.metrics.memory, d.resources?.memory_percent, "%");
+  setMetric(elements.metrics.temp, d.resources?.temperature_c, " C", 100);
+  setMetric(elements.metrics.storage, d.resources?.disk_percent, "%");
+  renderServices(d.services);
+  renderNetwork(d.interfaces || []);
+  renderCaptures(d.captures || []);
+  renderSerialDevices(d.devices || []);
+  renderAlerts(d.alerts || []);
+  renderRemoteTools(d.tools || []);
+}
+
+async function loadDashboard(options = {}) {
+  try {
+    const payload = await apiGet("/api/v1/dashboard/status");
+    const data = extractData(payload) || {};
+    applyDashboardData(data);
+  } catch (error) {
+    if (!options.suppressError) {
+      showToast("Unable to load dashboard.", "error");
+    }
+    await loadDashboardFallback(options);
+  }
+}
+
+async function loadDashboardFallback(options) {
+  try {
+    const payload = await apiGet("/api/v1/system/status");
+    const data = extractData(payload) || {};
+    setMetric(elements.metrics.cpu, data.resources?.cpu_percent, "%");
+    setMetric(elements.metrics.memory, data.resources?.memory_percent, "%");
+    setMetric(elements.metrics.temp, data.resources?.temperature_c, " C", 100);
+    setMetric(elements.metrics.storage, data.resources?.disk_percent, "%");
+    renderServices(data.services);
+    renderAlerts(data.alerts || data.monitor?.alerts || []);
+  } catch (e) {
+    if (!options.suppressError) showToast("Unable to load system status.", "error");
+  }
+  try {
+    const payload = await apiGet("/api/v1/network/interfaces");
+    const data = extractData(payload) || {};
+    renderNetwork(data.interfaces || []);
+  } catch (e) {
+    if (elements.network.summary) elements.network.summary.textContent = "Unavailable";
+  }
+  try {
+    const payload = await apiGet("/api/v1/capture/active");
+    const data = extractData(payload) || {};
+    renderCaptures(data.captures || []);
+  } catch (e) {
+    if (elements.captures.summary) elements.captures.summary.textContent = "Unavailable";
+  }
+  try {
+    const payload = await apiGet("/api/v1/serial/devices");
+    const data = extractData(payload) || {};
+    renderSerialDevices(data.devices || []);
+  } catch (e) {
+    if (elements.serial.summary) elements.serial.summary.textContent = "Unavailable";
+  }
+  try {
+    const payload = await apiGet("/api/v1/remote/status");
+    const data = extractData(payload) || {};
+    renderRemoteTools(data.tools || []);
+  } catch (e) {
+    if (elements.remote.summary) elements.remote.summary.textContent = "Unavailable";
+  }
 }
 
 async function loadSystemStatusWithOptions(options) {
@@ -352,25 +418,17 @@ async function loadSystemStatusWithOptions(options) {
   }
 }
 
-async function loadNetworkStatus() {
-  return loadNetworkStatusWithOptions({});
-}
-
 async function loadNetworkStatusWithOptions(options) {
   try {
     const payload = await apiGet("/api/v1/network/interfaces");
     const data = extractData(payload) || {};
     renderNetwork(data.interfaces || []);
   } catch (error) {
-    elements.network.summary.textContent = "Network status unavailable.";
+    if (elements.network.summary) elements.network.summary.textContent = "Network status unavailable.";
     if (!options.suppressError) {
       showToast("Unable to load network interfaces.", "error");
     }
   }
-}
-
-async function loadCaptures() {
-  return loadCapturesWithOptions({});
 }
 
 async function loadCapturesWithOptions(options) {
@@ -382,60 +440,6 @@ async function loadCapturesWithOptions(options) {
     elements.captures.summary.textContent = "Capture data unavailable.";
     if (!options.suppressError) {
       showToast("Unable to load capture status.", "error");
-    }
-  }
-}
-
-async function loadSerialDevices() {
-  return loadSerialDevicesWithOptions({});
-}
-
-async function loadSerialDevicesWithOptions(options) {
-  try {
-    const payload = await apiGet("/api/v1/serial/devices");
-    const data = extractData(payload) || {};
-    renderSerialDevices(data.devices || []);
-  } catch (error) {
-    if (elements.serial.summary) {
-      elements.serial.summary.textContent = "Unavailable";
-    }
-    if (!options.suppressError) {
-      showToast("Unable to load serial devices.", "error");
-    }
-  }
-}
-
-async function loadAlerts() {
-  return loadAlertsWithOptions({});
-}
-
-async function loadAlertsWithOptions(options) {
-  try {
-    const payload = await apiGet("/api/v1/system/status");
-    const data = extractData(payload) || {};
-    const alerts = data.alerts || data.monitor?.alerts || [];
-    renderAlerts(alerts);
-  } catch (error) {
-    if (!options.suppressError) {
-      showToast("Unable to load alerts.", "error");
-    }
-  }
-}
-
-async function loadRemoteStatus() {
-  return loadRemoteStatusWithOptions({});
-}
-
-async function loadRemoteStatusWithOptions(options) {
-  try {
-    const payload = await apiGet("/api/v1/remote/status");
-    const data = extractData(payload) || {};
-    renderRemoteTools(data.tools);
-  } catch (error) {
-    if (elements.remote.summary) elements.remote.summary.textContent = "Unavailable";
-    if (elements.remote.list) elements.remote.list.textContent = "";
-    if (!options.suppressError) {
-      showToast("Unable to load remote access status.", "error");
     }
   }
 }
@@ -456,12 +460,7 @@ function startPolling() {
     if (document.hidden) {
       return;
     }
-    loadSystemStatusWithOptions({ suppressError: true });
-    loadNetworkStatusWithOptions({ suppressError: true });
-    loadCapturesWithOptions({ suppressError: true });
-    loadSerialDevicesWithOptions({ suppressError: true });
-    loadAlertsWithOptions({ suppressError: true });
-    loadRemoteStatusWithOptions({ suppressError: true });
+    loadDashboard({ suppressError: true });
   }, MAX_POLL_INTERVAL);
 }
 
@@ -520,12 +519,7 @@ function initStatusWebSocket() {
 function init() {
   setupRemoteCopyDelegation();
   setupCaptureStopDelegation();
-  loadSystemStatus();
-  loadNetworkStatus();
-  loadCaptures();
-  loadSerialDevices();
-  loadAlerts();
-  loadRemoteStatus();
+  loadDashboard();
   initStatusWebSocket();
 }
 

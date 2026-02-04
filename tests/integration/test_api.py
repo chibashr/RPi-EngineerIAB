@@ -24,6 +24,7 @@ class TestApiResponseFormat:
     @pytest.mark.parametrize(
         "path",
         [
+            "/api/v1/dashboard/status",
             "/api/v1/system/status",
             "/api/v1/system/info",
             "/api/v1/system/services",

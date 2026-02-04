@@ -78,9 +78,9 @@
   gap: 0.5rem;
 }
 
-/* Limit service/serial list height (~6 items) with scrollbar for compact dashboard */
+/* Limit service/serial list height to ~6 items with scrollbar for compact dashboard */
 .panel-body-scroll {
-  max-height: 14rem;
+  max-height: 12rem;
   overflow-y: auto;
 }
 
