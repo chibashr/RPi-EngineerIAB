@@ -56,6 +56,39 @@ class TestSerialUpdateDevice:
         )
         assert r.status_code == 404
 
+    def test_update_device_via_configure_endpoint(self, client, monkeypatch):
+        """PUT /devices/configure with device_id in body works for paths like /dev/ttyUSB1."""
+        from services import serial_manager
+
+        def fake_scan():
+            return [
+                {
+                    "id": "/dev/ttyUSB1",
+                    "path": "/dev/ttyUSB1",
+                    "friendly_name": "FTDI",
+                    "chipset": "FTDI",
+                }
+            ]
+
+        monkeypatch.setattr(
+            serial_manager.serial_manager,
+            "_scan_devices",
+            fake_scan,
+        )
+        r = client.put(
+            "/api/v1/serial/devices/configure",
+            json={
+                "device_id": "/dev/ttyUSB1",
+                "baud_rate": 115200,
+                "friendly_name": "Console",
+            },
+            content_type="application/json",
+        )
+        assert r.status_code == 200
+        data = r.get_json()
+        assert data["data"]["config"]["baud_rate"] == 115200
+        assert data["data"]["config"]["friendly_name"] == "Console"
+
 
 class TestSerialDevices:
     """Tests for GET /api/v1/serial/devices."""

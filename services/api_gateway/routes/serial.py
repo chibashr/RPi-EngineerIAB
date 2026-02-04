@@ -28,6 +28,22 @@ def get_device(device_id: str):
     return success_response(data)
 
 
+@serial_bp.put("/devices/configure")
+def update_device_by_body():
+    """Update device config with device_id in body. Avoids 405 from nginx when device_id contains slashes (e.g. /dev/ttyUSB1)."""
+    payload = request.get_json(silent=True) or {}
+    device_id = payload.get("device_id") or payload.get("device")
+    if not device_id or not str(device_id).strip():
+        return error_response("VALIDATION_ERROR", "device_id is required", status_code=400)
+    device_id = str(device_id).strip()
+    config_payload = {k: v for k, v in payload.items() if k not in ("device_id", "device")}
+    try:
+        data = serial_manager.update_device(device_id, config_payload)
+    except KeyError as exc:
+        return error_response("NOT_FOUND", str(exc), status_code=404)
+    return success_response(data)
+
+
 @serial_bp.put("/devices/<device_id>")
 def update_device(device_id: str):
     payload = request.get_json(silent=True) or {}

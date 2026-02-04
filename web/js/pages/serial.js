@@ -493,6 +493,7 @@ async function configureSerial(deviceId) {
     return;
   }
   const payload = {
+    device_id: devId.trim(),
     baud_rate: Number(baudRate) || 9600,
     data_bits: Number(dataBits) || 8,
     parity: (parity || "none").toLowerCase(),
@@ -500,10 +501,7 @@ async function configureSerial(deviceId) {
   };
   if (friendlyName.trim()) payload.friendly_name = friendlyName;
   try {
-    await apiPut(
-      `/api/v1/serial/devices/${encodeURIComponent(devId)}`,
-      payload
-    );
+    await apiPut("/api/v1/serial/devices/configure", payload);
     showToast("Serial device updated.", "success");
     loadDevices();
   } catch {
