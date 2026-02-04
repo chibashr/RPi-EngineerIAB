@@ -10,8 +10,8 @@
 
 <h2>Permission denied</h2>
 <p><strong>Symptom:</strong> Cannot open device or session fails to start.</p>
-<p><strong>Common causes:</strong> The service user needs to be in the <code>dialout</code> group to access serial ports (ttyUSB*, ttyACM*).</p>
-<p><strong>Resolution:</strong> The installer adds the service user to <code>dialout</code> automatically. If you installed before this was added, or permissions were skipped: re-run the installer, or manually run <code>sudo usermod -a -G dialout rpi-engineer</code> then <code>sudo systemctl restart rpi-engineer-api</code>. A reboot also applies new group membership.</p>
+<p><strong>Common causes:</strong> The service user needs to be in <code>dialout</code> and/or <code>plugdev</code> to access serial ports (ttyUSB*, ttyACM*). On many systems, udev assigns USB serial devices to <code>plugdev</code>.</p>
+<p><strong>Resolution:</strong> The installer adds the service user to <code>dialout</code> and <code>plugdev</code> automatically. If you installed before this was added, or permissions were skipped: re-run the installer, or manually run <code>sudo usermod -a -G dialout rpi-engineer</code> and <code>sudo usermod -a -G plugdev rpi-engineer</code>, then <code>sudo systemctl restart rpi-engineer-api</code>. A reboot also applies new group membership.</p>
 
 <h2>Garbled output</h2>
 <p><strong>Symptom:</strong> Output is unreadable.</p>

@@ -1092,7 +1092,9 @@ setup_user_permissions() {
     # when sudo is unavailable, or when sudoers rule is not present; group write allows both paths).
     chmod -R g+w "$INSTALL_DIR" 2>/dev/null || true
     # dialout: serial port access (ttyUSB*, ttyACM*) for serial console
+    # plugdev: USB serial devices on many systems (udev assigns ttyUSB* to plugdev)
     usermod -a -G dialout "$SERVICE_USER" || true
+    usermod -a -G plugdev "$SERVICE_USER" || true
     usermod -a -G netdev "$SERVICE_USER" || true
     mark_step_done "permissions"
 }

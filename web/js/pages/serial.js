@@ -291,21 +291,6 @@ function setupActions() {
 
   const actions = [
     {
-      id: "open-console",
-      action: () => {
-        if (elements.terminal) elements.terminal.focus();
-        if (activeSessions.length && !currentSessionId && elements.sessionSelect) {
-          elements.sessionSelect.value = activeSessions[0].session_id;
-          connectWebSocket(activeSessions[0].session_id);
-        } else if (activeSessions.length) {
-          showToast("Select a session from the dropdown to connect.", "info");
-        } else {
-          showToast("Connect a device first to open the console.", "info");
-        }
-      },
-    },
-    { id: "configure-serial", action: () => configureSerial() },
-    {
       id: "serial-clear",
       action: () => {
         if (elements.terminal) {
