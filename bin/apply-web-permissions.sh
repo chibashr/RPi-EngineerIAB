@@ -13,8 +13,26 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+# Ensure API (rpi-engineer) can run updates via web UI: install dir must be group-writable.
+# Run this even when nginx is absent so updates work.
+if getent group "$SERVICE_GROUP" >/dev/null 2>&1; then
+    chown -R "root:${SERVICE_GROUP}" "$INSTALL_DIR"
+    chmod -R g+w "$INSTALL_DIR" 2>/dev/null || true
+    [ -d "$INSTALL_DIR/.git" ] && chmod -R g+w "$INSTALL_DIR/.git" 2>/dev/null || true
+    if command -v git >/dev/null 2>&1 && [ -d "$INSTALL_DIR/.git" ]; then
+        git config --system --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+    fi
+    for subdir in network_profiles network_configs module_config; do
+        [ -d "${CONFIG_DIR}/${subdir}" ] && chown -R "root:${SERVICE_GROUP}" "${CONFIG_DIR}/${subdir}" && \
+            find "${CONFIG_DIR}/${subdir}" -type d -exec chmod 775 {} \; 2>/dev/null || true && \
+            find "${CONFIG_DIR}/${subdir}" -type f -exec chmod 664 {} \; 2>/dev/null || true
+    done
+    [ -f "${CONFIG_DIR}/version" ] && chown "root:${SERVICE_GROUP}" "${CONFIG_DIR}/version" && chmod 664 "${CONFIG_DIR}/version"
+    [ -f "${CONFIG_DIR}/hotspot.secret" ] && chown "root:${SERVICE_GROUP}" "${CONFIG_DIR}/hotspot.secret" && chmod 660 "${CONFIG_DIR}/hotspot.secret"
+fi
+
 if ! command -v nginx >/dev/null 2>&1; then
-    echo "nginx not found; skipping." >&2
+    echo "nginx not found; skipping nginx config." >&2
     exit 0
 fi
 
@@ -84,15 +102,10 @@ if [ -d /run/systemd/system ]; then
     systemctl reload nginx 2>/dev/null || systemctl restart nginx
 fi
 
-# Ensure API (rpi-engineer) can write to config dirs for network profiles, updates, hotspot
-if getent group "$SERVICE_GROUP" >/dev/null 2>&1; then
-    for subdir in network_profiles network_configs module_config; do
-        if [ -d "${CONFIG_DIR}/${subdir}" ]; then
-            chown -R "root:${SERVICE_GROUP}" "${CONFIG_DIR}/${subdir}"
-            find "${CONFIG_DIR}/${subdir}" -type d -exec chmod 775 {} \;
-            find "${CONFIG_DIR}/${subdir}" -type f -exec chmod 664 {} \;
-        fi
-    done
-    [ -f "${CONFIG_DIR}/version" ] && chown "root:${SERVICE_GROUP}" "${CONFIG_DIR}/version" && chmod 664 "${CONFIG_DIR}/version"
-    [ -f "${CONFIG_DIR}/hotspot.secret" ] && chown "root:${SERVICE_GROUP}" "${CONFIG_DIR}/hotspot.secret" && chmod 660 "${CONFIG_DIR}/hotspot.secret"
+# Restore web dir for nginx (permission block above set INSTALL_DIR to root:rpi-engineer)
+if [ -d "${INSTALL_DIR}/web" ] && getent group "$SERVICE_GROUP" >/dev/null 2>&1; then
+    NGINX_USER="www-data"
+    [ -f /etc/nginx/nginx.conf ] && grep -q '^[[:space:]]*user[[:space:]]' /etc/nginx/nginx.conf && \
+        NGINX_USER=$(grep '^[[:space:]]*user[[:space:]]' /etc/nginx/nginx.conf | head -1 | awk '{print $2}' | tr -d ';')
+    getent passwd "$NGINX_USER" >/dev/null 2>&1 && chown -R "$NGINX_USER:$NGINX_USER" "${INSTALL_DIR}/web"
 fi
