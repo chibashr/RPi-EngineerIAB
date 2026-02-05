@@ -94,6 +94,8 @@ function applySyntaxHighlighting(text, rules) {
   return out;
 }
 
+const SERIAL_API_TIMEOUT_MS = 20000;
+
 const elements = {
   deviceListBody: document.getElementById("serial-device-list-body"),
   consoleTabs: document.getElementById("serial-console-tabs"),
@@ -107,6 +109,7 @@ let activeSessions = [];
 let deviceCache = [];
 const MAX_TERMINAL_LINES = 100;
 let lastNotConnectedToast = 0;
+let connectingDeviceId = null;
 
 const sessionMap = new Map();
 let activeTabSessionId = null;
@@ -197,10 +200,13 @@ function renderDevices(devices) {
       toggleBtn.textContent = "Disconnect";
       toggleBtn.addEventListener("click", () => disconnectDevice(session.session_id));
     } else {
+      const isConnecting = connectingDeviceId === device.id;
       toggleBtn.className = "btn btn-primary btn-sm";
-      toggleBtn.textContent = "Connect";
-      toggleBtn.disabled = deviceStatus === "in_use";
-      toggleBtn.addEventListener("click", () => connectDevice(device.id));
+      toggleBtn.textContent = isConnecting ? "Connecting…" : "Connect";
+      toggleBtn.disabled = deviceStatus === "in_use" || isConnecting;
+      if (!isConnecting) {
+        toggleBtn.addEventListener("click", () => connectDevice(device.id));
+      }
     }
     const configBtn = document.createElement("button");
     configBtn.className = "btn btn-ghost btn-sm";
@@ -575,15 +581,33 @@ function sendToSerialForSession(sessionId, data) {
 }
 
 async function connectDevice(deviceId) {
+  connectingDeviceId = deviceId;
+  renderDevices(deviceCache);
+  showToast("Connecting…", "info");
   try {
-    await closeAllSessions();
-    Array.from(sessionMap.keys()).forEach((sid) => removeTabAndDisconnect(sid));
-    activeSessions = [];
-    renderDevices(deviceCache);
-    const payload = await apiPost("/api/v1/serial/sessions", {
-      device_id: deviceId,
-      config: {},
-    });
+    let payload;
+    try {
+      payload = await apiPost(
+        "/api/v1/serial/sessions",
+        { device_id: deviceId, config: {} },
+        { timeoutMs: 20000 }
+      );
+    } catch (createErr) {
+      const msg = String(createErr?.message || "");
+      if (msg.includes("Maximum sessions") || msg.includes("already in use") || msg.includes("Device already")) {
+        await closeAllSessions();
+        Array.from(sessionMap.keys()).forEach((sid) => removeTabAndDisconnect(sid));
+        activeSessions = [];
+        renderDevices(deviceCache);
+        payload = await apiPost(
+          "/api/v1/serial/sessions",
+          { device_id: deviceId, config: {} },
+          { timeoutMs: 20000 }
+        );
+      } else {
+        throw createErr;
+      }
+    }
     const data = extractData(payload) || {};
     const sessionId = data.session_id;
     const deviceName = deviceDisplayName(deviceCache.find((d) => d.id === deviceId) || { id: deviceId });
@@ -595,8 +619,10 @@ async function connectDevice(deviceId) {
     renderDevices(deviceCache);
   } catch (error) {
     activeSessions = activeSessions.filter((s) => s.device_id !== deviceId);
-    renderDevices(deviceCache);
     showToast(error?.message || "Unable to create session.", "error");
+  } finally {
+    connectingDeviceId = null;
+    renderDevices(deviceCache);
   }
 }
 
@@ -785,7 +811,7 @@ function downloadText(filename, content) {
 
 async function loadDevices() {
   try {
-    const payload = await apiGet("/api/v1/serial/devices");
+    const payload = await apiGet("/api/v1/serial/devices", { timeoutMs: SERIAL_API_TIMEOUT_MS });
     const data = extractData(payload) || {};
     renderDevices(data.devices || []);
   } catch {
@@ -795,7 +821,7 @@ async function loadDevices() {
 
 async function loadSessions() {
   try {
-    const payload = await apiGet("/api/v1/serial/sessions");
+    const payload = await apiGet("/api/v1/serial/sessions", { timeoutMs: SERIAL_API_TIMEOUT_MS });
     const data = extractData(payload) || {};
     const apiSessions = data.sessions || [];
     const apiIds = new Set(apiSessions.map((s) => s.session_id));
@@ -838,16 +864,16 @@ async function loadLogs() {
 
 async function closeAllSessions() {
   try {
-    const payload = await apiGet("/api/v1/serial/sessions");
+    const payload = await apiGet("/api/v1/serial/sessions", { timeoutMs: SERIAL_API_TIMEOUT_MS });
     const data = extractData(payload) || {};
     const sessions = data.sessions || [];
-    for (const s of sessions) {
-      try {
-        await apiDelete(`/api/v1/serial/sessions/${encodeURIComponent(s.session_id)}`);
-      } catch {
-        /* ignore per-session errors */
-      }
-    }
+    await Promise.all(
+      sessions.map((s) =>
+        apiDelete(`/api/v1/serial/sessions/${encodeURIComponent(s.session_id)}`, {
+          timeoutMs: SERIAL_API_TIMEOUT_MS,
+        }).catch(() => {})
+      )
+    );
   } catch {
     /* ignore */
   }
@@ -862,12 +888,10 @@ function init() {
       loadLogs();
     });
   }
-  (async () => {
-    await closeAllSessions();
-    loadDevices();
-    loadSessions();
-    loadLogs();
-  })();
+  closeAllSessions().catch(() => {});
+  loadDevices();
+  loadSessions();
+  loadLogs();
 }
 
 document.addEventListener("DOMContentLoaded", init);

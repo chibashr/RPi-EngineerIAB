@@ -31,12 +31,15 @@ function normalizeEndpoint(endpoint) {
 export async function apiGet(endpoint, options = {}) {
   const safeEndpoint = normalizeEndpoint(endpoint);
   const url = new URL(safeEndpoint, window.location.origin);
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const { timeoutMs: _omit, ...fetchOptions } = options;
   const response = await withTimeout(
     fetch(url.toString(), {
       method: "GET",
       headers: { Accept: "application/json" },
-      ...options,
-    })
+      ...fetchOptions,
+    }),
+    timeoutMs
   );
 
   if (!response.ok) {
@@ -50,13 +53,16 @@ export async function apiGet(endpoint, options = {}) {
 export async function apiPost(endpoint, body, options = {}) {
   const safeEndpoint = normalizeEndpoint(endpoint);
   const url = new URL(safeEndpoint, window.location.origin);
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const { timeoutMs: _omit, ...fetchOptions } = options;
   const response = await withTimeout(
     fetch(url.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(body || {}),
-      ...options,
-    })
+      ...fetchOptions,
+    }),
+    timeoutMs
   );
 
   if (!response.ok) {
@@ -98,12 +104,15 @@ export async function apiPut(endpoint, body, options = {}) {
 export async function apiDelete(endpoint, options = {}) {
   const safeEndpoint = normalizeEndpoint(endpoint);
   const url = new URL(safeEndpoint, window.location.origin);
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const { timeoutMs: _omit, ...fetchOptions } = options;
   const response = await withTimeout(
     fetch(url.toString(), {
       method: "DELETE",
       headers: { Accept: "application/json" },
-      ...options,
-    })
+      ...fetchOptions,
+    }),
+    timeoutMs
   );
 
   if (!response.ok) {
