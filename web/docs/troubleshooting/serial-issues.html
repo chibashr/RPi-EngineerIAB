@@ -23,6 +23,11 @@
 <p><strong>Common causes:</strong> Incorrect baud rate or parity.</p>
 <p><strong>Resolution:</strong> Update device settings to match the target device.</p>
 
+<h2>504 Gateway Timeout when connecting</h2>
+<p><strong>Symptom:</strong> Click Connect and the request times out with <code>504 (Gateway Time-out)</code>.</p>
+<p><strong>Common causes:</strong> Nginx proxy uses a 60-second default timeout. Slow device scans or a busy system can exceed this.</p>
+<p><strong>Resolution:</strong> Run <code>sudo /opt/rpi-engineer/bin/apply-web-permissions.sh</code> to apply the updated nginx config (120-second timeout for API). Then <code>sudo systemctl reload nginx</code>.</p>
+
 <h2>WebSocket "Invalid frame header" or connection fails</h2>
 <p><strong>Symptom:</strong> Serial console shows disconnected and the browser console reports <code>WebSocket connection failed: Invalid frame header</code>.</p>
 <p><strong>Common causes:</strong> The API server needs gevent for reliable WebSocket support; nginx proxy may be misconfigured.</p>
