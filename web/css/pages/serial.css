@@ -235,6 +235,29 @@
   line-height: 1.2;
 }
 
+/* Cisco / syntax highlighting */
+.console-window .sh-prompt {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.console-window .sh-error {
+  color: var(--color-danger);
+}
+
+.console-window .sh-command {
+  color: var(--color-info);
+}
+
+.console-window .sh-config {
+  color: var(--color-success);
+}
+
+.console-window .sh-status {
+  color: var(--color-muted);
+  font-style: italic;
+}
+
 .console-input-overlay {
   position: absolute;
   inset: 0;

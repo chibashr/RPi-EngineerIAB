@@ -255,6 +255,15 @@ export function modalForm(fields, title, options = {}) {
       `;
       }
 
+      if (type === "textarea") {
+        return `
+        <div class="field" data-field-name="${escapeHtml(f.name)}">
+          ${label}
+          <textarea id="${id}" name="${escapeHtml(f.name)}" class="modal-input" rows="8">${def}</textarea>
+        </div>
+      `;
+      }
+
       if (type === "checkbox") {
         const checked = f.default === true || f.default === "true" ? " checked" : "";
         return `

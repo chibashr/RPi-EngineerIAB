@@ -2,6 +2,98 @@ import { apiGet, apiPost, apiPut, apiDelete, extractData } from "../api.js";
 import { createWebSocketClient } from "../websocket.js";
 import { modalForm, modalPrompt, modalConfirm } from "../modal.js";
 
+const SYNTAX_STORAGE_KEY = "rpi-serial-syntax";
+const CUSTOM_RULES_KEY = "rpi-serial-syntax-custom";
+
+const CISCO_RULES = [
+  { pattern: /^[^\s]+(>|#|\(config[^)]*\)#)/gm, class: "sh-prompt" },
+  { pattern: /% (Invalid|Error|Incomplete|Ambiguous)[^\n]*/g, class: "sh-error" },
+  { pattern: /\b(show|configure|interface|enable|disable|exit|end|no|copy|ping|traceroute|telnet|ssh|write|reload)\b/g, class: "sh-command" },
+  { pattern: /\b(ip |ipv6 |access-list|router |vlan |line |hostname |logging )/g, class: "sh-config" },
+  { pattern: /(up|down|administratively down)/g, class: "sh-status" },
+];
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function getCustomRules() {
+  try {
+    const raw = localStorage.getItem(CUSTOM_RULES_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter((r) => r?.pattern && r?.class) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function openCustomSyntaxModal(state) {
+  const rules = getCustomRules();
+  const json = JSON.stringify(rules, null, 2);
+  const result = await modalForm(
+    [
+      {
+        name: "rules",
+        label: "Custom regex rules (JSON array)",
+        type: "textarea",
+        default: json,
+      },
+      {
+        name: "help",
+        label: "Example",
+        type: "display",
+        default: '[{"pattern": "\\\\b(show|config)\\\\b", "class": "sh-command", "flags": "g"}]',
+      },
+    ],
+    "Custom syntax highlighting"
+  );
+  if (!result) return;
+  let arr;
+  try {
+    arr = JSON.parse(result.rules || "[]");
+    if (!Array.isArray(arr)) throw new Error("Must be an array");
+    arr = arr.filter((r) => r && typeof r.pattern === "string" && typeof r.class === "string");
+  } catch (e) {
+    showToast("Invalid JSON: " + (e?.message || "parse error"), "error");
+    return;
+  }
+  saveCustomRules(arr);
+  state.syntaxRules = getSyntaxRules("custom");
+  const html = applySyntaxHighlighting(state.terminalBuffer.join("\n"), state.syntaxRules);
+  if (state.terminalEl) state.terminalEl.innerHTML = html || "Click here to focus, then type to send data.";
+  scrollConsoleToBottom(state);
+  showToast("Custom rules saved.", "success");
+}
+
+function saveCustomRules(rules) {
+  try {
+    localStorage.setItem(CUSTOM_RULES_KEY, JSON.stringify(rules));
+  } catch {
+    /* ignore */
+  }
+}
+
+function getSyntaxRules(mode) {
+  if (mode === "cisco") return CISCO_RULES;
+  if (mode === "custom") {
+    const custom = getCustomRules();
+    return custom.map((r) => ({ pattern: new RegExp(r.pattern, r.flags || "g"), class: r.class }));
+  }
+  return [];
+}
+
+function applySyntaxHighlighting(text, rules) {
+  if (!text || !rules?.length) return escapeHtml(text);
+  let out = escapeHtml(text);
+  for (const { pattern, class: cls } of rules) {
+    out = out.replace(pattern, (m) => `<span class="${cls}">${m}</span>`);
+  }
+  return out;
+}
+
 const elements = {
   deviceListBody: document.getElementById("serial-device-list-body"),
   consoleTabs: document.getElementById("serial-console-tabs"),
@@ -39,7 +131,7 @@ function getSessionState(sessionId) {
 
 function isSessionWsConnected(sessionId) {
   const state = sessionMap.get(sessionId);
-  return state && state.wsClient;
+  return state && state.wsStatus === "connected";
 }
 
 function deviceDisplayName(device) {
@@ -77,6 +169,8 @@ function renderDevices(devices) {
 
   validDevices.forEach((device) => {
     const session = getSessionForDevice(device.id);
+    const state = session ? sessionMap.get(session.session_id) : null;
+    const wsStatus = state?.wsStatus || "";
     const isWsConnected = session && isSessionWsConnected(session.session_id);
     const deviceStatus = device.status || "unknown";
     const item = document.createElement("div");
@@ -91,7 +185,7 @@ function renderDevices(devices) {
 
     const metaEl = document.createElement("div");
     metaEl.className = "device-meta";
-    metaEl.textContent = `${chipset} · ${statusLabel(deviceStatus, !!session, isWsConnected)}`;
+    metaEl.textContent = `${chipset} · ${statusLabel(deviceStatus, !!session, isWsConnected, wsStatus)}`;
     item.appendChild(metaEl);
 
     const actions = document.createElement("div");
@@ -119,8 +213,9 @@ function renderDevices(devices) {
   });
 }
 
-function statusLabel(deviceStatus, hasSession, isWsConnected) {
+function statusLabel(deviceStatus, hasSession, isWsConnected, wsStatus) {
   if (isWsConnected) return "Connected";
+  if (hasSession && wsStatus === "connecting") return "Connecting";
   if (hasSession) return "Session active";
   if (deviceStatus === "in_use") return "In use";
   if (deviceStatus === "available") return "Available";
@@ -172,8 +267,9 @@ function updateTerminalForSession(sessionId, text) {
   if (state.terminalBuffer.length > MAX_TERMINAL_LINES) {
     state.terminalBuffer = state.terminalBuffer.slice(-MAX_TERMINAL_LINES);
   }
-  state.terminalEl.textContent = state.terminalBuffer.join("\n");
-  state.terminalEl.scrollTop = state.terminalEl.scrollHeight;
+  const html = applySyntaxHighlighting(state.terminalBuffer.join("\n"), state.syntaxRules);
+  state.terminalEl.innerHTML = html;
+  scrollConsoleToBottom(state);
 }
 
 function appendLocalEchoForSession(sessionId, char) {
@@ -195,20 +291,30 @@ function appendLocalEchoForSession(sessionId, char) {
   if (state.terminalBuffer.length > MAX_TERMINAL_LINES) {
     state.terminalBuffer = state.terminalBuffer.slice(-MAX_TERMINAL_LINES);
   }
-  state.terminalEl.textContent = state.terminalBuffer.join("\n");
-  state.terminalEl.scrollTop = state.terminalEl.scrollHeight;
+  const html = applySyntaxHighlighting(state.terminalBuffer.join("\n"), state.syntaxRules);
+  state.terminalEl.innerHTML = html;
+  scrollConsoleToBottom(state);
+}
+
+function scrollConsoleToBottom(state) {
+  if (state?.wrapperEl) {
+    state.wrapperEl.scrollTop = state.wrapperEl.scrollHeight;
+  }
 }
 
 function createTabAndConnect(sessionId, deviceId, deviceName) {
   if (sessionMap.has(sessionId)) return sessionMap.get(sessionId);
 
+  const syntaxMode = () => (typeof localStorage !== "undefined" ? localStorage.getItem(SYNTAX_STORAGE_KEY) || "none" : "none");
   const state = {
     sessionId,
     deviceId,
     deviceName,
     wsClient: null,
+    wsStatus: "",
     terminalBuffer: [],
     localEcho: false,
+    syntaxRules: getSyntaxRules(syntaxMode()),
     tabEl: null,
     tabPanelEl: null,
     terminalEl: null,
@@ -258,6 +364,35 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   saveBtn.className = "btn btn-secondary btn-sm";
   saveBtn.textContent = "Save Log";
   saveBtn.addEventListener("click", () => saveSerialLogForSession(sessionId));
+  const syntaxSelect = document.createElement("select");
+  syntaxSelect.className = "select serial-syntax-select";
+  syntaxSelect.title = "Syntax highlighting";
+  syntaxSelect.innerHTML = '<option value="none">None</option><option value="cisco">Cisco</option><option value="custom">Custom</option>';
+  syntaxSelect.value = syntaxMode();
+  const syntaxConfigBtn = document.createElement("button");
+  syntaxConfigBtn.type = "button";
+  syntaxConfigBtn.className = "btn btn-ghost btn-sm";
+  syntaxConfigBtn.textContent = "Configure";
+  syntaxConfigBtn.title = "Edit custom regex rules";
+  syntaxConfigBtn.style.display = syntaxSelect.value === "custom" ? "inline-block" : "none";
+  syntaxSelect.addEventListener("change", (e) => {
+    const mode = e.target.value;
+    try {
+      localStorage.setItem(SYNTAX_STORAGE_KEY, mode);
+    } catch {
+      /* ignore */
+    }
+    syntaxConfigBtn.style.display = mode === "custom" ? "inline-block" : "none";
+    state.syntaxRules = getSyntaxRules(mode);
+    const html = applySyntaxHighlighting(state.terminalBuffer.join("\n"), state.syntaxRules);
+    if (state.terminalEl) state.terminalEl.innerHTML = html || "Click here to focus, then type to send data.";
+    scrollConsoleToBottom(state);
+  });
+  syntaxConfigBtn.addEventListener("click", () => openCustomSyntaxModal(state));
+  const syntaxLabel = document.createElement("label");
+  syntaxLabel.className = "field";
+  syntaxLabel.innerHTML = '<span class="field-label">Syntax</span>';
+  syntaxLabel.append(syntaxSelect, syntaxConfigBtn);
   const echoLabel = document.createElement("label");
   echoLabel.className = "field checkbox-field";
   echoLabel.title = "Enable if the device does not echo typed characters";
@@ -265,7 +400,7 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   echoLabel.querySelector("input").addEventListener("change", (e) => {
     state.localEcho = e.target.checked;
   });
-  controls.append(clearBtn, breakBtn, saveBtn, echoLabel);
+  controls.append(clearBtn, breakBtn, saveBtn, syntaxLabel, echoLabel);
   panel.appendChild(controls);
 
   const status = document.createElement("div");
@@ -302,17 +437,19 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
 
   state.wsClient = createWebSocketClient(`/ws/serial/${sessionId}`, { autoReconnect: false });
   state.wsClient.onStatus((status) => {
+    state.wsStatus = status;
     if (state.statusEl) {
       state.statusEl.textContent = status;
       state.statusEl.className = "console-status status-" + status;
     }
     if (status === "connected") {
       updateBanner("Serial console connected.", false);
-      renderDevices(deviceCache);
-    } else if (status === "disconnected" || status === "error") {
-      state.wsClient = null;
-      renderDevices(deviceCache);
     }
+    if (status === "disconnected" || status === "error") {
+      state.wsClient = null;
+      state.wsStatus = "";
+    }
+    renderDevices(deviceCache);
   });
   state.wsClient.on("data", (message) => {
     updateTerminalForSession(sessionId, message.data || "");
@@ -447,9 +584,14 @@ async function connectDevice(deviceId) {
     const sessionId = data.session_id;
     const deviceName = deviceDisplayName(deviceCache.find((d) => d.id === deviceId) || { id: deviceId });
     showToast("Session created.", "success");
+    activeSessions.push({ session_id: sessionId, device_id: deviceId });
+    renderDevices(deviceCache);
     await loadSessions();
     createTabAndConnect(sessionId, deviceId, deviceName);
+    renderDevices(deviceCache);
   } catch (error) {
+    activeSessions = activeSessions.filter((s) => s.device_id !== deviceId);
+    renderDevices(deviceCache);
     showToast(error?.message || "Unable to create session.", "error");
   }
 }
@@ -647,7 +789,15 @@ async function loadSessions() {
   try {
     const payload = await apiGet("/api/v1/serial/sessions");
     const data = extractData(payload) || {};
-    activeSessions = data.sessions || [];
+    const apiSessions = data.sessions || [];
+    const apiIds = new Set(apiSessions.map((s) => s.session_id));
+    const kept = activeSessions.filter((s) => !apiIds.has(s.session_id));
+    activeSessions = [...apiSessions, ...kept];
+    sessionMap.forEach((st, sessionId) => {
+      if (!activeSessions.some((s) => s.session_id === sessionId)) {
+        activeSessions.push({ session_id: sessionId, device_id: st.deviceId });
+      }
+    });
     renderDevices(deviceCache);
     activeSessions.forEach((session) => {
       if (!sessionMap.has(session.session_id)) {
@@ -656,12 +806,13 @@ async function loadSessions() {
       }
     });
     const toRemove = [];
-    sessionMap.forEach((state, sessionId) => {
-      if (!activeSessions.some((s) => s.session_id === sessionId)) {
-        toRemove.push(sessionId);
+    sessionMap.forEach((st, sid) => {
+      if (!activeSessions.some((s) => s.session_id === sid)) {
+        toRemove.push(sid);
       }
     });
     toRemove.forEach((sid) => removeTabAndDisconnect(sid));
+    renderDevices(deviceCache);
   } catch {
     showToast("Unable to load serial sessions.", "error");
   }

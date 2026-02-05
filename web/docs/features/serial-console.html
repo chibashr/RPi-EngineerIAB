@@ -24,10 +24,20 @@
   <li>Download logs from the session list.</li>
 </ol>
 
+<h2>Syntax highlighting</h2>
+<p>
+  The console supports syntax highlighting for Cisco IOS CLI output. Use the <strong>Syntax</strong> dropdown to choose:
+</p>
+<ul>
+  <li><strong>None</strong> – Plain text.</li>
+  <li><strong>Cisco</strong> – Prompts, commands, errors, and config keywords.</li>
+  <li><strong>Custom</strong> – Regex-based rules. Click <strong>Configure</strong> to add rules as JSON: <code>[{"pattern": "regex", "class": "css-class", "flags": "g"}]</code>. Use CSS classes such as <code>sh-prompt</code>, <code>sh-command</code>, <code>sh-error</code>, <code>sh-config</code>, <code>sh-status</code>.</li>
+</ul>
+
 <h2>Related</h2>
 <ul>
   <li><a href="../getting-started/first-serial-session.html">First serial session</a></li>
   <li><a href="../devices/cisco.html">Cisco device connection guide</a></li>
 </ul>
 
-<p><strong>Last updated:</strong> 2026-02-02</p>
+<p><strong>Last updated:</strong> 2026-02-04</p>
