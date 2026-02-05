@@ -576,6 +576,10 @@ function sendToSerialForSession(sessionId, data) {
 
 async function connectDevice(deviceId) {
   try {
+    await closeAllSessions();
+    Array.from(sessionMap.keys()).forEach((sid) => removeTabAndDisconnect(sid));
+    activeSessions = [];
+    renderDevices(deviceCache);
     const payload = await apiPost("/api/v1/serial/sessions", {
       device_id: deviceId,
       config: {},
@@ -602,10 +606,14 @@ async function disconnectDevice(sessionId) {
   try {
     await apiDelete(`/api/v1/serial/sessions/${encodeURIComponent(sessionId)}`);
     showToast("Session closed.", "success");
-    await loadSessions();
-  } catch {
-    showToast("Unable to close session.", "error");
+  } catch (err) {
+    if (String(err?.message || "").includes("404")) {
+      showToast("Session closed.", "success");
+    } else {
+      showToast("Unable to close session.", "error");
+    }
   }
+  await loadSessions();
 }
 
 async function configureSerial(deviceId) {
@@ -828,6 +836,23 @@ async function loadLogs() {
   }
 }
 
+async function closeAllSessions() {
+  try {
+    const payload = await apiGet("/api/v1/serial/sessions");
+    const data = extractData(payload) || {};
+    const sessions = data.sessions || [];
+    for (const s of sessions) {
+      try {
+        await apiDelete(`/api/v1/serial/sessions/${encodeURIComponent(s.session_id)}`);
+      } catch {
+        /* ignore per-session errors */
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 function init() {
   const refresh = document.getElementById("refresh-serial");
   if (refresh) {
@@ -837,9 +862,12 @@ function init() {
       loadLogs();
     });
   }
-  loadDevices();
-  loadSessions();
-  loadLogs();
+  (async () => {
+    await closeAllSessions();
+    loadDevices();
+    loadSessions();
+    loadLogs();
+  })();
 }
 
 document.addEventListener("DOMContentLoaded", init);

@@ -34,7 +34,7 @@ logger = get_service_logger(__name__)
 LOG_DIR = Path("/opt/rpi-engineer/data/serial_logs")
 EXPORT_DIR = LOG_DIR / "exports"
 CONFIG_PATH = LOG_DIR.parent / "serial_devices.json"
-MAX_SESSIONS = 8
+MAX_SESSIONS = 1
 
 
 @dataclass
@@ -218,6 +218,13 @@ class SerialManager:
         session.status = "closed"
         logger.info("Session closed: %s (device %s)", session_id[:8], session.device_id)
         return {"session_id": session_id, "status": "closed"}
+
+    def release_session(self, session_id: str) -> None:
+        """Remove session from registry when WebSocket closes. Does not raise."""
+        session = self._sessions.pop(session_id, None)
+        if session:
+            session.status = "closed"
+            logger.info("Session released (WebSocket closed): %s device %s", session_id[:8], session.device_id)
 
     def list_logs(self, device: Optional[str], since: Optional[str], limit: int) -> Dict[str, object]:
         LOG_DIR.mkdir(parents=True, exist_ok=True)

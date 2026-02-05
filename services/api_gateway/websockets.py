@@ -113,6 +113,10 @@ def register_websockets(sock: Sock) -> None:
         if not serial:
             logger.error("serial_console: pyserial not installed")
             ws.send(json.dumps({"type": "error", "message": "pyserial not installed"}))
+            try:
+                serial_manager.release_session(session_id)
+            except Exception:
+                pass
             return
         config = session.config or {}
         baud_rate = int(config.get("baud_rate", 9600))
@@ -148,6 +152,10 @@ def register_websockets(sock: Sock) -> None:
         except Exception as exc:
             logger.exception("serial_console: failed to open %s: %s", session.device_id, exc)
             ws.send(json.dumps({"type": "error", "message": str(exc)}))
+            try:
+                serial_manager.release_session(session_id)
+            except Exception:
+                pass
             return
 
         logger.info("serial_console: port opened, starting reader for session %s", session_id[:8])
@@ -238,6 +246,10 @@ def register_websockets(sock: Sock) -> None:
                 logger.info("serial_console: closed session %s device %s", session_id[:8], session.device_id)
             except Exception as close_exc:
                 logger.warning("serial_console: error closing port %s: %s", session.device_id, close_exc)
+            try:
+                serial_manager.release_session(session_id)
+            except Exception as rel_exc:
+                logger.warning("serial_console: release_session failed: %s", rel_exc)
 
     @sock.route("/ws/updates/apply")
     def updates_apply_stream(ws) -> None:  # type: ignore[no-untyped-def]
