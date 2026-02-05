@@ -113,76 +113,25 @@
             </div>
           </div>
 
-          <section class="card">
-            <div class="section-header">
-              <h2>Detected Devices</h2>
-              <div class="section-actions">
-                <button class="btn btn-secondary" id="refresh-serial">
-                  Refresh
-                </button>
+          <div class="serial-split">
+            <section class="card serial-device-list">
+              <div class="section-header">
+                <h2>Devices</h2>
+                <button class="btn btn-secondary btn-sm" id="refresh-serial">Refresh</button>
               </div>
-            </div>
-            <div class="section-body">
-              <table class="status-table">
-                <thead>
-                  <tr>
-                    <th>Device</th>
-                    <th>Status</th>
-                    <th>Chipset</th>
-                    <th>Session</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="serial-device-table-body">
-                  <tr>
-                    <td colspan="5">Loading devices...</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
+              <div class="section-body" id="serial-device-list-body">
+                <p class="empty-state">Loading devices...</p>
+              </div>
+            </section>
 
-          <section class="card console-card">
-            <div class="section-header">
-              <h2>Console</h2>
-              <div class="console-controls">
-                <label class="field" for="serial-session-select">
-                  <span class="field-label">Session</span>
-                  <select id="serial-session-select" class="select">
-                    <option value="">No session selected</option>
-                  </select>
-                </label>
-                <button class="btn btn-secondary" id="serial-clear">Clear</button>
-                <button class="btn btn-secondary" id="serial-break" title="Send break signal (e.g. to interrupt boot)">
-                  Break
-                </button>
-                <button class="btn btn-secondary" id="serial-save-log">
-                  Save Log
-                </button>
-                <label class="field checkbox-field console-echo-toggle" title="Enable if the device does not echo typed characters">
-                  <input type="checkbox" id="serial-local-echo" />
-                  <span class="field-label">Local echo</span>
-                </label>
+            <section class="card serial-console-area">
+              <div class="console-tabs" id="serial-console-tabs" role="tablist"></div>
+              <div class="console-tab-panels" id="serial-console-panels"></div>
+              <div class="console-empty-state" id="serial-console-empty">
+                <p>Connect a device to open a console.</p>
               </div>
-            </div>
-            <div class="console-status" id="serial-status">Disconnected</div>
-            <div class="console-window-wrapper">
-              <div class="console-window" id="terminal-placeholder">
-                Click here to focus, then type to send data.
-              </div>
-              <input
-                type="text"
-                id="serial-terminal-input"
-                class="console-input-overlay"
-                aria-label="Serial console input"
-                placeholder=""
-                autocomplete="off"
-                autocapitalize="off"
-                autocorrect="off"
-                spellcheck="false"
-              />
-            </div>
-          </section>
+            </section>
+          </div>
 
           <section class="card">
             <div class="section-header">

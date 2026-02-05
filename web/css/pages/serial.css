@@ -58,6 +58,130 @@
   gap: 0.5rem;
 }
 
+.serial-split {
+  display: flex;
+  gap: 1.5rem;
+  align-items: stretch;
+  min-height: 400px;
+}
+
+.serial-device-list {
+  flex: 0 0 220px;
+  min-width: 200px;
+}
+
+.serial-device-list .device-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.serial-device-list .device-item:last-child {
+  border-bottom: none;
+}
+
+.serial-device-list .device-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.serial-device-list .device-meta {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+.serial-device-list .device-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.serial-console-area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.console-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  min-height: 2.5rem;
+}
+
+.console-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--color-border);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.console-tab:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.console-tab.is-active {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+.console-tab-close {
+  padding: 0 0.2rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.console-tab-close:hover {
+  opacity: 1;
+}
+
+.console-tab-panels {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  margin-top: 1rem;
+}
+
+.console-tab-panel {
+  display: none;
+  flex-direction: column;
+  height: 100%;
+  min-height: 280px;
+}
+
+.console-tab-panel.is-active {
+  display: flex;
+}
+
+.console-empty-state {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  color: var(--color-muted);
+  padding: 2rem;
+}
+
+.console-empty-state.is-visible {
+  display: flex;
+}
+
+.console-tab-panel .console-controls {
+  margin-bottom: 0.5rem;
+}
+
 .console-card {
   margin-top: 1.5rem;
 }
