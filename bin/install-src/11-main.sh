@@ -66,6 +66,17 @@ main() {
     run_preflight_checks
     prompt_repair_or_start_over
     determine_install_mode
+
+    if [ "$INSTALL_MODE" = "uninstall" ]; then
+        run_uninstall
+        exit 0
+    fi
+
+    if [ "$INSTALL_MODE" = "quick_update" ]; then
+        run_quick_update
+        exit 0
+    fi
+
     ensure_source_dir
 
     if [ "$INSTALL_MODE" = "continue" ]; then
@@ -101,35 +112,8 @@ main() {
         if [ "$TARGET_HOSTNAME" != "$(hostname)" ]; then
             hostnamectl set-hostname "$TARGET_HOSTNAME"
         fi
-    elif [ "$INSTALL_MODE" = "reinstall_from_scratch" ]; then
-        load_install_conf
-        UPGRADE_SKIP_CONFIG="1"
-        if [ "${NONINTERACTIVE:-0}" = "1" ]; then
-            log_info "Reinstall from scratch (non-interactive): using existing install.conf; app directory will be replaced."
-        else
-            log_info "Wipe and reinstall: will remove app directory and reinstall from repo using existing config."
-            echo "This will remove $INSTALL_DIR and re-clone the repository, then reinstall with your current config."
-            interactive_read -r -p "Continue? (y/n): " confirm
-            if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-                log_error "Installation aborted by user."
-                exit 1
-            fi
-        fi
-        write_install_conf
-        if [ "$TARGET_HOSTNAME" != "$(hostname)" ]; then
-            hostnamectl set-hostname "$TARGET_HOSTNAME"
-        fi
     else
         run_wizard
-    fi
-
-    if [ "$INSTALL_MODE" = "reinstall_from_scratch" ]; then
-        log_step "Wipe and reinstall: removing application directory"
-        if [ -d "$INSTALL_DIR" ]; then
-            log_warn "Removing $INSTALL_DIR for clean reinstall."
-            rm -rf "$INSTALL_DIR"
-        fi
-        mkdir -p "$INSTALL_DIR"
     fi
 
     progress_init

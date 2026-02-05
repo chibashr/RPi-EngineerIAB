@@ -28,8 +28,12 @@ determine_install_mode() {
         log_info "Install mode: reconfigure (from environment; will use existing install.conf)"
         return 0
     fi
-    if [ "${NONINTERACTIVE:-0}" = "1" ] && [ "$INSTALL_MODE" = "reinstall_from_scratch" ]; then
-        log_info "Install mode: reinstall from scratch (from environment; will use existing install.conf)"
+    if [ "${NONINTERACTIVE:-0}" = "1" ] && [ "$INSTALL_MODE" = "uninstall" ]; then
+        log_info "Install mode: uninstall (from environment)"
+        return 0
+    fi
+    if [ "${NONINTERACTIVE:-0}" = "1" ] && [ "$INSTALL_MODE" = "quick_update" ]; then
+        log_info "Install mode: quick update (from environment)"
         return 0
     fi
     if [ -d "$INSTALL_DIR" ] || [ -d "$CONFIG_DIR" ]; then
@@ -37,16 +41,18 @@ determine_install_mode() {
         if [ "${NONINTERACTIVE:-0}" != "1" ]; then
             echo "Select install mode:"
             echo "  1) Upgrade (update files and services)"
-            echo "  2) Reconfigure (wizard and config only)"
-            echo "  3) Wipe and reinstall (remove app directory, re-clone repo, reinstall using existing config)"
-            echo "  4) Abort"
-            interactive_read -r -p "Enter choice (1-4) [1]: " choice
+            echo "  2) Quick update (update repo only, no wizard)"
+            echo "  3) Reconfigure (wizard and config only)"
+            echo "  4) Uninstall"
+            echo "  5) Abort"
+            interactive_read -r -p "Enter choice (1-5) [1]: " choice
         fi
         case "${choice:-1}" in
             1) INSTALL_MODE="upgrade" ;;
-            2) INSTALL_MODE="reconfigure" ;;
-            3) INSTALL_MODE="reinstall_from_scratch" ;;
-            4) log_error "Installation aborted by user."; exit 1 ;;
+            2) INSTALL_MODE="quick_update" ;;
+            3) INSTALL_MODE="reconfigure" ;;
+            4) INSTALL_MODE="uninstall" ;;
+            5) log_error "Installation aborted by user."; exit 1 ;;
             *) INSTALL_MODE="upgrade" ;;
         esac
         if [ "$INSTALL_MODE" = "upgrade" ]; then

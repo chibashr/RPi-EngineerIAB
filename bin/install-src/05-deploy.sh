@@ -95,13 +95,6 @@ deploy_files() {
         exit 1
     fi
 
-    if [ "$INSTALL_MODE" = "reinstall_from_scratch" ]; then
-        if [ -d "$INSTALL_DIR" ]; then
-            log_warn "Removing $INSTALL_DIR for clean reinstall."
-            rm -rf "$INSTALL_DIR"
-        fi
-    fi
-
     if [ -d "$INSTALL_DIR/.git" ]; then
         if [ "$INSTALL_MODE" = "upgrade" ]; then
             backup_existing_install

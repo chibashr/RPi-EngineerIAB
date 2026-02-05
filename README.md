@@ -23,6 +23,8 @@ A portable network diagnostic and remote access platform for network engineers a
    ```
 3. Connect to WiFi hotspot `RPi-Engineer-XXXX` and open http://192.168.50.1
 
+Re-run the installer for upgrade, quick update (repo only), reconfigure, or uninstall.
+
 See [Installation Specification](.planning/INSTALLATION-SPECIFICATION.md) for details.
 
 ### For Implementers
