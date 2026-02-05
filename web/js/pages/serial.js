@@ -196,9 +196,21 @@ function renderDevices(devices) {
     const toggleBtn = document.createElement("button");
     toggleBtn.type = "button";
     if (session) {
-      toggleBtn.className = "btn btn-secondary btn-sm";
-      toggleBtn.textContent = "Disconnect";
-      toggleBtn.addEventListener("click", () => disconnectDevice(session.session_id));
+      if (isWsConnected) {
+        toggleBtn.className = "btn btn-secondary btn-sm";
+        toggleBtn.textContent = "Disconnect";
+        toggleBtn.addEventListener("click", () => disconnectDevice(session.session_id));
+      } else {
+        toggleBtn.className = "btn btn-primary btn-sm";
+        toggleBtn.textContent = "Reconnect";
+        toggleBtn.addEventListener("click", () => reconnectSession(session.session_id));
+        const disconnectBtn = document.createElement("button");
+        disconnectBtn.className = "btn btn-secondary btn-sm";
+        disconnectBtn.textContent = "Disconnect";
+        disconnectBtn.type = "button";
+        disconnectBtn.addEventListener("click", () => disconnectDevice(session.session_id));
+        actions.append(toggleBtn, disconnectBtn);
+      }
     } else {
       const isConnecting = connectingDeviceId === device.id;
       toggleBtn.className = "btn btn-primary btn-sm";
@@ -213,7 +225,11 @@ function renderDevices(devices) {
     configBtn.textContent = "Configure";
     configBtn.type = "button";
     configBtn.addEventListener("click", () => configureSerial(device.id));
-    actions.append(toggleBtn, configBtn);
+    if (session && !isWsConnected) {
+      actions.append(configBtn);
+    } else {
+      actions.append(toggleBtn, configBtn);
+    }
     item.appendChild(actions);
     elements.deviceListBody.appendChild(item);
   });
@@ -222,7 +238,7 @@ function renderDevices(devices) {
 function statusLabel(deviceStatus, hasSession, isWsConnected, wsStatus) {
   if (isWsConnected) return "Connected";
   if (hasSession && wsStatus === "connecting") return "Connecting";
-  if (hasSession) return "Session active";
+  if (hasSession) return "Disconnected";
   if (deviceStatus === "in_use") return "In use";
   if (deviceStatus === "available") return "Available";
   return "Disconnected";
@@ -580,6 +596,57 @@ function sendToSerialForSession(sessionId, data) {
   return true;
 }
 
+function reconnectSession(sessionId) {
+  const state = sessionMap.get(sessionId);
+  if (!state?.tabPanelEl) return;
+  if (state.wsClient) {
+    state.wsClient.close();
+    state.wsClient = null;
+  }
+  state.wsStatus = "";
+  if (state.statusEl) {
+    state.statusEl.textContent = "Connecting...";
+    state.statusEl.className = "console-status status-connecting";
+  }
+  showToast("Reconnecting…", "info");
+  state.wsClient = createWebSocketClient(`/ws/serial/${sessionId}`, { autoReconnect: false });
+  state.wsClient.onStatus((status) => {
+    state.wsStatus = status;
+    if (state.statusEl) {
+      state.statusEl.textContent = status;
+      state.statusEl.className = "console-status status-" + status;
+    }
+    if (status === "connected") {
+      updateBanner("Serial console connected.", false);
+      showToast("Reconnected.", "success");
+    }
+    if (status === "disconnected" || status === "error") {
+      state.wsClient = null;
+      state.wsStatus = "";
+    }
+    renderDevices(deviceCache);
+  });
+  state.wsClient.on("data", (message) => {
+    updateTerminalForSession(sessionId, message.data || "");
+  });
+  state.wsClient.on("status", (message) => {
+    if (state.statusEl) {
+      const tx = message.bytes_tx || 0;
+      const rx = message.bytes_rx || 0;
+      state.statusEl.textContent = `Tx ${tx} / Rx ${rx}`;
+      state.statusEl.title = tx > 0 && rx === 0
+        ? "No output yet. Verify baud rate in Configure if the device should respond."
+        : "";
+    }
+  });
+  state.wsClient.on("error", (message) => {
+    showToast(message?.message || "Serial connection error.", "error");
+  });
+  state.wsClient.connect();
+  switchTab(sessionId);
+  state.inputEl?.focus();
+}
+
 async function connectDevice(deviceId) {
   connectingDeviceId = deviceId;
   renderDevices(deviceCache);
@@ -884,7 +951,7 @@ async function closeAllSessions() {
   }
 }
 
-function init() {
+async function init() {
   const refresh = document.getElementById("refresh-serial");
   if (refresh) {
     refresh.addEventListener("click", () => {
@@ -893,9 +960,8 @@ function init() {
       loadLogs();
     });
   }
-  closeAllSessions().catch(() => {});
-  loadDevices();
-  loadSessions();
+  await loadDevices();
+  await loadSessions();
   loadLogs();
 }
 

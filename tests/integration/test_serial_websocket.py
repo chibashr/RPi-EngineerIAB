@@ -92,11 +92,11 @@ def test_serial_create_session_and_websocket_flow(monkeypatch, tmp_path):
     start the reader thread, and accept connections. This test verifies the
     session creation and that the WebSocket endpoint is reachable.
     """
-    # Ensure we have a device and can create a session
+    serial_manager._sessions.clear()
     monkeypatch.setattr(
         serial_manager,
         "_scan_devices",
-        lambda: [
+        lambda use_cache=True: [
             {
                 "id": "/dev/ttyTEST0",
                 "path": "/dev/ttyTEST0",
@@ -153,7 +153,7 @@ def test_serial_websocket_with_live_server(monkeypatch, tmp_path):
     monkeypatch.setattr(
         serial_manager,
         "_scan_devices",
-        lambda: [
+        lambda use_cache=True: [
             {
                 "id": "/dev/ttyTEST0",
                 "path": "/dev/ttyTEST0",
@@ -255,7 +255,7 @@ def test_serial_tx_accuracy(monkeypatch, tmp_path):
     monkeypatch.setattr(
         serial_manager,
         "_scan_devices",
-        lambda: [
+        lambda use_cache=True: [
             {"id": "/dev/ttyTEST0", "path": "/dev/ttyTEST0", "friendly_name": "Test", "chipset": "Unknown"}
         ],
     )
@@ -326,7 +326,7 @@ def test_serial_rx_accuracy(monkeypatch, tmp_path):
     monkeypatch.setattr(
         serial_manager,
         "_scan_devices",
-        lambda: [
+        lambda use_cache=True: [
             {"id": "/dev/ttyTEST0", "path": "/dev/ttyTEST0", "friendly_name": "Test", "chipset": "Unknown"}
         ],
     )
@@ -412,7 +412,7 @@ def test_serial_tx_rx_roundtrip(monkeypatch, tmp_path):
     monkeypatch.setattr(
         serial_manager,
         "_scan_devices",
-        lambda: [
+        lambda use_cache=True: [
             {"id": "/dev/ttyTEST0", "path": "/dev/ttyTEST0", "friendly_name": "Test", "chipset": "Unknown"}
         ],
     )
