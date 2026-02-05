@@ -94,7 +94,7 @@ function applySyntaxHighlighting(text, rules) {
   return out;
 }
 
-const SERIAL_API_TIMEOUT_MS = 20000;
+const SERIAL_API_TIMEOUT_MS = 60000;
 
 const elements = {
   deviceListBody: document.getElementById("serial-device-list-body"),
@@ -619,7 +619,11 @@ async function connectDevice(deviceId) {
     renderDevices(deviceCache);
   } catch (error) {
     activeSessions = activeSessions.filter((s) => s.device_id !== deviceId);
-    showToast(error?.message || "Unable to create session.", "error");
+    const msg = String(error?.message || "");
+    const hint = msg.includes("timed out")
+      ? "Connection timed out. The device may be slow. Try again or check the serial connection."
+      : msg || "Unable to create session.";
+    showToast(hint, "error");
   } finally {
     connectingDeviceId = null;
     renderDevices(deviceCache);
@@ -809,9 +813,10 @@ function downloadText(filename, content) {
   URL.revokeObjectURL(link.href);
 }
 
-async function loadDevices() {
+async function loadDevices(forceRefresh = false) {
   try {
-    const payload = await apiGet("/api/v1/serial/devices", { timeoutMs: SERIAL_API_TIMEOUT_MS });
+    const url = forceRefresh ? "/api/v1/serial/devices?refresh=1" : "/api/v1/serial/devices";
+    const payload = await apiGet(url, { timeoutMs: SERIAL_API_TIMEOUT_MS });
     const data = extractData(payload) || {};
     renderDevices(data.devices || []);
   } catch {
@@ -883,7 +888,7 @@ function init() {
   const refresh = document.getElementById("refresh-serial");
   if (refresh) {
     refresh.addEventListener("click", () => {
-      loadDevices();
+      loadDevices(true);
       loadSessions();
       loadLogs();
     });

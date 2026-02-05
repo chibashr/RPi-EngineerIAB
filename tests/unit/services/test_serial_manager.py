@@ -18,7 +18,7 @@ def test_list_devices_uses_configs(monkeypatch):
     monkeypatch.setattr(
         manager,
         "_scan_devices",
-        lambda: [
+        lambda use_cache=True: [
             {"id": "/dev/ttyUSB0", "path": "/dev/ttyUSB0", "friendly_name": "Device", "chipset": "FTDI"}
         ],
     )
@@ -34,7 +34,7 @@ def test_list_devices_uses_configs(monkeypatch):
 def test_create_session_writes_log(tmp_path, monkeypatch):
     manager = serial_manager.SerialManager()
     monkeypatch.setattr(serial_manager, "LOG_DIR", tmp_path)
-    monkeypatch.setattr(manager, "_scan_devices", lambda: [{"id": "/dev/ttyUSB0", "path": "/dev/ttyUSB0", "friendly_name": "Device", "chipset": "FTDI"}])
+    monkeypatch.setattr(manager, "_scan_devices", lambda use_cache=True: [{"id": "/dev/ttyUSB0", "path": "/dev/ttyUSB0", "friendly_name": "Device", "chipset": "FTDI"}])
     monkeypatch.setattr(serial_manager, "serial", types.SimpleNamespace())
 
     payload = manager.create_session({"device_id": "/dev/ttyUSB0"})

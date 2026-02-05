@@ -35,6 +35,7 @@ LOG_DIR = Path("/opt/rpi-engineer/data/serial_logs")
 EXPORT_DIR = LOG_DIR / "exports"
 CONFIG_PATH = LOG_DIR.parent / "serial_devices.json"
 MAX_SESSIONS = 1
+DEVICE_SCAN_CACHE_TTL = 5.0
 
 
 @dataclass
@@ -58,11 +59,13 @@ class SerialManager:
     def __init__(self) -> None:
         self._device_configs: Dict[str, Dict[str, object]] = {}
         self._sessions: Dict[str, SerialSession] = {}
+        self._device_cache: List[Dict[str, object]] = []
+        self._device_cache_time: float = 0.0
         self._load_device_configs()
         logger.info("Serial manager started")
 
-    def list_devices(self) -> Dict[str, List[Dict[str, object]]]:
-        raw = self._scan_devices()
+    def list_devices(self, force_refresh: bool = False) -> Dict[str, List[Dict[str, object]]]:
+        raw = self._scan_devices(use_cache=not force_refresh)
         logger.info("list_devices: scanned %d device(s)", len(raw))
         devices = []
         for device in raw:
@@ -384,7 +387,10 @@ class SerialManager:
                 return device
         return None
 
-    def _scan_devices(self) -> List[Dict[str, object]]:
+    def _scan_devices(self, use_cache: bool = True) -> List[Dict[str, object]]:
+        now = time.time()
+        if use_cache and self._device_cache and (now - self._device_cache_time) < DEVICE_SCAN_CACHE_TTL:
+            return self._device_cache
         devices = []
         if serial:
             ports = list(serial.tools.list_ports.comports())
@@ -409,6 +415,8 @@ class SerialManager:
                 devices.append(self._port_to_device(str(path), "Serial Device", None))
             for path in dev_root.glob("ttyACM*"):
                 devices.append(self._port_to_device(str(path), "Serial Device", None))
+        self._device_cache = devices
+        self._device_cache_time = now
         return devices
 
     def _port_to_device(self, path: str, description: str, vid: Optional[int]) -> Dict[str, object]:

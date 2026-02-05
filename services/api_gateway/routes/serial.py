@@ -16,7 +16,8 @@ serial_bp = Blueprint("serial", __name__, url_prefix="/api/v1/serial")
 
 @serial_bp.get("/devices")
 def list_devices():
-    return success_response(serial_manager.list_devices())
+    force_refresh = request.args.get("refresh", "").lower() in ("1", "true", "yes")
+    return success_response(serial_manager.list_devices(force_refresh=force_refresh))
 
 
 @serial_bp.get("/devices/<device_id>")
