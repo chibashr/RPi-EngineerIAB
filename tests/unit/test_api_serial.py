@@ -137,8 +137,8 @@ class TestSerialCreateSession:
         )
         assert r.status_code == 404
 
-    def test_max_sessions_returns_500(self, client, monkeypatch, tmp_path):
-        """When MAX_SESSIONS reached, second create returns 500."""
+    def test_multiple_sessions_across_devices_allowed(self, client, monkeypatch, tmp_path):
+        """Sessions for different devices can coexist."""
         from services.serial_manager import manager as serial_manager_mod
         from services import serial_manager
 
@@ -152,6 +152,8 @@ class TestSerialCreateSession:
         monkeypatch.setattr(serial_manager_mod, "LOG_DIR", tmp_path)
         monkeypatch.setattr(serial_manager_mod, "serial", __import__("types").SimpleNamespace())
 
+        serial_manager.serial_manager._sessions.clear()
+
         r1 = client.post(
             "/api/v1/serial/sessions",
             json={"device_id": "/dev/ttyUSB0", "config": {}},
@@ -164,8 +166,44 @@ class TestSerialCreateSession:
             json={"device_id": "/dev/ttyUSB1", "config": {}},
             content_type="application/json",
         )
+        assert r2.status_code in (200, 201)
+
+        r_list = client.get("/api/v1/serial/sessions")
+        assert r_list.status_code == 200
+        sessions = (r_list.get_json() or {}).get("data", {}).get("sessions", [])
+        device_ids = {s.get("device_id") for s in sessions}
+        assert {"/dev/ttyUSB0", "/dev/ttyUSB1"}.issubset(device_ids)
+
+    def test_second_session_same_device_returns_500(self, client, monkeypatch, tmp_path):
+        """Second session for same device returns error."""
+        from services.serial_manager import manager as serial_manager_mod
+        from services import serial_manager
+
+        def fake_scan(use_cache=True):  # noqa: ARG001
+            return [
+                {"id": "/dev/ttyUSB0", "path": "/dev/ttyUSB0", "friendly_name": "A", "chipset": "FTDI"},
+            ]
+
+        monkeypatch.setattr(serial_manager.serial_manager, "_scan_devices", fake_scan)
+        monkeypatch.setattr(serial_manager_mod, "LOG_DIR", tmp_path)
+        monkeypatch.setattr(serial_manager_mod, "serial", __import__("types").SimpleNamespace())
+
+        serial_manager.serial_manager._sessions.clear()
+
+        r1 = client.post(
+            "/api/v1/serial/sessions",
+            json={"device_id": "/dev/ttyUSB0", "config": {}},
+            content_type="application/json",
+        )
+        assert r1.status_code in (200, 201)
+
+        r2 = client.post(
+            "/api/v1/serial/sessions",
+            json={"device_id": "/dev/ttyUSB0", "config": {}},
+            content_type="application/json",
+        )
         assert r2.status_code == 500
-        assert "Maximum sessions" in (r2.get_json() or {}).get("error", {}).get("message", "")
+        assert "Device already in use" in (r2.get_json() or {}).get("error", {}).get("message", "")
 
 
 class TestSerialLogs:

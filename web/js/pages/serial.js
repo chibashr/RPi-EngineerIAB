@@ -334,6 +334,7 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
     deviceName,
     wsClient: null,
     wsStatus: "",
+    connectTimeoutId: null,
     terminalBuffer: [],
     localEcho: false,
     syntaxRules: getSyntaxRules(syntaxMode()),
@@ -460,12 +461,21 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   state.wsClient = createWebSocketClient(`/ws/serial/${sessionId}`, { autoReconnect: false });
   state.wsClient.onStatus((status) => {
     state.wsStatus = status;
+    if (status === "connected" || status === "disconnected" || status === "error") {
+      if (state.connectTimeoutId != null) {
+        window.clearTimeout(state.connectTimeoutId);
+        state.connectTimeoutId = null;
+      }
+    }
     if (state.statusEl) {
       state.statusEl.textContent = status;
       state.statusEl.className = "console-status status-" + status;
     }
     if (status === "connected") {
       updateBanner("Serial console connected.", false);
+      if (activeTabSessionId === sessionId) {
+        state.inputEl?.focus();
+      }
     }
     if (status === "disconnected" || status === "error") {
       state.wsClient = null;
@@ -490,6 +500,28 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
     showToast(message?.message || "Serial connection error.", "error");
   });
   state.wsClient.connect();
+  if (state.connectTimeoutId != null) {
+    window.clearTimeout(state.connectTimeoutId);
+  }
+  state.connectTimeoutId = window.setTimeout(() => {
+    if (!state.wsStatus || state.wsStatus === "connecting") {
+      if (state.wsClient) {
+        state.wsClient.close();
+        state.wsClient = null;
+      }
+      state.wsStatus = "";
+      if (state.statusEl) {
+        state.statusEl.textContent = "Disconnected (connection timed out)";
+        state.statusEl.className = "console-status status-error";
+      }
+      showToast(
+        "Serial connection timed out. Try reconnecting or check the network and device.",
+        "error"
+      );
+      renderDevices(deviceCache);
+    }
+    state.connectTimeoutId = null;
+  }, 15000);
   state.inputEl?.focus();
 
   return state;
@@ -533,6 +565,10 @@ function switchTab(sessionId) {
 function removeTabAndDisconnect(sessionId) {
   const state = sessionMap.get(sessionId);
   if (!state) return;
+  if (state.connectTimeoutId != null) {
+    window.clearTimeout(state.connectTimeoutId);
+    state.connectTimeoutId = null;
+  }
   if (state.wsClient) {
     state.wsClient.close();
     state.wsClient = null;
@@ -603,6 +639,10 @@ function reconnectSession(sessionId) {
     state.wsClient.close();
     state.wsClient = null;
   }
+  if (state.connectTimeoutId != null) {
+    window.clearTimeout(state.connectTimeoutId);
+    state.connectTimeoutId = null;
+  }
   state.wsStatus = "";
   if (state.statusEl) {
     state.statusEl.textContent = "Connecting...";
@@ -612,6 +652,12 @@ function reconnectSession(sessionId) {
   state.wsClient = createWebSocketClient(`/ws/serial/${sessionId}`, { autoReconnect: false });
   state.wsClient.onStatus((status) => {
     state.wsStatus = status;
+    if (status === "connected" || status === "disconnected" || status === "error") {
+      if (state.connectTimeoutId != null) {
+        window.clearTimeout(state.connectTimeoutId);
+        state.connectTimeoutId = null;
+      }
+    }
     if (state.statusEl) {
       state.statusEl.textContent = status;
       state.statusEl.className = "console-status status-" + status;
@@ -619,6 +665,9 @@ function reconnectSession(sessionId) {
     if (status === "connected") {
       updateBanner("Serial console connected.", false);
       showToast("Reconnected.", "success");
+      if (activeTabSessionId === sessionId) {
+        state.inputEl?.focus();
+      }
     }
     if (status === "disconnected" || status === "error") {
       state.wsClient = null;
@@ -644,6 +693,28 @@ function reconnectSession(sessionId) {
   });
   state.wsClient.connect();
   switchTab(sessionId);
+  if (state.connectTimeoutId != null) {
+    window.clearTimeout(state.connectTimeoutId);
+  }
+  state.connectTimeoutId = window.setTimeout(() => {
+    if (!state.wsStatus || state.wsStatus === "connecting") {
+      if (state.wsClient) {
+        state.wsClient.close();
+        state.wsClient = null;
+      }
+      state.wsStatus = "";
+      if (state.statusEl) {
+        state.statusEl.textContent = "Disconnected (connection timed out)";
+        state.statusEl.className = "console-status status-error";
+      }
+      showToast(
+        "Serial reconnection timed out. Try again or check the network and device.",
+        "error"
+      );
+      renderDevices(deviceCache);
+    }
+    state.connectTimeoutId = null;
+  }, 15000);
   state.inputEl?.focus();
 }
 
@@ -661,19 +732,32 @@ async function connectDevice(deviceId) {
       );
     } catch (createErr) {
       const msg = String(createErr?.message || "");
-      if (msg.includes("Maximum sessions") || msg.includes("already in use") || msg.includes("Device already")) {
-        await closeAllSessions();
-        Array.from(sessionMap.keys()).forEach((sid) => removeTabAndDisconnect(sid));
-        activeSessions = [];
-        renderDevices(deviceCache);
-        payload = await apiPost(
-          "/api/v1/serial/sessions",
-          { device_id: deviceId, config: {} },
-          { timeoutMs: 20000 }
-        );
-      } else {
-        throw createErr;
+      if (msg.includes("Device already in use") || msg.includes("Device already")) {
+        // Device already has a session; reuse it instead of tearing everything down.
+        await loadSessions();
+        const existing = getSessionForDevice(deviceId);
+        if (existing) {
+          const deviceName = deviceDisplayName(
+            deviceCache.find((d) => d.id === deviceId) || { id: deviceId }
+          );
+          if (!sessionMap.has(existing.session_id)) {
+            createTabAndConnect(existing.session_id, deviceId, deviceName);
+          }
+          switchTab(existing.session_id);
+          showToast("Device already connected; switched to existing session.", "info");
+        } else {
+          showToast(msg || "Device is already in use.", "error");
+        }
+        return;
       }
+      if (msg.includes("Maximum sessions")) {
+        showToast(
+          "Maximum serial sessions reached. Close an existing session before starting a new one.",
+          "error"
+        );
+        return;
+      }
+      throw createErr;
     }
     const data = extractData(payload) || {};
     const sessionId = data.session_id;

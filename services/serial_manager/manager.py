@@ -150,9 +150,6 @@ class SerialManager:
         if not serial:
             logger.error("create_session: pyserial not installed")
             raise RuntimeError("pyserial not installed")
-        if len(self._sessions) >= MAX_SESSIONS:
-            logger.warning("create_session: max sessions (%d) reached", MAX_SESSIONS)
-            raise RuntimeError("Maximum sessions reached")
         if self._device_in_use(device_id):
             logger.warning("create_session: device %s already in use", device_id)
             raise RuntimeError("Device already in use")
