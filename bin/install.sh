@@ -1051,23 +1051,44 @@ deploy_files() {
         exit 1
     fi
 
-    if [ -d "$INSTALL_DIR/.git" ]; then
-        if [ "$INSTALL_MODE" = "upgrade" ]; then
+    # Offline deploy: when we have a separate source tree, copy from SOURCE_DIR into INSTALL_DIR
+    # instead of git fetch/reset (avoids GitHub access). Use when running from /tmp/rpi-src etc.
+    if [ "$SOURCE_DIR" != "$INSTALL_DIR" ] && [ -d "$SOURCE_DIR/services" ] && [ -d "$SOURCE_DIR/web" ]; then
+        if [ "$INSTALL_MODE" = "upgrade" ] && [ -d "$INSTALL_DIR" ] && [ "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
             backup_existing_install
         fi
-        log_info "Existing git repository found at $INSTALL_DIR; updating."
-        if git -C "$INSTALL_DIR" remote get-url origin >/dev/null 2>&1; then
-            git -C "$INSTALL_DIR" remote set-url origin "$REPO_URL" >> "$INSTALL_LOG" 2>&1 || true
+        mkdir -p "$INSTALL_DIR"
+        log_info "Offline deploy: copying from $SOURCE_DIR to $INSTALL_DIR (no git)."
+        for dir in web services lib bin; do
+            if [ -d "$SOURCE_DIR/$dir" ]; then
+                copy_path "$SOURCE_DIR/$dir" "$INSTALL_DIR/$dir"
+            fi
+        done
+        # Preserve existing .git in install dir if present (for later updates when network is available)
+        if [ -d "$INSTALL_DIR/.git" ]; then
+            log_info "Preserved existing .git in $INSTALL_DIR"
+        fi
+    elif [ -d "$INSTALL_DIR/.git" ]; then
+        if [ "${RPI_ENGINEER_SKIP_CLONE:-0}" = "1" ]; then
+            log_info "Existing git repository at $INSTALL_DIR; RPI_ENGINEER_SKIP_CLONE=1, skipping git fetch."
         else
-            git -C "$INSTALL_DIR" remote add origin "$REPO_URL" >> "$INSTALL_LOG" 2>&1 || true
-        fi
-        if ! git -C "$INSTALL_DIR" fetch origin "$BRANCH" >> "$INSTALL_LOG" 2>&1; then
-            log_error "git fetch failed (check network and $INSTALL_LOG)."
-            exit 1
-        fi
-        if ! git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH" >> "$INSTALL_LOG" 2>&1; then
-            log_error "git reset failed (check $INSTALL_LOG)."
-            exit 1
+            if [ "$INSTALL_MODE" = "upgrade" ]; then
+                backup_existing_install
+            fi
+            log_info "Existing git repository found at $INSTALL_DIR; updating."
+            if git -C "$INSTALL_DIR" remote get-url origin >/dev/null 2>&1; then
+                git -C "$INSTALL_DIR" remote set-url origin "$REPO_URL" >> "$INSTALL_LOG" 2>&1 || true
+            else
+                git -C "$INSTALL_DIR" remote add origin "$REPO_URL" >> "$INSTALL_LOG" 2>&1 || true
+            fi
+            if ! git -C "$INSTALL_DIR" fetch origin "$BRANCH" >> "$INSTALL_LOG" 2>&1; then
+                log_error "git fetch failed (check network and $INSTALL_LOG)."
+                exit 1
+            fi
+            if ! git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH" >> "$INSTALL_LOG" 2>&1; then
+                log_error "git reset failed (check $INSTALL_LOG)."
+                exit 1
+            fi
         fi
     else
         if [ -d "$INSTALL_DIR" ] && [ "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
