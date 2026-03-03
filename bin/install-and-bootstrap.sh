@@ -37,11 +37,11 @@ main() {
   #    Set RPI_ENGINEER_LOCAL_SRC to a directory containing bin/install.sh.
   if [ -n "${RPI_ENGINEER_LOCAL_SRC:-}" ] && [ -x "${RPI_ENGINEER_LOCAL_SRC}/bin/install.sh" ]; then
     echo "=== Installing RPi Engineer-in-a-Box from local source: ${RPI_ENGINEER_LOCAL_SRC} ==="
-    (cd "$RPI_ENGINEER_LOCAL_SRC" && bash bin/install.sh)
+    (cd "$RPI_ENGINEER_LOCAL_SRC" && RPI_ENGINEER_SKIP_CLONE=1 bash bin/install.sh)
   # 2) If an existing install is present, re-run its installer (upgrade) without downloading anything.
   elif [ -x "/opt/rpi-engineer/bin/install.sh" ]; then
     echo "=== Existing install detected; running local /opt/rpi-engineer/bin/install.sh (no GitHub access needed) ==="
-    (cd /opt/rpi-engineer && bash bin/install.sh)
+    (cd /opt/rpi-engineer && RPI_ENGINEER_SKIP_CLONE=1 bash bin/install.sh)
   else
     # 3) Fallback: try to download a GitHub archive when no local source exists.
     echo "=== Downloading RPi Engineer source (GitHub archive) ==="

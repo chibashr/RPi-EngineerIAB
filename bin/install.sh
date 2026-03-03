@@ -964,6 +964,20 @@ backup_existing_install() {
 }
 
 ensure_source_dir() {
+    # Optional offline mode: when RPI_ENGINEER_SKIP_CLONE=1, use the existing SOURCE_DIR
+    # as long as it contains critical files, and never attempt a git clone. This is
+    # intended for environments where the device cannot reach GitHub.
+    if [ "${RPI_ENGINEER_SKIP_CLONE:-0}" = "1" ]; then
+        if [ -d "$SOURCE_DIR/services" ] && [ -d "$SOURCE_DIR/web" ] && \
+           [ -f "$SOURCE_DIR/web/index.html" ] && \
+           [ -f "$SOURCE_DIR/services/logging_service/manager.py" ] && \
+           [ -f "$SOURCE_DIR/bin/apply-web-permissions.sh" ]; then
+            log_info "RPI_ENGINEER_SKIP_CLONE=1; using existing source at $SOURCE_DIR (no git clone)."
+            return 0
+        fi
+        log_error "RPI_ENGINEER_SKIP_CLONE=1 but $SOURCE_DIR is missing critical files; cannot proceed without git clone."
+        exit 1
+    fi
     # When running from install dir (e.g. /opt/rpi-engineer), clone to get a fresh source
     # for deploy; otherwise we would skip deploy and leave broken/incomplete state.
     if [ "$SOURCE_DIR" = "$INSTALL_DIR" ]; then
