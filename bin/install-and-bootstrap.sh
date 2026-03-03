@@ -33,21 +33,34 @@ main() {
   export NONINTERACTIVE=1
   export DEBIAN_FRONTEND=noninteractive
 
-  echo "=== Downloading RPi Engineer source (GitHub archive) ==="
-  local tmp_root="/tmp/rpi-engineer-src-$(date +%s)"
-  mkdir -p "$tmp_root"
-  # Use archive tarball instead of git clone on the device; avoids git/TLS quirks.
-  curl -fsSL "https://github.com/chibashr/RPi-EngineerIAB/archive/refs/heads/main.tar.gz" \
-    | tar -xz -C "$tmp_root"
-  local src_dir="$tmp_root/RPi-EngineerIAB-main"
-
-  if [ ! -x "$src_dir/bin/install.sh" ]; then
-    echo "install.sh not found in extracted archive (${src_dir}); aborting." >&2
-    exit 1
+  # 1) Prefer an explicitly provided local source tree (no network).
+  #    Set RPI_ENGINEER_LOCAL_SRC to a directory containing bin/install.sh.
+  if [ -n "${RPI_ENGINEER_LOCAL_SRC:-}" ] && [ -x "${RPI_ENGINEER_LOCAL_SRC}/bin/install.sh" ]; then
+    echo "=== Installing RPi Engineer-in-a-Box from local source: ${RPI_ENGINEER_LOCAL_SRC} ==="
+    (cd "$RPI_ENGINEER_LOCAL_SRC" && bash bin/install.sh)
+  # 2) If an existing install is present, re-run its installer (upgrade) without downloading anything.
+  elif [ -x "/opt/rpi-engineer/bin/install.sh" ]; then
+    echo "=== Existing install detected; running local /opt/rpi-engineer/bin/install.sh (no GitHub access needed) ==="
+    (cd /opt/rpi-engineer && bash bin/install.sh)
+  else
+    # 3) Fallback: try to download a GitHub archive when no local source exists.
+    echo "=== Downloading RPi Engineer source (GitHub archive) ==="
+    local tmp_root="/tmp/rpi-engineer-src-$(date +%s)"
+    mkdir -p "$tmp_root"
+    # Use archive tarball instead of git clone on the device; avoids git/TLS quirks.
+    if ! curl -fsSL "https://github.com/chibashr/RPi-EngineerIAB/archive/refs/heads/main.tar.gz" \
+      | tar -xz -C "$tmp_root"; then
+      echo "Failed to download/extract GitHub archive and no local source or install found." >&2
+      exit 1
+    fi
+    local src_dir="$tmp_root/RPi-EngineerIAB-main"
+    if [ ! -x "$src_dir/bin/install.sh" ]; then
+      echo "install.sh not found in extracted archive (${src_dir}); aborting." >&2
+      exit 1
+    fi
+    echo "=== Installing RPi Engineer-in-a-Box (from GitHub archive) ==="
+    (cd "$src_dir" && bash bin/install.sh)
   fi
-
-  echo "=== Installing RPi Engineer-in-a-Box ==="
-  (cd "$src_dir" && bash bin/install.sh)
 
   echo "=== Waiting for RPi Engineer API to become healthy ==="
   local attempt=0
