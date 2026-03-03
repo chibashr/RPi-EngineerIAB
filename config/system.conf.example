@@ -3,10 +3,22 @@ version=0.1.0
 environment=development
 
 [network]
+; When true, wlan0 is reserved for the RPi Engineer hotspot.
+; Hotspot SSID/password are persisted via the API (POST /api/v1/network/hotspot)
+; and applied on boot by setup-wlan0-hotspot.sh; this file does not store the password.
 hotspot_enabled=true
-hotspot_ssid=RPi-Engineer-XXXX
+; Default SSID when first bootstrapping via install-and-bootstrap.sh
+hotspot_ssid=RPi-Engineer
 hotspot_ip=192.168.50.1
+; Optional LAN subnet (CIDR) allowed to access the web UI on eth0, e.g. 192.168.1.0/24
+; If empty, only the hotspot subnet (192.168.50.0/24) is explicitly allowed by the installer firewall rules.
 lan_subnet=
+
+[wan]
+; Preferred WAN interface for first boot; the network manager will still
+; re-evaluate WAN priority at runtime (USB first, then ethernet).
+; This is mainly used by bin/install-and-bootstrap.sh when present.
+preferred_interface=eth1
 
 [api]
 host=0.0.0.0
