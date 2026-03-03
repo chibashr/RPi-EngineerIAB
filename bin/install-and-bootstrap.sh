@@ -33,8 +33,21 @@ main() {
   export NONINTERACTIVE=1
   export DEBIAN_FRONTEND=noninteractive
 
+  echo "=== Downloading RPi Engineer source (GitHub archive) ==="
+  local tmp_root="/tmp/rpi-engineer-src-$(date +%s)"
+  mkdir -p "$tmp_root"
+  # Use archive tarball instead of git clone on the device; avoids git/TLS quirks.
+  curl -fsSL "https://github.com/chibashr/RPi-EngineerIAB/archive/refs/heads/main.tar.gz" \
+    | tar -xz -C "$tmp_root"
+  local src_dir="$tmp_root/RPi-EngineerIAB-main"
+
+  if [ ! -x "$src_dir/bin/install.sh" ]; then
+    echo "install.sh not found in extracted archive (${src_dir}); aborting." >&2
+    exit 1
+  fi
+
   echo "=== Installing RPi Engineer-in-a-Box ==="
-  curl -fsSL "$RPI_ENGINEER_INSTALL_URL" | bash
+  (cd "$src_dir" && bash bin/install.sh)
 
   echo "=== Waiting for RPi Engineer API to become healthy ==="
   local attempt=0
