@@ -12,13 +12,18 @@ set -euo pipefail
 #   curl -fsSL https://raw.githubusercontent.com/chibashr/RPi-EngineerIAB/main/bin/install-and-bootstrap.sh | sudo bash
 #
 # Tunables (override via environment variables before running):
-#   RPI_ENGINEER_INSTALL_URL   - URL for bin/install.sh
-#   RPI_ENGINEER_API_BASE      - Base URL for API/nginx (default http://127.0.0.1)
-#   RPI_ENGINEER_WAN_IFACE     - Interface to treat as WAN (default eth1)
-#   RPI_ENGINEER_HOTSPOT_SSID  - Hotspot SSID (default RPi-Engineer)
+#   RPI_ENGINEER_INSTALL_URL      - URL for bin/install.sh (when using curl | bash)
+#   RPI_ENGINEER_REPO_ARCHIVE_URL - URL of repo archive tarball. Use a mirror if GitHub is unreachable.
+#   RPI_ENGINEER_REPO_ARCHIVE_TOP - Top-level dir inside the tarball (default RPi-EngineerIAB-main; mirrors may differ).
+#   RPI_ENGINEER_API_BASE        - Base URL for API/nginx (default http://127.0.0.1)
+#   RPI_ENGINEER_WAN_IFACE       - Interface to treat as WAN (default eth1)
+#   RPI_ENGINEER_HOTSPOT_SSID    - Hotspot SSID (default RPi-Engineer)
 #   RPI_ENGINEER_HOTSPOT_PASSWORD - Hotspot password (default changeme1234)
 
 : "${RPI_ENGINEER_INSTALL_URL:=https://raw.githubusercontent.com/chibashr/RPi-EngineerIAB/main/bin/install.sh}"
+: "${RPI_ENGINEER_REPO_ARCHIVE_URL:=https://github.com/chibashr/RPi-EngineerIAB/archive/refs/heads/main.tar.gz}"
+# Top-level directory inside the archive (GitHub uses REPO-main; mirror may differ)
+: "${RPI_ENGINEER_REPO_ARCHIVE_TOP:=RPi-EngineerIAB-main}"
 : "${RPI_ENGINEER_API_BASE:=http://127.0.0.1}"
 : "${RPI_ENGINEER_WAN_IFACE:=eth1}"
 : "${RPI_ENGINEER_HOTSPOT_SSID:=RPi-Engineer}"
@@ -43,17 +48,15 @@ main() {
     echo "=== Existing install detected; running local /opt/rpi-engineer/bin/install.sh (no GitHub access needed) ==="
     (cd /opt/rpi-engineer && RPI_ENGINEER_SKIP_CLONE=1 bash bin/install.sh)
   else
-    # 3) Fallback: try to download a GitHub archive when no local source exists.
-    echo "=== Downloading RPi Engineer source (GitHub archive) ==="
+    # 3) Fallback: try to download repo archive (default GitHub; set RPI_ENGINEER_REPO_ARCHIVE_URL for a mirror).
+    echo "=== Downloading RPi Engineer source from ${RPI_ENGINEER_REPO_ARCHIVE_URL} ==="
     local tmp_root="/tmp/rpi-engineer-src-$(date +%s)"
     mkdir -p "$tmp_root"
-    # Use archive tarball instead of git clone on the device; avoids git/TLS quirks.
-    if ! curl -fsSL "https://github.com/chibashr/RPi-EngineerIAB/archive/refs/heads/main.tar.gz" \
-      | tar -xz -C "$tmp_root"; then
+    if ! curl -fsSL "$RPI_ENGINEER_REPO_ARCHIVE_URL" | tar -xz -C "$tmp_root"; then
       echo "Failed to download/extract GitHub archive and no local source or install found." >&2
       exit 1
     fi
-    local src_dir="$tmp_root/RPi-EngineerIAB-main"
+    local src_dir="$tmp_root/$RPI_ENGINEER_REPO_ARCHIVE_TOP"
     if [ ! -x "$src_dir/bin/install.sh" ]; then
       echo "install.sh not found in extracted archive (${src_dir}); aborting." >&2
       exit 1

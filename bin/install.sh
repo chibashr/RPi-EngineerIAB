@@ -20,8 +20,9 @@ DEFAULT_HOTSPOT_IP="192.168.50.1"
 DEFAULT_HOTSPOT_DHCP_START="192.168.50.10"
 DEFAULT_HOTSPOT_DHCP_END="192.168.50.100"
 
-REPO_URL="https://github.com/chibashr/RPi-EngineerIAB.git"
-BRANCH="main"
+# Git clone/fetch URL; override with RPI_ENGINEER_REPO_URL to use a mirror (e.g. when GitHub is unreachable).
+REPO_URL="${RPI_ENGINEER_REPO_URL:-https://github.com/chibashr/RPi-EngineerIAB.git}"
+BRANCH="${RPI_ENGINEER_REPO_BRANCH:-main}"
 
 INSTALL_LOG="/tmp/rpi-engineer-install-$(date +%Y%m%d-%H%M%S).log"
 INSTALL_PROGRESS_FILE="/tmp/rpi-engineer-install.progress"
