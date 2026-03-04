@@ -35,6 +35,8 @@ IP="192.168.50.1/24"
 CONFIG_DIR=/etc/rpi-engineer
 HOTSPOT_SECRET="$CONFIG_DIR/hotspot.secret"
 [ ! -d /sys/class/net/"$WLAN" ] && exit 0
+# Unblock WiFi if soft-blocked by rfkill (required for hostapd to start the AP)
+command -v rfkill >/dev/null 2>&1 && { rfkill unblock wlan 2>/dev/null; rfkill unblock wifi 2>/dev/null; true; }
 # Release wlan0 from NetworkManager so we can configure it (avoids RTNETLINK Operation not permitted)
 command -v nmcli >/dev/null 2>&1 && nmcli device set "$WLAN" managed no 2>/dev/null || true
 systemctl stop wpa_supplicant@"$WLAN".service 2>/dev/null || true
