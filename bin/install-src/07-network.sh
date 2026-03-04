@@ -38,11 +38,20 @@ HOTSPOT_SECRET="$CONFIG_DIR/hotspot.secret"
 [ ! -d /sys/class/net/"$WLAN" ] && exit 0
 systemctl stop wpa_supplicant@"$WLAN".service 2>/dev/null || true
 systemctl stop wpa_supplicant@"$WLAN" 2>/dev/null || true
-ip link set "$WLAN" down 2>/dev/null || true
-ip link set "$WLAN" up
-if ! ip addr show "$WLAN" | grep -q "$IP"; then
-    ip addr add "$IP" dev "$WLAN"
-fi
+# wlan0/driver may not be ready at boot; retry bringing interface up and adding IP
+try=1
+max_tries=6
+while [ "$try" -le "$max_tries" ]; do
+    ip link set "$WLAN" down 2>/dev/null || true
+    ip link set "$WLAN" up 2>/dev/null || true
+    ip addr add "$IP" dev "$WLAN" 2>/dev/null || true
+    if ip addr show "$WLAN" 2>/dev/null | grep -q "$IP"; then
+        break
+    fi
+    [ "$try" -eq "$max_tries" ] && { echo "rpi-engineer-wlan0: failed to bring up $WLAN after $max_tries attempts" >&2; exit 2; }
+    sleep 2
+    try=$((try + 1))
+done
 # Apply persisted hotspot credentials so install/API-configured password survives reboot
 if [ -f "$HOTSPOT_SECRET" ]; then
     HOTSPOT_SSID=$(sed -n '1p' "$HOTSPOT_SECRET")
