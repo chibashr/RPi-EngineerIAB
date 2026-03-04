@@ -39,6 +39,8 @@ enable_services() {
         log_warn "systemd not detected; skipping service enable/restart."
         return 0
     fi
+    log_info "Reloading systemd to pick up hotspot unit files."
+    systemctl daemon-reload
     local services=(
         rpi-engineer
         rpi-engineer-api
@@ -56,16 +58,29 @@ enable_services() {
     )
     for service in "${services[@]}"; do
         echo "  Enabling $service..."
-        systemctl enable "$service" >> "$INSTALL_LOG" 2>&1 || true
         case "$service" in
             rpi-engineer-wlan0|hostapd|dnsmasq)
+                if ! systemctl enable "$service" >> "$INSTALL_LOG" 2>&1; then
+                    log_error "Failed to enable $service. Hotspot will not work after reboot. See $INSTALL_LOG"
+                    exit 1
+                fi
                 # Hotspot services: enable only; do not start during install (user may be on WiFi). They start after reboot.
                 ;;
             *)
+                systemctl enable "$service" >> "$INSTALL_LOG" 2>&1 || true
                 systemctl restart "$service" >> "$INSTALL_LOG" 2>&1 || true
                 ;;
         esac
     done
+    if [ "${HOTSPOT_CONFIGURED:-no}" = "yes" ]; then
+        for s in rpi-engineer-wlan0 hostapd dnsmasq; do
+            if ! systemctl is-enabled "$s" >/dev/null 2>&1; then
+                log_error "Hotspot service $s is not enabled; hotspot will not start after reboot."
+                exit 1
+            fi
+        done
+        log_info "Hotspot services verified enabled (will start after reboot)."
+    fi
     mark_step_done "enable_services"
 }
 
