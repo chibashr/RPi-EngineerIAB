@@ -1447,9 +1447,8 @@ configure_hotspot_priority() {
         mkdir -p /etc/NetworkManager/conf.d
         cat > /etc/NetworkManager/conf.d/rpi-engineer-wlan0-unmanaged.conf <<'NMEOF'
 # RPi Engineer-in-a-Box: use wlan0 for hotspot only; do not manage as WiFi client
-[device-wlan0-unmanaged]
-match-device=interface-name:wlan0
-managed=0
+[keyfile]
+unmanaged-devices=interface-name:wlan0
 NMEOF
         # Do not restart NetworkManager during install; user may be on WiFi. Config applies on reboot.
         log_info "NetworkManager: wlan0 will be unmanaged after reboot."
@@ -1472,6 +1471,8 @@ IP="192.168.50.1/24"
 CONFIG_DIR=/etc/rpi-engineer
 HOTSPOT_SECRET="$CONFIG_DIR/hotspot.secret"
 [ ! -d /sys/class/net/"$WLAN" ] && exit 0
+# Release wlan0 from NetworkManager so we can configure it (avoids RTNETLINK Operation not permitted)
+command -v nmcli >/dev/null 2>&1 && nmcli device set "$WLAN" managed no 2>/dev/null || true
 systemctl stop wpa_supplicant@"$WLAN".service 2>/dev/null || true
 systemctl stop wpa_supplicant@"$WLAN" 2>/dev/null || true
 # wlan0/driver may not be ready at boot; retry bringing interface up and adding IP
