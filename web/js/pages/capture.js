@@ -88,6 +88,46 @@ function createActiveCaptureItem(capture, isSelected) {
   return item;
 }
 
+function createCompletedCaptureItem(capture) {
+  const item = document.createElement("li");
+  item.className = "status-item capture-completed-item";
+  const label = capture.name || capture.capture_id || "Capture";
+  const meta = [capture.interface, capture.stopped_at].filter(Boolean).join(" · ") || "completed";
+  const labelEl = document.createElement("span");
+  labelEl.className = "status-label";
+  labelEl.textContent = label;
+  const valueEl = document.createElement("span");
+  valueEl.className = "status-value";
+  valueEl.textContent = meta;
+  const actions = document.createElement("span");
+  actions.className = "capture-completed-actions";
+  const viewBtn = document.createElement("button");
+  viewBtn.type = "button";
+  viewBtn.className = "btn btn-secondary btn-sm";
+  viewBtn.textContent = "View";
+  viewBtn.setAttribute("aria-label", `View ${label}`);
+  viewBtn.addEventListener("click", () => showCompletedCaptureView(capture));
+  const exportBtn = document.createElement("button");
+  exportBtn.type = "button";
+  exportBtn.className = "btn btn-secondary btn-sm";
+  exportBtn.textContent = "Export";
+  exportBtn.setAttribute("aria-label", `Export ${label}`);
+  exportBtn.addEventListener("click", () => exportCapture(capture));
+  const newSimilarBtn = document.createElement("button");
+  newSimilarBtn.type = "button";
+  newSimilarBtn.className = "btn btn-primary btn-sm";
+  newSimilarBtn.textContent = "New similar";
+  newSimilarBtn.setAttribute("aria-label", `Start new capture like ${label}`);
+  newSimilarBtn.addEventListener("click", () => newSimilarCapture(capture));
+  actions.appendChild(viewBtn);
+  actions.appendChild(exportBtn);
+  actions.appendChild(newSimilarBtn);
+  item.appendChild(labelEl);
+  item.appendChild(valueEl);
+  item.appendChild(actions);
+  return item;
+}
+
 function renderCaptures(listEl, captures, emptyText) {
   if (!listEl) {
     return;
@@ -107,6 +147,13 @@ function renderCaptures(listEl, captures, emptyText) {
     captures.forEach((capture) => {
       const isSelected = capture.capture_id === selectedActiveCaptureId;
       listEl.appendChild(createActiveCaptureItem(capture, isSelected));
+    });
+    return;
+  }
+
+  if (listEl === elements.completedList) {
+    captures.forEach((capture) => {
+      listEl.appendChild(createCompletedCaptureItem(capture));
     });
     return;
   }
@@ -213,6 +260,119 @@ async function stopCapture(captureId) {
   } catch (error) {
     showToast("Unable to stop capture.", "error");
   }
+}
+
+function getModalContainer() {
+  let el = document.getElementById("rpi-modal-container");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "rpi-modal-container";
+    el.className = "modal-container";
+    el.setAttribute("aria-hidden", "true");
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+async function showCompletedCaptureView(capture) {
+  let stats = { packet_count: 0, byte_count: 0 };
+  try {
+    const payload = await apiGet(`/api/v1/capture/${capture.capture_id}/stats`);
+    const data = extractData(payload) || {};
+    stats = { packet_count: data.packet_count ?? 0, byte_count: data.byte_count ?? 0 };
+  } catch (_) {
+    // keep defaults
+  }
+  const container = getModalContainer();
+  container.setAttribute("aria-hidden", "false");
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-labelledby", "capture-view-title");
+
+  const title = capture.name || capture.capture_id || "Capture";
+  const formatBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`);
+  const dialog = document.createElement("div");
+  dialog.className = "modal-dialog modal-dialog-form";
+  dialog.innerHTML = `
+    <h2 id="capture-view-title" class="modal-title">${title.replace(/</g, "&lt;")}</h2>
+    <div class="capture-view-details">
+      <p><strong>Interface</strong> ${(capture.interface || "--").replace(/</g, "&lt;")}</p>
+      <p><strong>Filter</strong> ${(capture.filter || "none").replace(/</g, "&lt;")}</p>
+      <p><strong>Started</strong> ${(capture.started_at || "--").replace(/</g, "&lt;")} · <strong>Stopped</strong> ${(capture.stopped_at || "--").replace(/</g, "&lt;")}</p>
+      <p><strong>Packets</strong> ${stats.packet_count} · <strong>Size</strong> ${formatBytes(stats.byte_count)}</p>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-secondary capture-view-export">Export</button>
+      <button type="button" class="btn btn-primary capture-view-new-similar">New similar</button>
+      <button type="button" class="btn btn-secondary modal-close">Close</button>
+    </div>
+  `;
+  overlay.appendChild(dialog);
+
+  const close = () => {
+    overlay.remove();
+    if (container.children.length === 0) {
+      container.setAttribute("aria-hidden", "true");
+    }
+  };
+
+  dialog.querySelector(".capture-view-export").addEventListener("click", () => {
+    exportCapture(capture);
+    close();
+  });
+  dialog.querySelector(".capture-view-new-similar").addEventListener("click", () => {
+    close();
+    newSimilarCapture(capture);
+  });
+  dialog.querySelector(".modal-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  document.addEventListener("keydown", function esc(e) {
+    if (e.key === "Escape") {
+      close();
+      document.removeEventListener("keydown", esc);
+    }
+  });
+
+  container.appendChild(overlay);
+}
+
+function exportCapture(capture) {
+  const name = (capture.name || capture.capture_id || "capture").replace(/[^\w.-]/g, "_");
+  const filename = name.endsWith(".pcap") ? name : `${name}.pcap`;
+  const url = `/api/v1/capture/completed/${capture.capture_id}/download`;
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  showToast("Export started.", "success");
+}
+
+function newSimilarCapture(capture) {
+  if (elements.interfaceSelect) {
+    elements.interfaceSelect.value = capture.interface || elements.interfaceSelect.value;
+  }
+  if (elements.nameInput) {
+    const base = capture.name || "Capture";
+    const match = base.match(/^(.+?)\s*\((\d+)\)\s*$/);
+    const stem = match ? match[1].trim() : base;
+    const n = match ? parseInt(match[2], 10) + 1 : 2;
+    elements.nameInput.value = `${stem} (${n})`;
+  }
+  if (elements.filterInput) {
+    elements.filterInput.value = capture.filter || "";
+  }
+  const form = document.querySelector(".capture-form");
+  if (form) {
+    form.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  showToast("Form filled. Click Start Capture to begin.", "info");
 }
 
 function setupActions() {

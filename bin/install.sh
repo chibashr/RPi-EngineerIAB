@@ -1803,6 +1803,7 @@ RestartSec=2
 [Install]
 WantedBy=multi-user.target
 XVFBUNIT
+    systemctl unmask xvfb.service >> "$INSTALL_LOG" 2>&1 || true
     mkdir -p /etc/systemd/system/anydesk.service.d
     cat > /etc/systemd/system/anydesk.service.d/display.conf <<'DISPLAYCONF'
 [Unit]
