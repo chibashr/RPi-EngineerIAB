@@ -47,6 +47,7 @@ def test_create_session_writes_log(tmp_path, monkeypatch):
 def test_create_session_max_sessions_reached(tmp_path, monkeypatch):
     """When MAX_SESSIONS=1, creating a second session fails."""
     manager = serial_manager.SerialManager()
+    monkeypatch.setattr(serial_manager, "MAX_SESSIONS", 1)
     monkeypatch.setattr(serial_manager, "LOG_DIR", tmp_path)
     monkeypatch.setattr(manager, "_scan_devices", lambda use_cache=True: [
         {"id": "/dev/ttyUSB0", "path": "/dev/ttyUSB0", "friendly_name": "A", "chipset": "FTDI"},

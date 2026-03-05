@@ -16,6 +16,9 @@ build/
 .ruff_cache/
 .coverage
 htmlcov/
+coverage/
+node_modules//
+logs/
 .DS_Store
 Thumbs.db
 .planning/

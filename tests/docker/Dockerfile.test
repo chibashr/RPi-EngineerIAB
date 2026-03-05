@@ -1,0 +1,23 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      python3 python3-venv python3-pip \
+      curl ca-certificates git iproute2 iputils-ping tcpdump iptables nftables \
+      build-essential && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Node.js (current LTS) from NodeSource
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+# Default command runs the in-container test runner; repo is mounted at runtime.
+CMD ["/workspace/tests/docker/inside-run-tests.sh"]
+

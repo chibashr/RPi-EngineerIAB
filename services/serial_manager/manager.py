@@ -34,7 +34,7 @@ logger = get_service_logger(__name__)
 LOG_DIR = Path("/opt/rpi-engineer/data/serial_logs")
 EXPORT_DIR = LOG_DIR / "exports"
 CONFIG_PATH = LOG_DIR.parent / "serial_devices.json"
-MAX_SESSIONS = 1
+MAX_SESSIONS = 5
 DEVICE_SCAN_CACHE_TTL = 5.0
 
 
@@ -156,6 +156,9 @@ class SerialManager:
         if not self._device_by_id(device_id):
             logger.warning("create_session: device %s not found in scan", device_id)
             raise KeyError("Device not found")
+        if len(self._sessions) >= MAX_SESSIONS:
+            logger.warning("create_session: maximum sessions %d reached", MAX_SESSIONS)
+            raise RuntimeError("Maximum sessions reached")
         session_id = str(uuid.uuid4())
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         log_path = LOG_DIR / f"{session_id}.log"

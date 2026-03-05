@@ -96,13 +96,26 @@ function applySyntaxHighlighting(text, rules) {
 
 const SERIAL_API_TIMEOUT_MS = 60000;
 
+// Resolve from document on each access so tests (or DOM changes) always see current nodes.
 const elements = {
-  deviceListBody: document.getElementById("serial-device-list-body"),
-  consoleTabs: document.getElementById("serial-console-tabs"),
-  consolePanels: document.getElementById("serial-console-panels"),
-  consoleEmpty: document.getElementById("serial-console-empty"),
-  banner: document.getElementById("serial-connection-banner"),
-  logsTable: document.getElementById("serial-logs-table-body"),
+  get deviceListBody() {
+    return document.getElementById("serial-device-list-body");
+  },
+  get consoleTabs() {
+    return document.getElementById("serial-console-tabs");
+  },
+  get consolePanels() {
+    return document.getElementById("serial-console-panels");
+  },
+  get consoleEmpty() {
+    return document.getElementById("serial-console-empty");
+  },
+  get banner() {
+    return document.getElementById("serial-connection-banner");
+  },
+  get logsTable() {
+    return document.getElementById("serial-logs-table-body");
+  },
 };
 
 let activeSessions = [];
@@ -1053,3 +1066,49 @@ document.addEventListener("DOMContentLoaded", init);
 window.addEventListener("beforeunload", () => {
   sessionMap.forEach((state) => state.wsClient?.close());
 });
+
+// Reset module state for tests so each test starts with a clean sessionMap/activeSessions.
+function resetStateForTest() {
+  sessionMap.forEach((st) => {
+    if (st.connectTimeoutId != null) {
+      window.clearTimeout(st.connectTimeoutId);
+      st.connectTimeoutId = null;
+    }
+    st.wsClient?.close?.();
+  });
+  sessionMap.clear();
+  activeSessions.length = 0;
+  connectingDeviceId = null;
+  activeTabSessionId = null;
+  deviceCache.length = 0;
+}
+
+// Internal hooks exported for tests only. Has no effect when loaded via <script>.
+export const __testHooks = {
+  state: {
+    get activeSessions() {
+      return activeSessions;
+    },
+    get deviceCache() {
+      return deviceCache;
+    },
+    get sessionMap() {
+      return sessionMap;
+    },
+    get activeTabSessionId() {
+      return activeTabSessionId;
+    },
+    get connectingDeviceId() {
+      return connectingDeviceId;
+    },
+  },
+  resetStateForTest,
+  renderDevices,
+  loadDevices,
+  loadSessions,
+  connectDevice,
+  disconnectDevice,
+  reconnectSession,
+  createTabAndConnect,
+  switchTab,
+};
