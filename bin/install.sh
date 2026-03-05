@@ -87,12 +87,10 @@ mark_step_done() {
     echo "$step" >> "$INSTALL_PROGRESS_FILE"
 }
 
-# Simple scrolling progress (no cursor/scroll hacks; avoids terminal artifacting and interleaving)
+# Simple scrolling progress only; no scroll region or cursor tricks.
 PROGRESS_BAR_WIDTH=40
-PROGRESS_LINES=""
 progress_init() {
-    if [ ! -t 1 ]; then return 0; fi
-    PROGRESS_LINES=$(tput lines 2>/dev/null) || true
+    : # No-op; progress just scrolls with output
 }
 
 progress_ensure_region() {
@@ -120,8 +118,7 @@ progress_bar() {
 }
 
 progress_cleanup() {
-    if [ ! -t 1 ]; then return 0; fi
-    printf '\033[r' 2>/dev/null || true
+    : # No-op; no scroll region to reset
 }
 
 detect_interrupted_install() {
