@@ -83,6 +83,7 @@ function renderInterfaces(interfaces) {
   elements.interfaceList.textContent = "";
   if (!interfaces.length) {
     const item = document.createElement("li");
+    item.className = "detail-empty";
     item.textContent = "No interfaces detected.";
     elements.interfaceList.appendChild(item);
     return;
@@ -90,9 +91,17 @@ function renderInterfaces(interfaces) {
 
   interfaces.forEach((iface) => {
     const item = document.createElement("li");
-    const status = iface.status || "unknown";
+    item.className = "detail-iface-row";
+    const name = iface.name || iface.id || "—";
+    const status = (iface.status || "unknown").toLowerCase();
     const ip = iface.ip_address || "no IP";
-    item.textContent = `${iface.name || iface.id} (${status}, ${ip})`;
+    const statusClass =
+      status === "up"
+        ? "detail-status detail-status-up"
+        : status === "down"
+          ? "detail-status detail-status-down"
+          : "detail-status detail-status-unknown";
+    item.innerHTML = `<span class="detail-iface-name">${escapeHtml(name)}</span> <span class="${statusClass}" aria-label="status ${status}">${status}</span> <span class="detail-iface-ip">${escapeHtml(ip)}</span>`;
     elements.interfaceList.appendChild(item);
   });
 }
@@ -101,6 +110,7 @@ function renderServices(services) {
   elements.serviceList.textContent = "";
   if (!services || Object.keys(services).length === 0) {
     const item = document.createElement("li");
+    item.className = "detail-empty";
     item.textContent = "No service data.";
     elements.serviceList.appendChild(item);
     return;
@@ -108,7 +118,17 @@ function renderServices(services) {
 
   Object.entries(services).forEach(([name, status]) => {
     const item = document.createElement("li");
-    item.textContent = `${name}: ${status}`;
+    item.className = "detail-svc-row";
+    const raw = (status || "").toLowerCase();
+    const statusClass =
+      raw === "running"
+        ? "detail-status detail-status-running"
+        : raw === "stopped"
+          ? "detail-status detail-status-stopped"
+          : raw === "starting" || raw === "stopping"
+            ? "detail-status detail-status-transition"
+            : "detail-status detail-status-unknown";
+    item.innerHTML = `<span class="detail-svc-name">${escapeHtml(name)}</span> <span class="${statusClass}" aria-label="service ${raw}">${status}</span>`;
     elements.serviceList.appendChild(item);
   });
 }
@@ -229,15 +249,19 @@ function renderAlerts(alerts) {
     return;
   }
   elements.alertList.textContent = "";
+  elements.alertList.classList.remove("detail-alerts-empty");
   const list = alerts && Array.isArray(alerts) ? alerts : [];
   if (list.length === 0) {
+    elements.alertList.classList.add("detail-alerts-empty");
     const item = document.createElement("li");
+    item.className = "detail-empty";
     item.textContent = "No alerts yet.";
     elements.alertList.appendChild(item);
     return;
   }
   list.slice(0, 5).forEach((alert) => {
     const item = document.createElement("li");
+    item.className = "detail-alert-item";
     const msg = alert.message || alert.summary || "Alert";
     const ts = alert.timestamp;
     let timeStr = "";
@@ -251,7 +275,15 @@ function renderAlerts(alerts) {
         // ignore
       }
     }
-    item.textContent = timeStr ? `${timeStr} — ${msg}` : msg;
+    const severity = (alert.severity || alert.level || "").toLowerCase();
+    if (severity) {
+      item.classList.add(`detail-alert-${severity}`);
+    }
+    if (timeStr) {
+      item.innerHTML = `<span class="detail-alert-time">${escapeHtml(timeStr)}</span> <span class="detail-alert-msg">${escapeHtml(msg)}</span>`;
+    } else {
+      item.textContent = msg;
+    }
     elements.alertList.appendChild(item);
   });
 }

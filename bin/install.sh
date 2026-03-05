@@ -87,21 +87,16 @@ mark_step_done() {
     echo "$step" >> "$INSTALL_PROGRESS_FILE"
 }
 
-# Progress bar (apt-style: fixed at bottom of terminal, output scrolls above)
+# Simple scrolling progress (no cursor/scroll hacks; avoids terminal artifacting and interleaving)
 PROGRESS_BAR_WIDTH=40
 PROGRESS_LINES=""
 progress_init() {
     if [ ! -t 1 ]; then return 0; fi
     PROGRESS_LINES=$(tput lines 2>/dev/null) || true
-    if [ -z "$PROGRESS_LINES" ] || [ "$PROGRESS_LINES" -le 2 ]; then return 0; fi
-    # Reserve last line for progress bar; scroll region 1 to LINES-1 (1-based)
-    tput csr 1 $((PROGRESS_LINES - 1)) 2>/dev/null || true
 }
 
-# Ensure scroll region is set (subprocesses like apt may reset it)
 progress_ensure_region() {
-    if [ ! -t 1 ] || [ -z "$PROGRESS_LINES" ] || [ "$PROGRESS_LINES" -le 2 ]; then return 0; fi
-    tput csr 1 $((PROGRESS_LINES - 1)) 2>/dev/null || true
+    : # No-op; kept for call-site compatibility
 }
 
 progress_bar() {
@@ -120,26 +115,12 @@ progress_bar() {
     local max_label_len=36
     [ "${#label}" -gt "$max_label_len" ] && label="${label:0:$((max_label_len - 3))}..."
     local line="[${bar}] ${pct}% ${label}"
-    if [ -t 1 ] && [ -n "$PROGRESS_LINES" ] && [ "$PROGRESS_LINES" -gt 1 ]; then
-        progress_ensure_region
-        # Move to last line, clear it, print bar, move cursor back into scroll area
-        tput cup "$PROGRESS_LINES" 0 2>/dev/null || true
-        tput el 2>/dev/null || true
-        printf '\r%s' "$line"
-        # Cursor at bottom of scroll area so next output appends correctly
-        tput cup $((PROGRESS_LINES - 1)) 0 2>/dev/null || true
-    fi
+    echo "$line"
     echo "[INFO] Progress: ${current}/${total} (${pct}%) ${label}" >> "$INSTALL_LOG"
 }
 
 progress_cleanup() {
     if [ ! -t 1 ]; then return 0; fi
-    # Clear the progress bar line (was in reserved last line) so it doesn't linger after summary.
-    if [ -n "$PROGRESS_LINES" ] && [ "$PROGRESS_LINES" -gt 0 ]; then
-        tput cup "$PROGRESS_LINES" 0 2>/dev/null || true
-        tput el 2>/dev/null || true
-    fi
-    # Reset scroll region to full screen (ESC [ r)
     printf '\033[r' 2>/dev/null || true
 }
 
