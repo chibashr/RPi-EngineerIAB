@@ -200,7 +200,16 @@ setup_remote_access() {
         REMOTE_CONFIGURED="yes"
         return 0
     fi
-    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "remote_access"; then log_info "Step 'remote_access' already completed; skipping."; REMOTE_CONFIGURED="yes"; return 0; fi
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "remote_access"; then
+        log_info "Step 'remote_access' already completed; ensuring virtual display if needed."
+        if [ -f "$CONFIG_DIR/remote_access.conf" ] && command -v jq >/dev/null 2>&1; then
+            if jq -e '(.anydesk.enabled == true) or (.teamviewer.enabled == true)' "$CONFIG_DIR/remote_access.conf" >/dev/null 2>&1; then
+                install_virtual_display
+            fi
+        fi
+        REMOTE_CONFIGURED="yes"
+        return 0
+    fi
     log_step "Setting up remote access"
     if [ "${#REMOTE_ACCESS_TOOLS[@]}" -eq 0 ]; then
         log_info "Remote access skipped."

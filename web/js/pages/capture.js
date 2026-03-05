@@ -14,6 +14,7 @@ const elements = {
 };
 
 let activeCaptures = [];
+let selectedActiveCaptureId = null;
 let wsClient = null;
 const MAX_CAPTURE_LINES = 500;
 let captureBuffer = [];
@@ -54,6 +55,39 @@ function renderInterfaces(interfaces) {
   });
 }
 
+function createActiveCaptureItem(capture, isSelected) {
+  const item = document.createElement("li");
+  item.className = "status-item capture-active-item" + (isSelected ? " is-selected" : "");
+  item.dataset.captureId = capture.capture_id;
+  const label = capture.name || capture.capture_id || "Capture";
+  const labelEl = document.createElement("span");
+  labelEl.className = "status-label";
+  labelEl.textContent = label;
+  const valueEl = document.createElement("span");
+  valueEl.className = "status-value";
+  valueEl.textContent = "active";
+  const actions = document.createElement("span");
+  actions.className = "capture-active-actions";
+  const stopBtn = document.createElement("button");
+  stopBtn.type = "button";
+  stopBtn.className = "btn btn-secondary btn-sm";
+  stopBtn.textContent = "Stop";
+  stopBtn.setAttribute("aria-label", `Stop ${label}`);
+  stopBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    stopCapture(capture.capture_id);
+  });
+  actions.appendChild(stopBtn);
+  item.appendChild(labelEl);
+  item.appendChild(valueEl);
+  item.appendChild(actions);
+  item.addEventListener("click", (e) => {
+    if (e.target.closest(".capture-active-actions")) return;
+    selectAndViewActiveCapture(capture.capture_id);
+  });
+  return item;
+}
+
 function renderCaptures(listEl, captures, emptyText) {
   if (!listEl) {
     return;
@@ -66,6 +100,14 @@ function renderCaptures(listEl, captures, emptyText) {
     const item = document.createElement("li");
     item.textContent = emptyText;
     listEl.appendChild(item);
+    return;
+  }
+
+  if (listEl === elements.activeList) {
+    captures.forEach((capture) => {
+      const isSelected = capture.capture_id === selectedActiveCaptureId;
+      listEl.appendChild(createActiveCaptureItem(capture, isSelected));
+    });
     return;
   }
 
@@ -97,14 +139,35 @@ function updateLiveView(text) {
   elements.liveView.scrollTop = elements.liveView.scrollHeight;
 }
 
-function connectLiveView() {
-  if (!activeCaptures.length) {
-    showToast("No active capture available for live view.", "error");
+function selectAndViewActiveCapture(captureId) {
+  const capture = activeCaptures.find((c) => c.capture_id === captureId);
+  if (!capture) {
+    showToast("Capture not found.", "error");
     return;
   }
-  const captureId = activeCaptures[0].capture_id;
+  selectedActiveCaptureId = captureId;
+  renderCaptures(elements.activeList, activeCaptures, "No active captures.");
+  connectLiveViewTo(captureId);
+}
+
+function connectLiveView() {
+  const captureId = selectedActiveCaptureId || activeCaptures[0]?.capture_id;
   if (!captureId) {
-    showToast("Capture ID unavailable.", "error");
+    showToast("No active capture available. Select one or start a capture.", "error");
+    return;
+  }
+  if (!activeCaptures.some((c) => c.capture_id === captureId)) {
+    showToast("Selected capture is no longer active.", "error");
+    selectedActiveCaptureId = null;
+    return;
+  }
+  selectedActiveCaptureId = captureId;
+  renderCaptures(elements.activeList, activeCaptures, "No active captures.");
+  connectLiveViewTo(captureId);
+}
+
+function connectLiveViewTo(captureId) {
+  if (!captureId) {
     return;
   }
   if (wsClient) {
@@ -130,6 +193,26 @@ function connectLiveView() {
     updateLiveView(message.summary || "");
   });
   wsClient.connect();
+}
+
+async function stopCapture(captureId) {
+  try {
+    await apiPost(`/api/v1/capture/active/${captureId}/stop`, {});
+    showToast("Capture stopped.", "success");
+    if (selectedActiveCaptureId === captureId) {
+      selectedActiveCaptureId = null;
+      if (wsClient) {
+        wsClient.close();
+        wsClient = null;
+      }
+      if (elements.liveView) {
+        elements.liveView.textContent = "Select an active capture to view live, or click here to connect to the first.";
+      }
+    }
+    loadCaptureData();
+  } catch (error) {
+    showToast("Unable to stop capture.", "error");
+  }
 }
 
 function setupActions() {
@@ -210,7 +293,18 @@ async function loadCaptureData() {
   try {
     const payload = await apiGet("/api/v1/capture/active");
     const data = extractData(payload) || {};
-    renderCaptures(elements.activeList, data.captures || [], "No active captures.");
+    const active = data.captures || [];
+    if (selectedActiveCaptureId && !active.some((c) => c.capture_id === selectedActiveCaptureId)) {
+      selectedActiveCaptureId = null;
+      if (wsClient) {
+        wsClient.close();
+        wsClient = null;
+      }
+      if (elements.liveView) {
+        elements.liveView.textContent = "Select an active capture to view live, or click here to connect to the first.";
+      }
+    }
+    renderCaptures(elements.activeList, active, "No active captures.");
   } catch (error) {
     showToast("Unable to load active captures.", "error");
   }
