@@ -592,11 +592,33 @@ function initStatusWebSocket() {
   statusWs.connect();
 }
 
+function setupQuickActionLinks() {
+  const grid = document.querySelector(".action-grid");
+  if (!grid) {
+    return;
+  }
+  grid.addEventListener("click", (e) => {
+    const link = e.target.closest("a.action-card");
+    if (!link || !link.href) {
+      return;
+    }
+    try {
+      const path = new URL(link.href).pathname;
+      if (path.startsWith("/advanced/")) {
+        setMode("advanced");
+      }
+    } catch {
+      // ignore
+    }
+  });
+}
+
 function init() {
   ensureSimpleMode();
   applyStoredTheme();
   initThemeSelector(document.getElementById("theme-select"));
   setupModeSwitch();
+  setupQuickActionLinks();
   setupConnectionPrivacy();
   setupWifiPasswordToggle();
   setupCopyButtons();
