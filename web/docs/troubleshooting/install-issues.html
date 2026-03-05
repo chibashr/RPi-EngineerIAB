@@ -70,7 +70,7 @@ sudo ./bin/install.sh</pre>
 </ol>
 <p>After a complete install or update, all UI resources are present under <code>/opt/rpi-engineer/web/</code> and the interface works offline.</p>
 
-<h2>Dashboard statuses not loading (Loading status..., Unknown, --)</h2>
+<h2 id="dashboard-not-loading">Dashboard statuses not loading (Loading status..., Unknown, --)</h2>
 <p><strong>Symptom:</strong> The Simple Mode dashboard shows "Loading status...", "Checking network status...", "Unknown" for WiFi/Remote, and placeholders (--%, --) for CPU, memory, temperature, and storage. The page may show a banner: "Cannot connect to the API."</p>
 <p><strong>Cause:</strong> The browser cannot reach the RPi Engineer API. Common causes: the API service (<code>rpi-engineer-api</code>) is not running, nginx is not proxying <code>/api/</code> to the API, or the API failed to start after a reboot (e.g. port in use or Python path issue).</p>
 <p><strong>Resolution:</strong></p>
@@ -89,6 +89,24 @@ curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/api/v1/system/status</pr
   </li>
 </ol>
 <p>After the API is running, reload the dashboard or click <strong>Retry</strong> in the red banner; the statuses should then load.</p>
+
+<h2 id="api-flask-modulenotfound">API fails: ModuleNotFoundError: No module named 'flask'</h2>
+<p><strong>Symptom:</strong> <code>journalctl -u rpi-engineer-api</code> shows <code>ModuleNotFoundError: No module named 'flask'</code>. The API keeps restarting and the dashboard shows "Cannot connect to the API."</p>
+<p><strong>Cause:</strong> The Python virtual environment at <code>/opt/rpi-engineer/venv</code> does not have the API dependencies installed (e.g. <code>requirements.txt</code> was missing during deploy, or the venv was never fully installed).</p>
+<p><strong>Resolution:</strong></p>
+<ol>
+  <li>Ensure <code>requirements.txt</code> exists: <code>ls /opt/rpi-engineer/requirements.txt</code>. If missing, copy it from the repo or re-run the installer (Upgrade).</li>
+  <li>Install dependencies into the venv and restart the API:
+    <pre>sudo /opt/rpi-engineer/venv/bin/pip install -r /opt/rpi-engineer/requirements.txt
+sudo systemctl restart rpi-engineer-api</pre>
+    If the venv is broken, recreate it and reinstall:
+    <pre>sudo rm -rf /opt/rpi-engineer/venv
+sudo python3 -m venv /opt/rpi-engineer/venv
+sudo /opt/rpi-engineer/venv/bin/pip install -r /opt/rpi-engineer/requirements.txt
+sudo systemctl restart rpi-engineer-api</pre>
+  </li>
+  <li>Re-run the installer (Upgrade) so it recreates the venv and installs all dependencies; that also fixes the issue for future runs.</li>
+</ol>
 
 <h2>Service fails: can't open file .../manager.py (No such file or directory)</h2>
 <p><strong>Symptom:</strong> <code>journalctl -u rpi-engineer-logging.service</code> (or another rpi-engineer-* service) shows:</p>

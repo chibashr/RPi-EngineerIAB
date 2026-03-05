@@ -461,9 +461,14 @@ function showApiConnectionError() {
   elements.banner.textContent = "";
   elements.banner.classList.add("is-visible", "api-error");
   const msg = document.createElement("span");
-  msg.textContent =
-    "Cannot connect to the API. Ensure the RPi Engineer API service is running (e.g. sudo systemctl status rpi-engineer-api). ";
+  msg.textContent = "Cannot connect to the API. Check that the API service (rpi-engineer-api) and nginx are running. ";
   elements.banner.appendChild(msg);
+  const link = document.createElement("a");
+  link.href = "/docs/troubleshooting/install-issues.html#dashboard-not-loading";
+  link.textContent = "Troubleshooting";
+  link.className = "link-inline";
+  elements.banner.appendChild(link);
+  elements.banner.appendChild(document.createTextNode(" "));
   const retryBtn = document.createElement("button");
   retryBtn.className = "btn btn-secondary btn-sm";
   retryBtn.textContent = "Retry";

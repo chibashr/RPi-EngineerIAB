@@ -946,8 +946,13 @@ install_python_dependencies() {
     if [ -f "$INSTALL_DIR/requirements.txt" ]; then
         "$venv_path/bin/pip" install --upgrade pip 2>&1 | tee -a "$INSTALL_LOG"
         "$venv_path/bin/pip" install -r "$INSTALL_DIR/requirements.txt" 2>&1 | tee -a "$INSTALL_LOG"
+        if ! "$venv_path/bin/python" -c "import flask" 2>/dev/null; then
+            log_error "Python dependencies failed (e.g. Flask not installed). Check $INSTALL_LOG."
+            return 1
+        fi
     else
-        log_warn "requirements.txt not found under $INSTALL_DIR"
+        log_error "requirements.txt not found under $INSTALL_DIR; cannot install API dependencies. Re-run deploy or copy requirements.txt."
+        return 1
     fi
     mark_step_done "python_deps"
 }
@@ -1079,6 +1084,9 @@ deploy_files() {
                 copy_path "$SOURCE_DIR/$dir" "$INSTALL_DIR/$dir"
             fi
         done
+        if [ -f "$SOURCE_DIR/requirements.txt" ]; then
+            cp "$SOURCE_DIR/requirements.txt" "$INSTALL_DIR/requirements.txt"
+        fi
         # Preserve existing .git in install dir if present (for later updates when network is available)
         if [ -d "$INSTALL_DIR/.git" ]; then
             log_info "Preserved existing .git in $INSTALL_DIR"
