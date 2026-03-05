@@ -8,6 +8,53 @@ get_arch() {
     fi
 }
 
+# Install Xvfb and configure systemd so AnyDesk/TeamViewer have an X11 display when headless.
+install_virtual_display() {
+    log_step "Setting up virtual display for headless remote access"
+    if dpkg -s xvfb >/dev/null 2>&1; then
+        log_info "Xvfb already installed."
+    else
+        echo "  Installing Xvfb..."
+        DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb >> "$INSTALL_LOG" 2>&1
+    fi
+    cat > /etc/systemd/system/xvfb.service <<'XVFBUNIT'
+[Unit]
+Description=X Virtual Frame Buffer for headless AnyDesk/TeamViewer
+Before=anydesk.service teamviewerd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/Xvfb :0 -screen 0 1280x720x24 -ac +extension GLX +render -noreset
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+XVFBUNIT
+    mkdir -p /etc/systemd/system/anydesk.service.d
+    cat > /etc/systemd/system/anydesk.service.d/display.conf <<'DISPLAYCONF'
+[Unit]
+After=xvfb.service
+Wants=xvfb.service
+
+[Service]
+Environment=DISPLAY=:0
+DISPLAYCONF
+    mkdir -p /etc/systemd/system/teamviewerd.service.d
+    cat > /etc/systemd/system/teamviewerd.service.d/display.conf <<'DISPLAYCONF'
+[Unit]
+After=xvfb.service
+Wants=xvfb.service
+
+[Service]
+Environment=DISPLAY=:0
+DISPLAYCONF
+    systemctl daemon-reload
+    systemctl enable xvfb >> "$INSTALL_LOG" 2>&1 || true
+    systemctl start xvfb >> "$INSTALL_LOG" 2>&1 || true
+    log_info "Virtual display :0 is ready for AnyDesk/TeamViewer."
+}
+
 install_anydesk() {
     log_step "Installing AnyDesk"
     if dpkg -s anydesk >/dev/null 2>&1; then
@@ -163,6 +210,10 @@ setup_remote_access() {
     fi
     if [ -z "$REMOTE_ACCESS_PASSWORD" ]; then
         REMOTE_ACCESS_PASSWORD="$HOTSPOT_PASSWORD"
+    fi
+    need_display=$(printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -E '^(anydesk|teamviewer)$' | head -1)
+    if [ -n "$need_display" ]; then
+        install_virtual_display
     fi
     for tool in "${REMOTE_ACCESS_TOOLS[@]}"; do
         echo "Installing remote access tool: $tool"

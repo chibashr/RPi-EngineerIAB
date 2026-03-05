@@ -7,6 +7,7 @@
 <h2>Before you start</h2>
 <ul>
   <li>Remote access tool installed during deployment.</li>
+  <li>When you select AnyDesk or TeamViewer, the installer configures a virtual display (Xvfb) so both work headless without a monitor.</li>
   <li>Device has WAN connectivity (USB or Ethernet).</li>
   <li>You have the remote access password.</li>
 </ul>
@@ -28,7 +29,7 @@
 <h2>Troubleshooting</h2>
 <ul>
   <li><strong>TeamViewer ID missing on dashboard</strong> – See <a href="../troubleshooting/common-issues.html#teamviewer-running-but-connection-id-not-on-dashboard">TeamViewer running but connection ID not on dashboard</a>.</li>
-  <li><strong>AnyDesk: "display_server_not_supported"</strong> – See <a href="../troubleshooting/common-issues.html#anydesk-session-closed-display_server_not_supported">AnyDesk: Session closed / display_server_not_supported</a> (use TeamViewer or VNC on headless devices).</li>
+  <li><strong>AnyDesk: "display_server_not_supported"</strong> – See <a href="../troubleshooting/common-issues.html#anydesk-session-closed-display_server_not_supported">AnyDesk: Session closed / display_server_not_supported</a> (installer sets up a virtual display for new installs; existing installs can re-run setup or follow manual steps).</li>
 </ul>
 
 <h2>Related</h2>
@@ -37,4 +38,4 @@
   <li><a href="../getting-started/quick-start.html">Quick start</a></li>
 </ul>
 
-<p><strong>Last updated:</strong> 2026-02-02</p>
+<p><strong>Last updated:</strong> 2026-03-04</p>
