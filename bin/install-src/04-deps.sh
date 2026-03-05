@@ -15,6 +15,10 @@ apt_install_interactive() {
 }
 
 install_system_dependencies() {
+    if [ "$INSTALL_MODE" = "upgrade" ]; then
+        log_info "Upgrade: skipping system package upgrade (only updating rpi-engineer)."
+        return 0
+    fi
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "deps"; then log_info "Step 'deps' already completed; skipping."; return 0; fi
     log_step "Installing system dependencies"
     DEBIAN_FRONTEND=noninteractive dpkg --configure -a >> "$INSTALL_LOG" 2>&1 || true
@@ -76,6 +80,11 @@ validate_dependencies() {
 }
 
 install_required_packages() {
+    if [ "$INSTALL_MODE" = "upgrade" ]; then
+        log_info "Upgrade: skipping package install (only updating rpi-engineer)."
+        DEPS_INSTALLED="yes"
+        return 0
+    fi
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "packages"; then log_info "Step 'packages' already completed; skipping."; DEPS_INSTALLED="yes"; return 0; fi
     log_step "Installing required packages"
     local packages=(
