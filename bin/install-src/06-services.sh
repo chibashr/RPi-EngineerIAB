@@ -203,6 +203,17 @@ EOF
     ln -sf /etc/nginx/sites-available/rpi-engineer /etc/nginx/sites-enabled/rpi-engineer
     rm -f /etc/nginx/sites-enabled/default
     if [ -d "$INSTALL_DIR/web" ]; then
+        # Repair nested web/web layout (e.g. from older rsync deploy); nginx expects index.html in web/.
+        if [ -d "$INSTALL_DIR/web/web" ] && [ ! -f "$INSTALL_DIR/web/index.html" ]; then
+            log_info "Fixing nested web directory layout."
+            for f in "$INSTALL_DIR/web/web"/*; do [ -e "$f" ] && mv "$f" "$INSTALL_DIR/web/"; done
+            for f in "$INSTALL_DIR/web/web"/.*; do
+                [ "$f" = "$INSTALL_DIR/web/web/." ] && continue
+                [ "$f" = "$INSTALL_DIR/web/web/.." ] && continue
+                [ -e "$f" ] && mv "$f" "$INSTALL_DIR/web/"
+            done
+            rmdir "$INSTALL_DIR/web/web" 2>/dev/null || true
+        fi
         NGINX_USER="www-data"
         if [ -f /etc/nginx/nginx.conf ] && grep -q '^[[:space:]]*user[[:space:]]' /etc/nginx/nginx.conf; then
             NGINX_USER=$(grep '^[[:space:]]*user[[:space:]]' /etc/nginx/nginx.conf | head -1 | awk '{print $2}' | tr -d ';')
@@ -212,6 +223,8 @@ EOF
         else
             chmod -R o+rX "$INSTALL_DIR/web"
         fi
+        # Ensure nginx can read even if run user differs; avoid "directory index forbidden".
+        chmod -R o+rX "$INSTALL_DIR/web"
         # Ensure nginx can traverse parent path (e.g. /opt, /opt/rpi-engineer).
         for d in "$(dirname "$INSTALL_DIR")" "$INSTALL_DIR"; do
             [ -d "$d" ] && chmod o+x "$d" 2>/dev/null || true

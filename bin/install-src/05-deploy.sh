@@ -59,7 +59,12 @@ copy_path() {
     local src="$1"
     local dest="$2"
     if command -v rsync >/dev/null 2>&1; then
-        rsync -a --delete "$src" "$dest"
+        if [ -d "$src" ]; then
+            mkdir -p "${dest%/}"
+            rsync -a --delete "${src%/}/" "${dest%/}/"
+        else
+            rsync -a --delete "$src" "$dest"
+        fi
     else
         rm -rf "$dest"
         cp -a "$src" "$dest"

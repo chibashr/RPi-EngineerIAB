@@ -104,6 +104,7 @@ if [ -d "${INSTALL_DIR}/web" ]; then
     else
         chmod -R o+rX "${INSTALL_DIR}/web"
     fi
+    chmod -R o+rX "${INSTALL_DIR}/web"
     for d in "$(dirname "$INSTALL_DIR")" "$INSTALL_DIR"; do
         [ -d "$d" ] && chmod o+x "$d" 2>/dev/null || true
     done

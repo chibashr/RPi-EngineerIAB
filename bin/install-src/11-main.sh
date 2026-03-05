@@ -151,6 +151,10 @@ main() {
         enable_services
         progress_bar 15 16 "Health check"
         create_health_check_script
+        if [ "$INSTALL_MODE" = "upgrade" ] && [ -x "$INSTALL_DIR/bin/apply-web-permissions.sh" ]; then
+            log_step "Applying web permissions (upgrade)"
+            "$INSTALL_DIR/bin/apply-web-permissions.sh" >> "$INSTALL_LOG" 2>&1 || log_warn "apply-web-permissions.sh had issues (see $INSTALL_LOG)."
+        fi
         progress_bar 16 16 "Complete"
     else
         progress_bar 1 6 "WiFi hotspot"
