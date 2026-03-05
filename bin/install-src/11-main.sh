@@ -96,11 +96,7 @@ main() {
         fi
     elif [ "$INSTALL_MODE" = "upgrade" ] && [ "$UPGRADE_SKIP_CONFIG" = "1" ]; then
         load_install_conf
-        if [ "${NONINTERACTIVE:-0}" != "1" ]; then
-            prompt_modules
-        else
-            log_info "Non-interactive: keeping previously configured modules."
-        fi
+        log_info "Upgrade: using existing configuration (no module or wizard prompts)."
         write_install_conf
         if [ "$TARGET_HOSTNAME" != "$(hostname)" ]; then
             hostnamectl set-hostname "$TARGET_HOSTNAME"

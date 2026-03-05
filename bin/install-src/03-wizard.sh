@@ -65,7 +65,7 @@ determine_install_mode() {
                 echo "  2) Re-run full configuration wizard"
                 interactive_read -r -p "Enter choice (1-2) [1]: " upgrade_choice
                 case "${upgrade_choice:-1}" in
-                    1) UPGRADE_SKIP_CONFIG="1"; log_info "Upgrade: using existing configuration; module selection will be shown." ;;
+                    1) UPGRADE_SKIP_CONFIG="1"; log_info "Upgrade: using existing configuration (upgrade in place)." ;;
                     2) UPGRADE_SKIP_CONFIG="0"; log_info "Upgrade: re-running full wizard." ;;
                     *) UPGRADE_SKIP_CONFIG="1" ;;
                 esac

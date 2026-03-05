@@ -482,7 +482,7 @@ determine_install_mode() {
                 echo "  2) Re-run full configuration wizard"
                 interactive_read -r -p "Enter choice (1-2) [1]: " upgrade_choice
                 case "${upgrade_choice:-1}" in
-                    1) UPGRADE_SKIP_CONFIG="1"; log_info "Upgrade: using existing configuration; module selection will be shown." ;;
+                    1) UPGRADE_SKIP_CONFIG="1"; log_info "Upgrade: using existing configuration (upgrade in place)." ;;
                     2) UPGRADE_SKIP_CONFIG="0"; log_info "Upgrade: re-running full wizard." ;;
                     *) UPGRADE_SKIP_CONFIG="1" ;;
                 esac
@@ -2171,11 +2171,7 @@ main() {
         fi
     elif [ "$INSTALL_MODE" = "upgrade" ] && [ "$UPGRADE_SKIP_CONFIG" = "1" ]; then
         load_install_conf
-        if [ "${NONINTERACTIVE:-0}" != "1" ]; then
-            prompt_modules
-        else
-            log_info "Non-interactive: keeping previously configured modules."
-        fi
+        log_info "Upgrade: using existing configuration (no module or wizard prompts)."
         write_install_conf
         if [ "$TARGET_HOSTNAME" != "$(hostname)" ]; then
             hostnamectl set-hostname "$TARGET_HOSTNAME"
