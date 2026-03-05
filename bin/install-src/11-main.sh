@@ -168,6 +168,8 @@ main() {
         create_health_check_script
     fi
 
+    progress_cleanup
+    echo
     show_installation_summary
     rm -f "$INSTALL_PROGRESS_FILE"
     log_info "Install progress file removed (install complete)."

@@ -134,6 +134,11 @@ progress_bar() {
 
 progress_cleanup() {
     if [ ! -t 1 ]; then return 0; fi
+    # Clear the progress bar line (was in reserved last line) so it doesn't linger after summary.
+    if [ -n "$PROGRESS_LINES" ] && [ "$PROGRESS_LINES" -gt 0 ]; then
+        tput cup "$PROGRESS_LINES" 0 2>/dev/null || true
+        tput el 2>/dev/null || true
+    fi
     # Reset scroll region to full screen (ESC [ r)
     printf '\033[r' 2>/dev/null || true
 }
@@ -2243,6 +2248,8 @@ main() {
         create_health_check_script
     fi
 
+    progress_cleanup
+    echo
     show_installation_summary
     rm -f "$INSTALL_PROGRESS_FILE"
     log_info "Install progress file removed (install complete)."
