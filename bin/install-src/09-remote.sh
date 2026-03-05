@@ -8,19 +8,19 @@ get_arch() {
     fi
 }
 
-# Install Xvfb and configure systemd so AnyDesk/TeamViewer have an X11 display when headless.
+# Install Xvfb + minimal WM and configure systemd so AnyDesk/TeamViewer have an X11 session when headless.
 install_virtual_display() {
     log_step "Setting up virtual display for headless remote access"
-    if dpkg -s xvfb >/dev/null 2>&1; then
-        log_info "Xvfb already installed."
-    else
-        echo "  Installing Xvfb..."
-        DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb >> "$INSTALL_LOG" 2>&1
-    fi
+    for pkg in xvfb openbox; do
+        if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+            echo "  Installing $pkg..."
+            DEBIAN_FRONTEND=noninteractive apt-get install -y "$pkg" >> "$INSTALL_LOG" 2>&1
+        fi
+    done
     cat > /etc/systemd/system/xvfb.service <<'XVFBUNIT'
 [Unit]
 Description=X Virtual Frame Buffer for headless AnyDesk/TeamViewer
-Before=anydesk.service teamviewerd.service
+Before=anydesk.service teamviewerd.service xvfb-wm.service
 
 [Service]
 Type=simple
@@ -31,12 +31,30 @@ RestartSec=2
 [Install]
 WantedBy=multi-user.target
 XVFBUNIT
+    cat > /etc/systemd/system/xvfb-wm.service <<'XVFBWMUNIT'
+[Unit]
+Description=Openbox WM on virtual display for AnyDesk/TeamViewer
+After=xvfb.service
+Wants=xvfb.service
+Before=anydesk.service teamviewerd.service
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sleep 3
+ExecStart=/usr/bin/env DISPLAY=:0 openbox --sm-disable
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+XVFBWMUNIT
     systemctl unmask xvfb.service >> "$INSTALL_LOG" 2>&1 || true
+    systemctl unmask xvfb-wm.service >> "$INSTALL_LOG" 2>&1 || true
     mkdir -p /etc/systemd/system/anydesk.service.d
     cat > /etc/systemd/system/anydesk.service.d/display.conf <<'DISPLAYCONF'
 [Unit]
-After=xvfb.service
-Wants=xvfb.service
+After=xvfb.service xvfb-wm.service
+Wants=xvfb.service xvfb-wm.service
 
 [Service]
 Environment=DISPLAY=:0
@@ -44,16 +62,17 @@ DISPLAYCONF
     mkdir -p /etc/systemd/system/teamviewerd.service.d
     cat > /etc/systemd/system/teamviewerd.service.d/display.conf <<'DISPLAYCONF'
 [Unit]
-After=xvfb.service
-Wants=xvfb.service
+After=xvfb.service xvfb-wm.service
+Wants=xvfb.service xvfb-wm.service
 
 [Service]
 Environment=DISPLAY=:0
 DISPLAYCONF
     systemctl daemon-reload
-    systemctl enable xvfb >> "$INSTALL_LOG" 2>&1 || true
+    systemctl enable xvfb xvfb-wm >> "$INSTALL_LOG" 2>&1 || true
     systemctl start xvfb >> "$INSTALL_LOG" 2>&1 || true
-    log_info "Virtual display :0 is ready for AnyDesk/TeamViewer."
+    systemctl start xvfb-wm >> "$INSTALL_LOG" 2>&1 || true
+    log_info "Virtual display :0 with Openbox is ready for AnyDesk/TeamViewer."
 }
 
 install_anydesk() {

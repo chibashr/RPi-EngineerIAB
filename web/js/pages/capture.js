@@ -256,7 +256,11 @@ async function stopCapture(captureId) {
         elements.liveView.textContent = "Select an active capture to view live, or click here to connect to the first.";
       }
     }
-    loadCaptureData();
+    try {
+      await loadCaptureData();
+    } catch (_) {
+      showToast("Capture stopped; list could not be refreshed.", "error");
+    }
   } catch (error) {
     showToast("Unable to stop capture.", "error");
   }
@@ -429,13 +433,22 @@ async function startCapture(interfaceValue, nameValue, filterValue) {
     return;
   }
   try {
-    await apiPost("/api/v1/capture/start", {
+    const payload = await apiPost("/api/v1/capture/start", {
       interface: interfaceValue,
       name: nameValue,
       filter: filterValue || undefined,
     });
+    const newCapture = extractData(payload);
+    if (newCapture && newCapture.capture_id) {
+      activeCaptures = [...activeCaptures, newCapture];
+      renderCaptures(elements.activeList, activeCaptures, "No active captures.");
+    }
     showToast("Capture started.", "success");
-    loadCaptureData();
+    try {
+      await loadCaptureData();
+    } catch (_) {
+      showToast("Capture started; list could not be refreshed.", "error");
+    }
   } catch (error) {
     showToast("Unable to start capture.", "error");
   }

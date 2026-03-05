@@ -37,6 +37,7 @@ export async function apiGet(endpoint, options = {}) {
     fetch(url.toString(), {
       method: "GET",
       headers: { Accept: "application/json" },
+      cache: "no-store",
       ...fetchOptions,
     }),
     timeoutMs

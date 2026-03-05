@@ -85,7 +85,9 @@ function setupActions() {
               : "Network reset completed.",
             "success"
           );
-          loadNetworkData();
+          return loadNetworkData().catch(() =>
+            showToast("Network reset; list could not be refreshed.", "error")
+          );
         })
         .catch(() => showToast("Unable to reset network.", "error"));
     });

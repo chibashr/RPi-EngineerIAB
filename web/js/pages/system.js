@@ -157,7 +157,9 @@ function runBulkAction(action) {
       } else {
         showToast(`${action} completed for ${services.length} service(s).`, "success");
       }
-      loadServices();
+      return loadServices().catch(() =>
+        showToast("Services updated; list could not be refreshed.", "error")
+      );
     })
     .catch(() => showToast(`Unable to ${action} selected services.`, "error"));
 }
@@ -166,13 +168,15 @@ function runSingleAction(serviceName, action) {
   apiPost("/api/v1/system/services", { service: serviceName, action })
     .then(() => {
       showToast(`${action} completed for ${serviceName}.`, "success");
-      loadServices();
+      return loadServices().catch(() =>
+        showToast("Services updated; list could not be refreshed.", "error")
+      );
     })
     .catch(() => showToast(`Unable to ${action} ${serviceName}.`, "error"));
 }
 
 function loadServices() {
-  apiGet("/api/v1/system/services")
+  return apiGet("/api/v1/system/services")
     .then((payload) => {
       const data = extractData(payload) || {};
       renderServices(data.services);

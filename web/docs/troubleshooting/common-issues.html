@@ -96,12 +96,12 @@ chmod o+x /opt /opt/rpi-engineer</pre>
 
 <h2 id="anydesk-session-closed-display_server_not_supported">AnyDesk: "Session closed" / "display_server_not_supported"</h2>
 <p><strong>Symptom:</strong> Connecting with AnyDesk using the ID from the dashboard shows a dialog: <strong>Session Closed</strong>, <strong>Status: display_server_not_supported</strong>.</p>
-<p><strong>Cause:</strong> AnyDesk on Linux requires an active graphical display (X11). On headless or console-only systems (no monitor, no desktop session), there is no display server for AnyDesk to attach to, so the connection fails with this error.</p>
+<p><strong>Cause:</strong> AnyDesk on Linux requires an active X11 session (display + window manager). On headless systems, a bare virtual display (Xvfb only) is often not enough; AnyDesk may still reject it.</p>
 <p><strong>Resolution:</strong></p>
 <ul>
-  <li><strong>New installs:</strong> The installer sets up a virtual display (Xvfb) when you select AnyDesk or TeamViewer, so both should work headless without a monitor. Ensure you chose AnyDesk or TeamViewer during setup.</li>
-  <li><strong>Existing installs:</strong> Re-run the installer and complete remote access setup (select AnyDesk or TeamViewer) so it installs Xvfb and configures the services to use <code>DISPLAY=:0</code>. Or install manually: <code>sudo apt-get install -y xvfb</code>, create <code>/etc/systemd/system/xvfb.service</code> to run <code>Xvfb :0 -screen 0 1280x720x24 -ac</code>, add systemd drop-ins for <code>anydesk.service</code> and <code>teamviewerd.service</code> with <code>Environment=DISPLAY=:0</code> and <code>After=xvfb.service</code>, then <code>sudo systemctl enable --now xvfb</code> and restart AnyDesk/TeamViewer.</li>
-  <li><strong>Alternative:</strong> Use TeamViewer or VNC if you prefer not to use a virtual display; or attach a monitor (or HDMI dummy plug) and log in to an X11 desktop.</li>
+  <li><strong>New installs:</strong> The installer sets up Xvfb plus a minimal window manager (Openbox) on virtual display <code>:0</code> when you select AnyDesk or TeamViewer. Ensure you chose AnyDesk or TeamViewer during setup.</li>
+  <li><strong>Existing installs:</strong> Run the project’s virtual-display script so the session includes a WM: <code>sudo bash bin/setup-virtual-display.sh</code> (from the repo on the device). This installs <code>xvfb</code> and <code>openbox</code>, creates <code>xvfb.service</code> and <code>xvfb-wm.service</code>, and configures AnyDesk/TeamViewer to use <code>DISPLAY=:0</code>. Then <code>sudo systemctl restart anydesk teamviewerd</code>.</li>
+  <li><strong>If it still fails:</strong> AnyDesk can be unreliable headless even with Xvfb+Openbox. Use <strong>TeamViewer</strong> or <strong>VNC</strong> for headless access, or attach a monitor (or HDMI dummy plug) and log in to an X11 desktop.</li>
 </ul>
 <p>See <a href="../features/remote-access.html">Remote access</a> for supported tools.</p>
 
