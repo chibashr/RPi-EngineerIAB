@@ -21,6 +21,11 @@ A portable network diagnostic and remote access platform for network engineers a
    ```bash
    curl -fsSL https://raw.githubusercontent.com/chibashr/RPi-EngineerIAB/main/bin/install.sh | sudo bash
    ```
+   To avoid a cached script (e.g. after an update), force a fresh download:
+   ```bash
+   curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" https://raw.githubusercontent.com/chibashr/RPi-EngineerIAB/main/bin/install.sh | sudo bash
+   ```
+   The first line of output shows the run time (UTC); if it matches your run, you have the latest script.
 3. Connect to WiFi hotspot `RPi-Engineer-XXXX` and open http://192.168.50.1
 
 Re-run the installer for upgrade, quick update (repo only), reconfigure, or uninstall.

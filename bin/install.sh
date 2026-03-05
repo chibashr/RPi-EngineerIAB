@@ -1761,6 +1761,11 @@ install_module() {
 }
 
 install_modules() {
+    if [ "$INSTALL_MODE" = "upgrade" ]; then
+        log_info "Upgrade: skipping module install (only updating rpi-engineer)."
+        MODULES_INSTALLED="yes"
+        return 0
+    fi
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "modules"; then log_info "Step 'modules' already completed; skipping."; MODULES_INSTALLED="yes"; return 0; fi
     log_step "Installing modules"
     if [ "${#MODULE_SELECTIONS[@]}" -eq 0 ]; then
@@ -1924,6 +1929,11 @@ EOF
 }
 
 setup_remote_access() {
+    if [ "$INSTALL_MODE" = "upgrade" ]; then
+        log_info "Upgrade: skipping remote access setup (only updating rpi-engineer)."
+        REMOTE_CONFIGURED="yes"
+        return 0
+    fi
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "remote_access"; then log_info "Step 'remote_access' already completed; skipping."; REMOTE_CONFIGURED="yes"; return 0; fi
     log_step "Setting up remote access"
     if [ "${#REMOTE_ACCESS_TOOLS[@]}" -eq 0 ]; then
@@ -2120,6 +2130,7 @@ main() {
     fi
     trap 'progress_cleanup' EXIT
 
+    log_info "RPi Engineer installer (run $(date -u +%Y-%m-%dT%H:%M:%SZ) UTC)"
     run_preflight_checks
     prompt_repair_or_start_over
     determine_install_mode

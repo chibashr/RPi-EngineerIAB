@@ -55,6 +55,11 @@ install_module() {
 }
 
 install_modules() {
+    if [ "$INSTALL_MODE" = "upgrade" ]; then
+        log_info "Upgrade: skipping module install (only updating rpi-engineer)."
+        MODULES_INSTALLED="yes"
+        return 0
+    fi
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "modules"; then log_info "Step 'modules' already completed; skipping."; MODULES_INSTALLED="yes"; return 0; fi
     log_step "Installing modules"
     if [ "${#MODULE_SELECTIONS[@]}" -eq 0 ]; then

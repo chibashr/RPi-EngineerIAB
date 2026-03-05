@@ -63,6 +63,7 @@ main() {
     fi
     trap 'progress_cleanup' EXIT
 
+    log_info "RPi Engineer installer (run $(date -u +%Y-%m-%dT%H:%M:%SZ) UTC)"
     run_preflight_checks
     prompt_repair_or_start_over
     determine_install_mode
