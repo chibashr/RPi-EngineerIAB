@@ -47,6 +47,14 @@
   margin-top: 0.75rem;
 }
 
+.section-muted.mt-0 {
+  margin-top: 0;
+}
+
+.section-muted.mt-tight {
+  margin-top: 0.25rem;
+}
+
 .manual-update-section {
   margin-top: 1rem;
   padding: 0.75rem 0;

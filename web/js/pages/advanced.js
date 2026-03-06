@@ -25,32 +25,6 @@ function setActiveNav() {
   }
 }
 
-function setupSidebarControls() {
-  const sidebar = document.getElementById("sidebar");
-  const sidebarToggle = document.getElementById("sidebar-toggle");
-
-  if (!sidebar || !sidebarToggle) {
-    return;
-  }
-
-  sidebarToggle.addEventListener("click", () => {
-    const isOpen = sidebar.classList.toggle("is-open");
-    sidebarToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
-  });
-
-  document.addEventListener("click", (e) => {
-    if (
-      sidebar.classList.contains("is-open") &&
-      !sidebar.contains(e.target) &&
-      e.target !== sidebarToggle &&
-      !sidebarToggle.contains(e.target)
-    ) {
-      sidebar.classList.remove("is-open");
-      sidebarToggle.setAttribute("aria-expanded", "false");
-    }
-  });
-}
-
 function setupModeSwitch() {
   const button = document.getElementById("switch-simple");
   if (!button) {
@@ -72,7 +46,6 @@ function init() {
   initNotifications();
   initThemeSelector(document.getElementById("theme-select"));
   setActiveNav();
-  setupSidebarControls();
   setupModeSwitch();
 }
 

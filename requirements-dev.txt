@@ -1,3 +1,4 @@
 pytest
 pytest-timeout
 httpx
+beautifulsoup4

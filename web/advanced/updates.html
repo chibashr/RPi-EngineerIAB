@@ -17,8 +17,9 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="/css/base.css" />
+    <link rel="stylesheet" href="/vendor/tailwind/tailwind.min.css" />
     <link rel="stylesheet" href="/css/theme.css" />
+    <link rel="stylesheet" href="/css/base.css" />
     <link rel="stylesheet" href="/css/layout.css" />
     <link rel="stylesheet" href="/css/components.css" />
     <link rel="stylesheet" href="/css/pages/advanced.css" />
@@ -27,7 +28,7 @@
   <body>
     <a class="skip-link" href="#main-content">Skip to main content</a>
     <div class="app-shell">
-      <aside class="sidebar" id="sidebar">
+      <nav id="sidebar" class="nav-sidebar sidebar" role="navigation" aria-label="Main navigation">
         <div class="sidebar-header">
           <div class="brand">
             <div class="brand-mark" aria-hidden="true">RPi</div>
@@ -37,7 +38,7 @@
             </div>
           </div>
         </div>
-        <nav class="sidebar-nav" aria-label="Primary">
+        <div class="sidebar-nav">
           <a class="nav-item" href="/advanced/" data-page="dashboard"
             >Dashboard</a
           >
@@ -80,11 +81,23 @@
             Switch to Simple Mode
           </button>
         </div>
-      </aside>
+      </nav>
+
+      <div class="nav-overlay" aria-hidden="true"></div>
 
       <div class="shell-content">
         <header class="topbar">
-          <button class="btn btn-ghost" id="sidebar-toggle" aria-expanded="false" aria-controls="sidebar">Menu</button>
+          <button class="nav-mobile-toggle" aria-label="Open navigation menu" aria-expanded="false" aria-controls="sidebar">
+            <svg class="icon-menu" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <line x1="3" y1="6" x2="21" y2="6"/>
+              <line x1="3" y1="12" x2="21" y2="12"/>
+              <line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+            <svg class="icon-close hidden" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
           <div class="breadcrumb" id="breadcrumb">Updates</div>
           <div class="topbar-actions">
             <label class="field theme-field" for="theme-select">
@@ -129,7 +142,7 @@
             <div class="section-header">
               <div>
                 <h2>Software Updates</h2>
-                <p class="section-muted" style="margin-top: 0.25rem;">
+                <p class="section-muted mt-tight">
                   Check for differences between the repo and files on this device. Update with existing config, or rollback configuration and version.
                 </p>
               </div>
@@ -145,7 +158,7 @@
                 </button>
               </div>
             </div>
-            <p class="section-muted" style="margin-top: 0;">
+            <p class="section-muted mt-0">
               Rollback restores configuration and the version ref; it does not restore application code.
             </p>
             <div class="update-log-wrapper" id="update-log-wrapper" hidden>
@@ -183,7 +196,7 @@
             </div>
             <div class="manual-update-section" id="manual-update-section" hidden>
               <div class="info-label">Update manually (if in-app update fails)</div>
-              <p class="section-muted" style="margin-top: 0.25rem;">
+              <p class="section-muted mt-tight">
                 If the in-app update fails with permission errors (e.g. in a container), run this command via SSH on the device:
               </p>
               <div class="manual-command-row">
@@ -249,6 +262,7 @@
 
     <div class="toast-region" id="toast-region" aria-live="polite"></div>
 
+    <script src="/js/nav.js" defer></script>
     <script type="module" src="/js/pages/advanced.js" defer></script>
     <script type="module" src="/js/pages/updates.js" defer></script>
   </body>

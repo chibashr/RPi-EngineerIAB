@@ -83,3 +83,55 @@ p {
   clip: rect(0, 0, 0, 0);
   border: 0;
 }
+
+.hidden {
+  display: none !important;
+}
+
+/* Global focus ring — removes need for per-component focus styles */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Theme transition on elements that change color */
+body,
+.card,
+.nav-sidebar,
+.modal-dialog,
+.toast,
+.input,
+.select,
+.tab-button {
+  transition: var(--transition-theme);
+}
+
+/* CSS-only spinner */
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.spinner-lg {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+    border-top-color: var(--color-accent);
+    opacity: 0.6;
+  }
+}

@@ -1,2 +1,6 @@
 # Ensure shell scripts use LF for Linux/Docker compatibility
 *.sh text eol=lf
+
+# Vendor assets: treat minified as binary to avoid line-ending churn
+web/vendor/**/*.min.css binary
+web/vendor/**/*.min.js  binary
