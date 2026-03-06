@@ -28,7 +28,11 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     serial = None
 
+from gevent.threadpool import ThreadPool
+
 from lib.module_logger import get_service_logger
+
+_threadpool = ThreadPool(4)
 
 logger = get_service_logger(__name__)
 LOG_DIR = Path("/opt/rpi-engineer/data/serial_logs")
@@ -36,6 +40,37 @@ EXPORT_DIR = LOG_DIR / "exports"
 CONFIG_PATH = LOG_DIR.parent / "serial_devices.json"
 MAX_SESSIONS = 5
 DEVICE_SCAN_CACHE_TTL = 5.0
+
+
+def _pyudev_scan_ports() -> List[Tuple[str, str, Optional[object]]]:
+    """Run in threadpool: return list of (node, description, vid) for tty devices."""
+    if not pyudev:
+        return []
+    context = pyudev.Context()
+    result: List[Tuple[str, str, Optional[object]]] = []
+    for device in context.list_devices(subsystem="tty"):
+        node = device.device_node
+        if not node:
+            continue
+        result.append((
+            node,
+            device.get("ID_MODEL", "Serial Device") or "Serial Device",
+            device.get("ID_VENDOR_ID"),
+        ))
+    return result
+
+
+def _dev_glob_scan() -> List[Tuple[str, str, None]]:
+    """Run in threadpool: return list of (path, description, vid) from /dev glob."""
+    dev_root = Path("/dev")
+    if not dev_root.exists():
+        return []
+    result: List[Tuple[str, str, None]] = []
+    for path in dev_root.glob("ttyUSB*"):
+        result.append((str(path), "Serial Device", None))
+    for path in dev_root.glob("ttyACM*"):
+        result.append((str(path), "Serial Device", None))
+    return result
 
 
 @dataclass
@@ -160,9 +195,9 @@ class SerialManager:
             logger.warning("create_session: maximum sessions %d reached", MAX_SESSIONS)
             raise RuntimeError("Maximum sessions reached")
         session_id = str(uuid.uuid4())
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        _threadpool.apply(LOG_DIR.mkdir, [], {"parents": True, "exist_ok": True})
         log_path = LOG_DIR / f"{session_id}.log"
-        log_path.write_text(self._log_header(device_id))
+        _threadpool.apply(log_path.write_text, [self._log_header(device_id)])
         merged_config = {**self._device_configs.get(device_id, {}), **config}
         session = SerialSession(
             session_id=session_id,
@@ -393,28 +428,21 @@ class SerialManager:
             return self._device_cache
         devices = []
         if serial:
-            ports = list(serial.tools.list_ports.comports())
+            ports = list(_threadpool.apply(serial.tools.list_ports.comports))
             logger.info("_scan_devices: pyserial found %d port(s)", len(ports))
             for port in ports:
                 dev = self._port_to_device(port.device, port.description, port.vid)
                 devices.append(dev)
         if pyudev and not devices:
             logger.info("_scan_devices: pyserial empty, trying pyudev")
-            context = pyudev.Context()
-            for device in context.list_devices(subsystem="tty"):
-                node = device.device_node
-                if not node:
-                    continue
-                devices.append(
-                    self._port_to_device(node, device.get("ID_MODEL", "Serial Device"), device.get("ID_VENDOR_ID"))
-                )
-        dev_root = Path("/dev")
-        if not devices and dev_root.exists():
-            logger.info("_scan_devices: fallback to /dev/ttyUSB* and ttyACM*")
-            for path in dev_root.glob("ttyUSB*"):
-                devices.append(self._port_to_device(str(path), "Serial Device", None))
-            for path in dev_root.glob("ttyACM*"):
-                devices.append(self._port_to_device(str(path), "Serial Device", None))
+            for node, description, vid in _threadpool.apply(_pyudev_scan_ports):
+                devices.append(self._port_to_device(node, description, vid))
+        if not devices:
+            entries = _threadpool.apply(_dev_glob_scan)
+            if entries:
+                logger.info("_scan_devices: fallback to /dev/ttyUSB* and ttyACM*")
+            for path, description, vid in entries:
+                devices.append(self._port_to_device(path, description, vid))
         self._device_cache = devices
         self._device_cache_time = now
         return devices
