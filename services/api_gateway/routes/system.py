@@ -1,6 +1,6 @@
 """System API routes."""
 
-from flask import Blueprint, request
+from fastapi import APIRouter, Body
 
 from lib.module_logger import get_service_logger
 from services.system_manager import SystemManager
@@ -10,12 +10,12 @@ from services.logging_service import logging_service
 from ..response import error_response, success_response
 
 logger = get_service_logger(__name__)
-system_bp = Blueprint("system", __name__, url_prefix="/api/v1/system")
+router = APIRouter(prefix="/api/v1/system", tags=["system"])
 _system_manager = SystemManager()
 _monitor_service = MonitorService()
 
 
-@system_bp.get("/status")
+@router.get("/status")
 def get_status():
     status = _system_manager.get_status()
     try:
@@ -40,14 +40,14 @@ def get_status():
     return success_response(status)
 
 
-@system_bp.get("/services")
+@router.get("/services")
 def list_services():
     return success_response(_system_manager.list_services())
 
 
-@system_bp.post("/services")
-def control_service():
-    payload = request.get_json(silent=True) or {}
+@router.post("/services")
+def control_service(payload: dict | None = Body(default=None)):
+    payload = payload or {}
     service = payload.get("service")
     action = payload.get("action")
     if not service or not action:
@@ -71,9 +71,9 @@ def control_service():
     return success_response(result)
 
 
-@system_bp.post("/services/bulk")
-def control_services_bulk():
-    payload = request.get_json(silent=True) or {}
+@router.post("/services/bulk")
+def control_services_bulk(payload: dict | None = Body(default=None)):
+    payload = payload or {}
     services = payload.get("services")
     action = payload.get("action")
     if not services or not isinstance(services, list) or not action:
@@ -97,9 +97,9 @@ def control_services_bulk():
     return success_response({"results": results})
 
 
-@system_bp.post("/power")
-def power_action():
-    payload = request.get_json(silent=True) or {}
+@router.post("/power")
+def power_action(payload: dict | None = Body(default=None)):
+    payload = payload or {}
     action = payload.get("action")
     if not action:
         return error_response(
@@ -120,14 +120,14 @@ def power_action():
     return success_response(result)
 
 
-@system_bp.get("/info")
+@router.get("/info")
 def get_info():
     return success_response(_system_manager.get_info())
 
 
-@system_bp.post("/settings")
-def save_settings():
-    payload = request.get_json(silent=True) or {}
+@router.post("/settings")
+def save_settings(payload: dict | None = Body(default=None)):
+    payload = payload or {}
     try:
         result = _system_manager.save_settings(payload)
         logger.info("System settings saved via API")

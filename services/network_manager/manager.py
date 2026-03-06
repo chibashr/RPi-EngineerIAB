@@ -60,11 +60,16 @@ class NetworkManager:
         if os.getenv("RPI_ENGINEER_DRY_RUN", "1") == "1":
             self._save_interface_config(interface_id, config)
             return {"interface": interface_id, "mode": mode, "applied": False}
-        if mode == "dhcp":
-            self._apply_dhcp(interface_id)
-        else:
-            self._apply_static(interface_id, config)
-        self.ensure_wan_priority()
+        try:
+            if mode == "dhcp":
+                self._apply_dhcp(interface_id)
+            else:
+                self._apply_static(interface_id, config)
+            self.ensure_wan_priority()
+            logger.info("Interface state change iface=%s state=%s", interface_id, mode)
+        except Exception as exc:
+            logger.warning("Interface config failed iface=%s error=%s", interface_id, exc)
+            raise
         return {"interface": interface_id, "mode": mode, "applied": True}
 
     def list_routes(self) -> Dict[str, List[Dict[str, str]]]:
@@ -136,7 +141,7 @@ class NetworkManager:
             config = iface.get("config")
             if iface_id and config:
                 self.update_interface(iface_id, config)
-        logger.info("Network profile loaded: %s", name)
+        logger.info("Profile loaded name=%s", name)
         return {"name": name, "applied": True}
 
     def _find_profile_by_name(self, name: str) -> Optional[Path]:
@@ -276,6 +281,7 @@ wpa_key_mgmt=WPA-PSK
         except OSError:
             pass
         subprocess.run(["systemctl", "restart", "hostapd"], check=False)
+        logger.info("Hotspot started interface=wlan0 ssid=%s", ssid)
         return {"ssid": ssid, "channel": channel, "applied": True}
 
     def _interface_names(self) -> List[str]:

@@ -28,11 +28,11 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     serial = None
 
-from gevent.threadpool import ThreadPool
+from concurrent.futures import ThreadPoolExecutor
 
 from lib.module_logger import get_service_logger
 
-_threadpool = ThreadPool(4)
+_threadpool = ThreadPoolExecutor(max_workers=4)
 
 logger = get_service_logger(__name__)
 LOG_DIR = Path("/opt/rpi-engineer/data/serial_logs")
@@ -195,9 +195,9 @@ class SerialManager:
             logger.warning("create_session: maximum sessions %d reached", MAX_SESSIONS)
             raise RuntimeError("Maximum sessions reached")
         session_id = str(uuid.uuid4())
-        _threadpool.apply(LOG_DIR.mkdir, [], {"parents": True, "exist_ok": True})
+        _threadpool.submit(LOG_DIR.mkdir, parents=True, exist_ok=True).result()
         log_path = LOG_DIR / f"{session_id}.log"
-        _threadpool.apply(log_path.write_text, [self._log_header(device_id)])
+        _threadpool.submit(log_path.write_text, self._log_header(device_id)).result()
         merged_config = {**self._device_configs.get(device_id, {}), **config}
         session = SerialSession(
             session_id=session_id,
@@ -207,7 +207,8 @@ class SerialManager:
             log_path=log_path,
         )
         self._sessions[session_id] = session
-        logger.info("Session created: %s for device %s (baud=%s)", session_id[:8], device_id, merged_config.get("baud_rate", 9600))
+        baud = int(merged_config.get("baud_rate", 9600))
+        logger.info("Serial session started session_id=%s device=%s", session_id, device_id)
         return {
             "session_id": session_id,
             "device_id": device_id,
@@ -254,7 +255,7 @@ class SerialManager:
         if not session:
             raise KeyError("Session not found")
         session.status = "closed"
-        logger.info("Session closed: %s (device %s)", session_id[:8], session.device_id)
+        logger.info("Serial session ended session_id=%s", session_id)
         return {"session_id": session_id, "status": "closed"}
 
     def release_session(self, session_id: str) -> None:
@@ -262,7 +263,7 @@ class SerialManager:
         session = self._sessions.pop(session_id, None)
         if session:
             session.status = "closed"
-            logger.info("Session released (WebSocket closed): %s device %s", session_id[:8], session.device_id)
+            logger.info("Serial session ended session_id=%s", session_id)
 
     def list_logs(self, device: Optional[str], since: Optional[str], limit: int) -> Dict[str, object]:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -428,7 +429,7 @@ class SerialManager:
             return self._device_cache
         devices = []
         if serial:
-            ports = list(_threadpool.apply(serial.tools.list_ports.comports))
+            ports = list(_threadpool.submit(serial.tools.list_ports.comports).result())
             logger.info("_scan_devices: pyserial found %d port(s)", len(ports))
             seen_ids: set = set()
             for port in ports:
@@ -438,10 +439,10 @@ class SerialManager:
                     devices.append(dev)
         if pyudev and not devices:
             logger.info("_scan_devices: pyserial empty, trying pyudev")
-            for node, description, vid in _threadpool.apply(_pyudev_scan_ports):
+            for node, description, vid in _threadpool.submit(_pyudev_scan_ports).result():
                 devices.append(self._port_to_device(node, description, vid))
         if not devices:
-            entries = _threadpool.apply(_dev_glob_scan)
+            entries = _threadpool.submit(_dev_glob_scan).result()
             if entries:
                 logger.info("_scan_devices: fallback to /dev/ttyUSB* and ttyACM*")
             for path, description, vid in entries:

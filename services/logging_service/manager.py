@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import signal
@@ -45,8 +46,9 @@ class LoggingService:
             repo_root / "data" / "exports",
         )
 
-    def list_logs(self) -> Dict[str, List[Dict[str, object]]]:
+    def list_logs(self) -> Dict[str, object]:
         files = []
+        available_services = self._discover_available_services()
         if self._log_dir.exists():
             for path in sorted(self._log_dir.glob("*.log")):
                 try:
@@ -60,7 +62,9 @@ class LoggingService:
                         "modified": _timestamp(stat.st_mtime),
                     }
                 )
-        return {"files": files}
+        out: Dict[str, object] = {"files": files}
+        out["available_services"] = available_services
+        return out
 
     def _resolve_log_path(self, name: str) -> Path:
         if not name or "/" in name or "\\" in name:
@@ -71,6 +75,88 @@ class LoggingService:
         if not str(candidate).startswith(str(self._log_dir.resolve())):
             raise ValueError("Invalid log file name")
         return candidate
+
+    def _discover_available_services(self) -> List[str]:
+        """Discover service log files (exclude rotated .log.1, .log.2, etc.)."""
+        if not self._log_dir.exists():
+            return []
+        return sorted(
+            f.stem for f in self._log_dir.glob("*.log") if not f.name.endswith(".1")
+        )
+
+    def _tail_log(self, path: Path, n: int) -> List[str]:
+        """Read last n lines efficiently (seek from end for large files)."""
+        if not path.exists() or n <= 0:
+            return []
+        n = min(n, 1000)
+        try:
+            with path.open("r", encoding="utf-8", errors="ignore") as f:
+                f.seek(0, 2)
+                size = f.tell()
+                if size == 0:
+                    return []
+                chunk_size = min(8192, size)
+                f.seek(max(0, size - chunk_size * 4))
+                data = f.read()
+                lines = data.splitlines()
+                return lines[-n:] if len(lines) >= n else lines
+        except OSError:
+            return []
+
+    def _parse_log_line(
+        self, line: str, service_name: str
+    ) -> Optional[Dict[str, object]]:
+        """Parse plain text or JSON log line into {timestamp, level, service, message}."""
+        line = line.strip()
+        if not line:
+            return None
+        try:
+            obj = json.loads(line)
+            if isinstance(obj, dict):
+                ts = obj.get("timestamp") or ""
+                lvl = str(obj.get("level", "INFO")).upper()
+                svc = str(obj.get("service", service_name))
+                msg = str(obj.get("message", line))
+                return {"timestamp": ts, "level": lvl, "service": svc, "message": msg}
+        except (json.JSONDecodeError, TypeError):
+            pass
+        plain_re = re.compile(
+            r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) (\w+) \[(\w+)\] (.+)$"
+        )
+        m = plain_re.match(line)
+        if m:
+            ts_raw, lvl, svc, msg = m.groups()
+            try:
+                dt = datetime.strptime(ts_raw[:19], "%Y-%m-%d %H:%M:%S")
+                ms = int(ts_raw[20:23]) if len(ts_raw) > 19 and ts_raw[19:20] == "," else 0
+                ts_iso = dt.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+                ts_iso += f".{ms:03d}Z" if ms else "Z"
+            except (ValueError, TypeError):
+                ts_iso = ts_raw
+            return {"timestamp": ts_iso, "level": lvl, "service": svc, "message": msg}
+        return None
+
+    def _level_rank(self, level: str) -> int:
+        rank = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3}
+        return rank.get(str(level).upper(), 0)
+
+    def _lines_to_entries(
+        self,
+        lines: List[str],
+        default_service: Optional[str],
+        min_level: Optional[str],
+    ) -> List[Dict[str, object]]:
+        """Parse lines into structured entries, optionally filter by min_level."""
+        min_rank = self._level_rank(min_level) if min_level else 0
+        entries: List[Dict[str, object]] = []
+        for line in lines:
+            parsed = self._parse_log_line(line, default_service or "unknown")
+            if not parsed:
+                continue
+            if self._level_rank(parsed["level"]) < min_rank:
+                continue
+            entries.append(parsed)
+        return entries
 
     def read_log(
         self,
@@ -84,12 +170,17 @@ class LoggingService:
         if not path.exists():
             raise FileNotFoundError("Log file not found")
         lines = self._tail_lines(path, tail, level=level, search=search, service=service)
-        return {
+        svc_name = path.stem
+        entries = self._lines_to_entries(lines, svc_name, level)
+        out: Dict[str, object] = {
             "file": name,
             "tail": tail,
             "lines": lines,
             "filters": {"level": level, "search": search, "service": service},
         }
+        out["entries"] = entries
+        out["available_services"] = self._discover_available_services()
+        return out
 
     def read_all_logs(
         self,
@@ -105,6 +196,8 @@ class LoggingService:
                 "tail": tail,
                 "lines": [],
                 "filters": {"level": level, "search": search, "service": service},
+                "entries": [],
+                "available_services": [],
             }
         
         # Optional timestamp pattern: 2025-02-03 12:34:56,789 or 2025-02-03 12:34:56
@@ -113,10 +206,15 @@ class LoggingService:
         )
         
         all_lines: List[Tuple[str, str]] = []  # (timestamp, line)
+        paths = sorted(self._log_dir.glob("*.log"))
+        if service and service.lower() != "all":
+            paths = [p for p in paths if p.stem == service]
         
-        for path in sorted(self._log_dir.glob("*.log")):
+        for path in paths:
             try:
-                lines = self._tail_lines(path, tail, level=level, search=search, service=service)
+                # When service=all, don't filter line content by service
+                tail_service = None if (not service or str(service).lower() == "all") else service
+                lines = self._tail_lines(path, tail, level=level, search=search, service=tail_service)
                 for line in lines:
                     ts_match = ts_pattern.match(line.strip())
                     ts_str = ts_match.group(1) if ts_match else "0000-00-00 00:00:00"
@@ -129,13 +227,16 @@ class LoggingService:
         # Sort by timestamp, then return just the lines
         all_lines.sort(key=lambda x: x[0])
         merged_lines = [line for _, line in all_lines]
-        
-        return {
+        entries = self._lines_to_entries(merged_lines, None, level)
+        out: Dict[str, object] = {
             "file": "all",
             "tail": tail,
             "lines": merged_lines,
             "filters": {"level": level, "search": search, "service": service},
         }
+        out["entries"] = entries
+        out["available_services"] = self._discover_available_services()
+        return out
 
     def export_logs(self, files: Optional[Iterable[str]] = None) -> Path:
         if files:

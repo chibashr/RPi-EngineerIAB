@@ -1,116 +1,99 @@
-"""RPi Engineer-in-a-Box API Gateway (Phase 1 skeleton)."""
+"""RPi Engineer-in-a-Box API Gateway (FastAPI)."""
 
 from __future__ import annotations
 
 import os
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from flask import Flask
-from flask_sock import Sock
-from flask_cors import CORS
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import FileResponse
+from starlette.responses import Response
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 from lib.module_logger import get_service_logger  # noqa: E402
+from services.api_gateway.middleware.request_logger import RequestLoggerMiddleware  # noqa: E402
 from services.api_gateway.response import success_response  # noqa: E402
 from services.api_gateway.routes import register_routes  # noqa: E402
 from services.api_gateway.websockets import register_websockets  # noqa: E402
 from services.module_manager import module_manager  # noqa: E402
 
 
-def create_app() -> Flask:
-    web_root = REPO_ROOT / "web"
-    # Disable default static route so /modules/<id>/<path> is handled by our route,
-    # not by a catch-all that would 404 for module assets. We serve web/ explicitly below.
-    app = Flask(__name__, static_folder=None)
-    sock = Sock(app)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Cleanup modules on shutdown. Route registration happens in create_app before mount."""
+    yield
+    module_manager.cleanup()
 
-    # Register module asset route first so it is never shadowed by the web catch-all.
-    @app.get("/modules/<module_id>/<path:asset_path>")
+
+def create_app() -> FastAPI:
+    web_root = REPO_ROOT / "web"
+    app = FastAPI(title="RPi Engineer API Gateway", lifespan=lifespan)
+
+    # CORS: localhost, LAN (192.168.x, 10.x, 172.16-31.x). Scope /api/*, /ws/* preserved via same origins.
+    _cors_regex = (
+        r"^http://(127\.0\.0\.1|localhost|192\.168\.\d+\.\d+|"
+        r"10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$"
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=_cors_regex,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.add_middleware(RequestLoggerMiddleware)
+
+    # Security headers middleware
+    class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next) -> Response:
+            response = await call_next(request)
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data:; "
+                "connect-src 'self'; "
+                "object-src 'none'; "
+                "base-uri 'self'; "
+                "frame-ancestors 'none'"
+            )
+            return response
+
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    register_routes(app)
+    register_websockets(app)
+
+    # Module routes must be registered before StaticFiles mount (catch-all)
+    module_manager.discover_and_register(app)
+
+    # Module asset route (before static mount)
+    @app.get("/modules/{module_id}/{asset_path:path}")
     def module_asset(module_id: str, asset_path: str):
-        from flask import abort, send_file
+        from fastapi import HTTPException
 
         asset = module_manager.resolve_web_asset(module_id, asset_path)
         if not asset:
-            abort(404)
-        return send_file(asset)
-
-    # Allow local and LAN access: hotspot (192.168.50.x), other LAN subnets, localhost.
-    # Supports non-internet LANs and access from the Pi itself.
-    _cors_origins = [
-        r"http://127\.0\.0\.1(:\d+)?$",
-        r"http://localhost(:\d+)?$",
-        r"http://192\.168\.\d+\.\d+(:\d+)?$",
-        r"http://10\.\d+\.\d+\.\d+(:\d+)?$",
-        r"http://172\.(1[6-9]|2\d|3[01])\.\d+\.\d+(:\d+)?$",
-    ]
-    CORS(
-        app,
-        resources={
-            r"/api/*": {"origins": _cors_origins},
-            r"/ws/*": {"origins": _cors_origins},
-        },
-    )
-
-    register_routes(app)
-    register_websockets(sock)
-
-    @app.after_request
-    def add_security_headers(response):
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; "
-            "connect-src 'self'; "
-            "object-src 'none'; "
-            "base-uri 'self'; "
-            "frame-ancestors 'none'"
-        )
-        return response
+            raise HTTPException(status_code=404)
+        return FileResponse(asset)
 
     @app.get("/health")
     def health_check():
         return success_response({"status": "healthy"})
 
-    @app.get("/")
-    def serve_simple_index():
-        """Serve simple mode index at root."""
-        from flask import send_file
-
-        return send_file(web_root / "index.html")
-
-    @app.get("/advanced/")
-    @app.get("/advanced")
-    def serve_advanced_index():
-        """Serve advanced mode index at /advanced/."""
-        from flask import send_file
-
-        return send_file(web_root / "advanced" / "index.html")
-
-    @app.get("/<path:path>")
-    def serve_web_asset(path: str):
-        """Serve files from web/ (CSS, JS, HTML). Registered after /modules/ so module assets use that route."""
-        from flask import send_file
-
-        if path.startswith("modules/"):
-            from flask import abort
-
-            abort(404)
-        target = (web_root / path).resolve()
-        if not str(target).startswith(str(web_root.resolve())):
-            from flask import abort
-
-            abort(404)
-        if not target.is_file():
-            from flask import abort
-
-            abort(404)
-        return send_file(target)
+    # Static files: / and /advanced/ served via StaticFiles with html=True
+    # Mount after explicit routes so /health, /api/*, /ws/*, /modules/* take precedence
+    app.mount("/", StaticFiles(directory=str(web_root), html=True), name="web")
 
     return app
 
@@ -119,25 +102,10 @@ app = create_app()
 
 
 if __name__ == "__main__":
+    import uvicorn
+
     logger = get_service_logger("services.api_gateway.main")
     host = os.getenv("RPI_ENGINEER_API_HOST", "0.0.0.0")
     port = int(os.getenv("RPI_ENGINEER_API_PORT", "5000"))
-    debug = os.getenv("RPI_ENGINEER_DEBUG", "0") == "1"
-    use_gevent = os.getenv("RPI_ENGINEER_USE_GEVENT", "1") == "1"
-
-    if use_gevent and not debug:
-        try:
-            from gevent import monkey
-
-            monkey.patch_all()
-            from gevent.pywsgi import WSGIServer
-
-            logger.info("API Gateway starting on %s:%s (gevent)", host, port)
-            WSGIServer((host, port), app).serve_forever()
-        except ImportError:
-            logger.info("gevent not installed; falling back to Flask dev server")
-            logger.info("API Gateway starting on %s:%s", host, port)
-            app.run(host=host, port=port, debug=debug)
-    else:
-        logger.info("API Gateway starting on %s:%s", host, port)
-        app.run(host=host, port=port, debug=debug)
+    logger.info("API Gateway starting on %s:%s (uvicorn)", host, port)
+    uvicorn.run(app, host=host, port=port)

@@ -254,6 +254,7 @@ class UpdateManager:
         repo: Optional[str] = None,
     ) -> Dict[str, object]:
         """Build the standard check_for_updates response dict."""
+        logger.info("Update check result current=%s latest=%s", current_version, available_version)
         out: Dict[str, object] = {
             "current_version": current_version,
             "update_available": update_available,
@@ -308,10 +309,12 @@ class UpdateManager:
                 "backup_path": str(backup_path),
             }
         try:
+            logger.info("Update apply started version=%s", target_version)
             emit("Applying update (git fetch + reset)...")
             self._perform_update(target_version, progress_callback=progress_callback)
             emit("Update applied. Re-applying web permissions if needed...")
         except Exception as exc:
+            logger.error("Update apply failed error=%s", exc, exc_info=True)
             emit(f"Update failed: {exc}")
             emit("Attempting rollback...")
             try:

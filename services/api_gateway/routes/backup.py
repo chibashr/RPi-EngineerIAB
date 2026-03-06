@@ -1,48 +1,65 @@
 """Backup API routes."""
 
+from __future__ import annotations
+
+import asyncio
 import tempfile
 from pathlib import Path
 
-from flask import Blueprint, request, send_file
+from fastapi import APIRouter, File, UploadFile
+from fastapi.responses import FileResponse
 
 from lib.module_logger import get_service_logger
 from services.update_manager import update_manager
 
 from ..response import error_response, success_response
 
-backup_bp = Blueprint("backup", __name__, url_prefix="/api/v1/backup")
 logger = get_service_logger(__name__)
+backup_router = APIRouter(prefix="/api/v1/backup", tags=["backup"])
 
 
-@backup_bp.get("/config")
+@backup_router.get("/config")
 def download_config():
     try:
         backup_path = update_manager.create_config_backup(label="config")
     except Exception as exc:
         return error_response("INTERNAL_ERROR", str(exc), status_code=500)
-    return send_file(
-        backup_path,
-        as_attachment=True,
-        download_name=backup_path.name,
-        mimetype="application/zip",
+    return FileResponse(
+        str(backup_path),
+        media_type="application/zip",
+        filename=backup_path.name,
     )
 
 
-@backup_bp.post("/restore")
-def restore_config():
-    if "file" not in request.files:
-        return error_response("VALIDATION_ERROR", "Backup file is required", status_code=400)
-    file = request.files["file"]
-    if not file:
+@backup_router.post("/restore")
+async def restore_config(file: UploadFile = File(...)):
+    if not file.filename:
         return error_response("VALIDATION_ERROR", "Backup file is required", status_code=400)
     temp_path = None
     try:
+        content = await file.read()
         with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_file:
-            file.save(temp_file.name)
+            temp_file.write(content)
             temp_path = temp_file.name
-        payload = update_manager.restore_config(temp_path)
+        loop = asyncio.get_running_loop()
+        payload = await loop.run_in_executor(
+            None,
+            lambda: update_manager.restore_config(temp_path),
+        )
+    except RuntimeError as exc:
+        logger.warning("Restore failed: %s", exc)
+        return error_response(
+            "INTERNAL_ERROR",
+            f"Restore failed: {exc}. Config may be partially restored; verify system state.",
+            status_code=500,
+        )
     except Exception as exc:
-        return error_response("INTERNAL_ERROR", str(exc), status_code=500)
+        logger.exception("Restore failed: %s", exc)
+        return error_response(
+            "INTERNAL_ERROR",
+            f"Restore failed: {exc}. Config may be partially restored; verify system state.",
+            status_code=500,
+        )
     finally:
         if temp_path:
             try:
