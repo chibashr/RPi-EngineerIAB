@@ -430,9 +430,12 @@ class SerialManager:
         if serial:
             ports = list(_threadpool.apply(serial.tools.list_ports.comports))
             logger.info("_scan_devices: pyserial found %d port(s)", len(ports))
+            seen_ids: set = set()
             for port in ports:
                 dev = self._port_to_device(port.device, port.description, port.vid)
-                devices.append(dev)
+                if dev["id"] not in seen_ids:
+                    seen_ids.add(dev["id"])
+                    devices.append(dev)
         if pyudev and not devices:
             logger.info("_scan_devices: pyserial empty, trying pyudev")
             for node, description, vid in _threadpool.apply(_pyudev_scan_ports):
@@ -443,9 +446,17 @@ class SerialManager:
                 logger.info("_scan_devices: fallback to /dev/ttyUSB* and ttyACM*")
             for path, description, vid in entries:
                 devices.append(self._port_to_device(path, description, vid))
-        self._device_cache = devices
+        # Deduplicate by device id (same path can appear from multiple scan sources)
+        seen: set[str] = set()
+        unique: List[Dict[str, object]] = []
+        for dev in devices:
+            did = dev.get("id") or dev.get("path")
+            if did and did not in seen:
+                seen.add(did)
+                unique.append(dev)
+        self._device_cache = unique
         self._device_cache_time = now
-        return devices
+        return unique
 
     def _port_to_device(self, path: str, description: str, vid: Optional[int]) -> Dict[str, object]:
         chipset = _chipset_from_vid(vid)

@@ -212,7 +212,9 @@ function renderSerialDevices(devices) {
     item.className = "status-item";
     const label = document.createElement("span");
     label.className = "status-label";
-    label.textContent = device.friendly_name || device.path || device.id || "Device";
+    const name = device.friendly_name || device.path || device.id || "Device";
+    const path = device.path || device.id || "";
+    label.textContent = path && path !== name ? `${name} (${path})` : name;
     const value = document.createElement("span");
     value.className = "status-value";
     value.textContent = `${device.status || "unknown"} • ${device.chipset || "—"}`;

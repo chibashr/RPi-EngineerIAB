@@ -151,11 +151,12 @@ function isSessionWsConnected(sessionId) {
 }
 
 function deviceDisplayName(device) {
-  const name = device.friendly_name || device.path || device.id || "";
+  const path = device.path || device.id || "";
+  const name = device.friendly_name || path || "";
   if (!name || name.toLowerCase() === "n/a") {
-    return device.path || device.id || "Serial Device";
+    return path || "Serial Device";
   }
-  return name;
+  return path && path !== name ? `${name} (${path})` : name;
 }
 
 function updateConsoleEmptyState() {
@@ -201,7 +202,9 @@ function renderDevices(devices) {
 
     const metaEl = document.createElement("div");
     metaEl.className = "device-meta";
-    metaEl.textContent = `${chipset} · ${statusLabel(deviceStatus, !!session, isWsConnected, wsStatus)}`;
+    const path = device.path || device.id || "";
+    const pathPart = path ? ` · ${path}` : "";
+    metaEl.textContent = `${chipset}${pathPart} · ${statusLabel(deviceStatus, !!session, isWsConnected, wsStatus)}`;
     item.appendChild(metaEl);
 
     const actions = document.createElement("div");
