@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import queue
 import threading
 import time
 from typing import Optional
 
 from flask_sock import Sock
+from simple_websocket import ConnectionClosed
 
 from services.capture_manager import capture_manager
 from services.capture_manager.manager import split_bpf_filter
@@ -161,7 +163,7 @@ def register_websockets(sock: Sock) -> None:
         logger.info("serial_console: port opened, starting reader for session %s", session_id[:8])
         session.websocket_connected = True
         stop_event = threading.Event()
-        send_lock = threading.Lock()
+        send_queue = queue.SimpleQueue()
         read_poll_interval = 0.05  # 50ms between polls when idle (RasPi-NetPal-style)
 
         def reader() -> None:
@@ -180,11 +182,7 @@ def register_websockets(sock: Sock) -> None:
                 if data:
                     serial_manager.record_rx(session_id, data)
                     payload = {"type": "data", "data": data.decode(errors="ignore")}
-                    with send_lock:
-                        try:
-                            ws.send(json.dumps(payload))
-                        except Exception:
-                            break
+                    send_queue.put(json.dumps(payload))
                 if time.time() - last_status > 1:
                     last_status = time.time()
                     status = {
@@ -192,21 +190,30 @@ def register_websockets(sock: Sock) -> None:
                         "bytes_tx": session.bytes_tx,
                         "bytes_rx": session.bytes_rx,
                     }
-                    with send_lock:
-                        try:
-                            ws.send(json.dumps(status))
-                        except Exception:
-                            break
+                    send_queue.put(json.dumps(status))
 
         thread = threading.Thread(target=reader, daemon=True)
         thread.start()
 
+        def drain_send_queue() -> None:
+            try:
+                while True:
+                    ws.send(send_queue.get_nowait())
+            except queue.Empty:
+                pass
+            except Exception:
+                pass
+
         try:
             while True:
-                message = ws.receive()
-                if message is None:
+                try:
+                    message = ws.receive(timeout=0.05)
+                except ConnectionClosed:
                     logger.info("serial_console: client disconnected session=%s", session_id[:8])
                     break
+                drain_send_queue()
+                if message is None:
+                    continue
                 try:
                     payload = json.loads(message)
                 except json.JSONDecodeError as je:
@@ -240,6 +247,7 @@ def register_websockets(sock: Sock) -> None:
             logger.info("serial_console: main loop exited session=%s: %s", session_id[:8], exc)
         finally:
             stop_event.set()
+            thread.join(timeout=2.0)
             session.websocket_connected = False
             try:
                 ser.close()

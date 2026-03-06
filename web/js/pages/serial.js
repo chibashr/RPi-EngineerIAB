@@ -778,7 +778,6 @@ async function connectDevice(deviceId) {
     showToast("Session created.", "success");
     activeSessions.push({ session_id: sessionId, device_id: deviceId });
     renderDevices(deviceCache);
-    await loadSessions();
     createTabAndConnect(sessionId, deviceId, deviceName);
     renderDevices(deviceCache);
   } catch (error) {
@@ -797,6 +796,7 @@ async function connectDevice(deviceId) {
 async function disconnectDevice(sessionId) {
   if (!sessionId) return;
   removeTabAndDisconnect(sessionId);
+  activeSessions = activeSessions.filter(s => s.session_id !== sessionId);
   try {
     await apiDelete(`/api/v1/serial/sessions/${encodeURIComponent(sessionId)}`);
     showToast("Session closed.", "success");
