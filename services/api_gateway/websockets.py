@@ -196,10 +196,20 @@ def register_websockets(app: "FastAPI") -> None:
             ser = pyserial.Serial(
                 device_id,
                 baudrate=baud_rate,
-                timeout=0.05,
+                timeout=0.0,
+            )
+            logger.info(
+                "Serial opened session=%s device=%s",
+                session_id[:8],
+                device_id,
             )
         except Exception as exc:
-            logger.warning("Serial open failed %s: %s", session_id[:8], exc)
+            logger.warning(
+                "Serial open failed session=%s device=%s: %s",
+                session_id[:8],
+                device_id,
+                exc,
+            )
             await websocket.send_json(
                 {"type": "error", "message": str(exc)}
             )
@@ -215,13 +225,20 @@ def register_websockets(app: "FastAPI") -> None:
             )
             return
 
+        def read_available(port) -> bytes:
+            """Non-blocking: return up to 256 bytes if available, else b''."""
+            n = port.in_waiting
+            if n <= 0:
+                return b""
+            return port.read(min(n, 256))
+
         async def reader() -> None:
             loop = asyncio.get_running_loop()
             while not stop_event.is_set():
                 try:
-                    data = await loop.run_in_executor(None, ser.read, 256)
+                    data = await loop.run_in_executor(None, read_available, ser)
                     if not data:
-                        await asyncio.sleep(0.01)
+                        await asyncio.sleep(0.02)
                         continue
                     serial_manager.record_rx(session_id, data)
                     text = data.decode(errors="replace")
@@ -230,7 +247,12 @@ def register_websockets(app: "FastAPI") -> None:
                 except (WebSocketDisconnect, ConnectionError, OSError):
                     break
                 except Exception as exc:
-                    logger.debug("Serial reader error: %s", exc)
+                    logger.warning(
+                        "Serial reader error session=%s device=%s: %s",
+                        session_id[:8],
+                        device_id,
+                        exc,
+                    )
                     break
 
         async def writer() -> None:
