@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
-import queue
 import threading
 import time
 from typing import Optional
 
+import gevent
 from flask_sock import Sock
+from gevent.event import Event as GeventEvent
 from simple_websocket import ConnectionClosed
 
 from services.capture_manager import capture_manager
@@ -162,8 +163,7 @@ def register_websockets(sock: Sock) -> None:
 
         logger.info("serial_console: port opened, starting reader for session %s", session_id[:8])
         session.websocket_connected = True
-        stop_event = threading.Event()
-        send_queue = queue.SimpleQueue()
+        stop_event = GeventEvent()
         read_poll_interval = 0.05  # 50ms between polls when idle (RasPi-NetPal-style)
 
         def reader() -> None:
@@ -174,7 +174,7 @@ def register_websockets(sock: Sock) -> None:
                     if n > 0:
                         data = ser.read(n)
                     else:
-                        time.sleep(read_poll_interval)
+                        gevent.sleep(read_poll_interval)
                         continue
                 except Exception as read_exc:
                     logger.warning("serial_console: reader error on %s: %s", session.device_id, read_exc)
@@ -182,7 +182,11 @@ def register_websockets(sock: Sock) -> None:
                 if data:
                     serial_manager.record_rx(session_id, data)
                     payload = {"type": "data", "data": data.decode(errors="ignore")}
-                    send_queue.put(json.dumps(payload))
+                    try:
+                        ws.send(json.dumps(payload))
+                    except Exception:
+                        stop_event.set()
+                        break
                 if time.time() - last_status > 1:
                     last_status = time.time()
                     status = {
@@ -190,30 +194,23 @@ def register_websockets(sock: Sock) -> None:
                         "bytes_tx": session.bytes_tx,
                         "bytes_rx": session.bytes_rx,
                     }
-                    send_queue.put(json.dumps(status))
+                    try:
+                        ws.send(json.dumps(status))
+                    except Exception:
+                        stop_event.set()
+                        break
 
-        thread = threading.Thread(target=reader, daemon=True)
-        thread.start()
-
-        def drain_send_queue() -> None:
-            try:
-                while True:
-                    ws.send(send_queue.get_nowait())
-            except queue.Empty:
-                pass
-            except Exception:
-                pass
+        greenlet = gevent.spawn(reader)
 
         try:
             while True:
                 try:
-                    message = ws.receive(timeout=0.05)
+                    message = ws.receive()
                 except ConnectionClosed:
                     logger.info("serial_console: client disconnected session=%s", session_id[:8])
                     break
-                drain_send_queue()
                 if message is None:
-                    continue
+                    break
                 try:
                     payload = json.loads(message)
                 except json.JSONDecodeError as je:
@@ -247,7 +244,7 @@ def register_websockets(sock: Sock) -> None:
             logger.info("serial_console: main loop exited session=%s: %s", session_id[:8], exc)
         finally:
             stop_event.set()
-            thread.join(timeout=2.0)
+            greenlet.join(timeout=2.0)
             session.websocket_connected = False
             try:
                 ser.close()
