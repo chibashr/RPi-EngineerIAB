@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
-import pytest
-
 
 class TestSystemStatus:
     """Tests for GET /api/v1/system/status."""
@@ -16,7 +12,7 @@ class TestSystemStatus:
 
     def test_returns_json_with_data(self, client):
         r = client.get("/api/v1/system/status")
-        data = r.get_json()
+        data = r.json()
         assert "data" in data
         assert "status" in data["data"]
         assert "services" in data["data"]
@@ -24,7 +20,7 @@ class TestSystemStatus:
 
     def test_resources_include_cpu_memory_disk(self, client):
         r = client.get("/api/v1/system/status")
-        resources = r.get_json()["data"]["resources"]
+        resources = r.json()["data"]["resources"]
         assert "cpu_percent" in resources
         assert "memory_percent" in resources
         assert "disk_percent" in resources
@@ -39,14 +35,14 @@ class TestSystemServices:
 
     def test_returns_services_list(self, client):
         r = client.get("/api/v1/system/services")
-        data = r.get_json()
+        data = r.json()
         assert "data" in data
         assert "services" in data["data"]
         assert isinstance(data["data"]["services"], list)
 
     def test_services_have_name_status_category(self, client):
         r = client.get("/api/v1/system/services")
-        data = r.get_json()["data"]["services"]
+        data = r.json()["data"]["services"]
         for item in data:
             assert "name" in item
             assert "status" in item
@@ -61,7 +57,6 @@ class TestSystemControlService:
         r = client.post(
             "/api/v1/system/services",
             json={"action": "start"},
-            content_type="application/json",
         )
         assert r.status_code == 400
 
@@ -69,7 +64,6 @@ class TestSystemControlService:
         r = client.post(
             "/api/v1/system/services",
             json={"service": "nginx"},
-            content_type="application/json",
         )
         assert r.status_code == 400
 
@@ -77,7 +71,6 @@ class TestSystemControlService:
         r = client.post(
             "/api/v1/system/services",
             json={"service": "nginx", "action": "invalid"},
-            content_type="application/json",
         )
         assert r.status_code == 400
 
@@ -89,7 +82,6 @@ class TestSystemControlServicesBulk:
         r = client.post(
             "/api/v1/system/services/bulk",
             json={"action": "restart"},
-            content_type="application/json",
         )
         assert r.status_code == 400
 
@@ -97,7 +89,6 @@ class TestSystemControlServicesBulk:
         r = client.post(
             "/api/v1/system/services/bulk",
             json={"services": ["api_gateway"]},
-            content_type="application/json",
         )
         assert r.status_code == 400
 
@@ -105,7 +96,6 @@ class TestSystemControlServicesBulk:
         r = client.post(
             "/api/v1/system/services/bulk",
             json={"services": ["api_gateway"], "action": "pause"},
-            content_type="application/json",
         )
         assert r.status_code == 400
 
@@ -113,10 +103,9 @@ class TestSystemControlServicesBulk:
         r = client.post(
             "/api/v1/system/services/bulk",
             json={"services": ["api_gateway"], "action": "restart"},
-            content_type="application/json",
         )
         if r.status_code == 200:
-            data = r.get_json()
+            data = r.json()
             assert "data" in data
             assert "results" in data["data"]
             assert isinstance(data["data"]["results"], list)
@@ -129,7 +118,6 @@ class TestSystemPower:
         r = client.post(
             "/api/v1/system/power",
             json={},
-            content_type="application/json",
         )
         assert r.status_code == 400
 
@@ -137,10 +125,9 @@ class TestSystemPower:
         r = client.post(
             "/api/v1/system/power",
             json={"action": "shutdown"},
-            content_type="application/json",
         )
         assert r.status_code == 200
-        data = r.get_json()
+        data = r.json()
         assert data["data"]["action"] == "shutdown"
         assert data["data"]["scheduled"] is False
 
@@ -148,7 +135,6 @@ class TestSystemPower:
         r = client.post(
             "/api/v1/system/power",
             json={"action": "reboot"},
-            content_type="application/json",
         )
         assert r.status_code == 200
 
@@ -162,7 +148,7 @@ class TestSystemInfo:
 
     def test_includes_hostname_version_os(self, client):
         r = client.get("/api/v1/system/info")
-        data = r.get_json()["data"]
+        data = r.json()["data"]
         assert "hostname" in data
         assert "version" in data
         assert "os" in data

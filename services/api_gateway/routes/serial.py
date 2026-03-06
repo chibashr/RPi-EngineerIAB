@@ -1,8 +1,12 @@
 """Serial API routes."""
 
+from __future__ import annotations
+
+import asyncio
 from pathlib import Path
 
-from flask import Blueprint, request, send_file
+from fastapi import APIRouter, Body, Query
+from starlette.responses import FileResponse
 
 from lib.module_logger import get_service_logger
 from services.serial_manager import serial_manager
@@ -11,16 +15,21 @@ from services.serial_manager.manager import EXPORT_DIR
 from ..response import error_response, success_response
 
 logger = get_service_logger(__name__)
-serial_bp = Blueprint("serial", __name__, url_prefix="/api/v1/serial")
+router = APIRouter(prefix="/api/v1/serial", tags=["serial"])
 
 
-@serial_bp.get("/devices")
-def list_devices():
-    force_refresh = request.args.get("refresh", "").lower() in ("1", "true", "yes")
-    return success_response(serial_manager.list_devices(force_refresh=force_refresh))
+@router.get("/devices")
+async def list_devices(
+    refresh: str = Query(default="", alias="refresh"),
+):
+    force_refresh = refresh.lower() in ("1", "true", "yes")
+    data = await asyncio.to_thread(
+        serial_manager.list_devices, force_refresh=force_refresh
+    )
+    return success_response(data)
 
 
-@serial_bp.get("/devices/<device_id>")
+@router.get("/devices/{device_id}")
 def get_device(device_id: str):
     try:
         data = serial_manager.get_device(device_id)
@@ -29,10 +38,10 @@ def get_device(device_id: str):
     return success_response(data)
 
 
-@serial_bp.put("/devices/configure")
-def update_device_by_body():
+@router.put("/devices/configure")
+def update_device_by_body(payload: dict | None = Body(default=None)):
     """Update device config with device_id in body. Avoids 405 from nginx when device_id contains slashes (e.g. /dev/ttyUSB1)."""
-    payload = request.get_json(silent=True) or {}
+    payload = payload or {}
     device_id = payload.get("device_id") or payload.get("device")
     if not device_id or not str(device_id).strip():
         return error_response("VALIDATION_ERROR", "device_id is required", status_code=400)
@@ -45,9 +54,9 @@ def update_device_by_body():
     return success_response(data)
 
 
-@serial_bp.put("/devices/<device_id>")
-def update_device(device_id: str):
-    payload = request.get_json(silent=True) or {}
+@router.put("/devices/{device_id}")
+def update_device(device_id: str, payload: dict | None = Body(default=None)):
+    payload = payload or {}
     try:
         data = serial_manager.update_device(device_id, payload)
     except KeyError as exc:
@@ -55,7 +64,7 @@ def update_device(device_id: str):
     return success_response(data)
 
 
-@serial_bp.post("/devices/<device_id>/test")
+@router.post("/devices/{device_id}/test")
 def test_device(device_id: str):
     try:
         data = serial_manager.test_device(device_id)
@@ -69,18 +78,22 @@ def test_device(device_id: str):
     return success_response(data)
 
 
-@serial_bp.get("/sessions")
+@router.get("/sessions")
 def list_sessions():
     return success_response(serial_manager.list_sessions())
 
 
-@serial_bp.post("/sessions")
-def create_session():
-    payload = request.get_json(silent=True) or {}
+@router.post("/sessions")
+def create_session(payload: dict | None = Body(default=None)):
+    payload = payload or {}
     logger.info("create_session API: device_id=%s", payload.get("device_id"))
     try:
         data = serial_manager.create_session(payload)
-        logger.info("Serial session created via API: %s for %s", data.get("session_id", "")[:8], data.get("device_id"))
+        logger.info(
+            "Serial session created via API: %s for %s",
+            data.get("session_id", "")[:8],
+            data.get("device_id"),
+        )
     except ValueError as exc:
         logger.warning("Serial session create validation: %s", exc)
         return error_response("VALIDATION_ERROR", str(exc), status_code=400)
@@ -93,7 +106,7 @@ def create_session():
     return success_response(data, status_code=201)
 
 
-@serial_bp.get("/sessions/<session_id>")
+@router.get("/sessions/{session_id}")
 def get_session(session_id: str):
     try:
         data = serial_manager.get_session(session_id)
@@ -102,9 +115,9 @@ def get_session(session_id: str):
     return success_response(data)
 
 
-@serial_bp.put("/sessions/<session_id>")
-def update_session(session_id: str):
-    payload = request.get_json(silent=True) or {}
+@router.put("/sessions/{session_id}")
+def update_session(session_id: str, payload: dict | None = Body(default=None)):
+    payload = payload or {}
     try:
         data = serial_manager.update_session(session_id, payload)
     except KeyError as exc:
@@ -112,7 +125,7 @@ def update_session(session_id: str):
     return success_response(data)
 
 
-@serial_bp.delete("/sessions/<session_id>")
+@router.delete("/sessions/{session_id}")
 def delete_session(session_id: str):
     try:
         data = serial_manager.delete_session(session_id)
@@ -123,24 +136,25 @@ def delete_session(session_id: str):
     return success_response(data)
 
 
-@serial_bp.get("/logs")
-def list_logs():
-    device = request.args.get("device")
-    since = request.args.get("since")
-    limit = int(request.args.get("limit", "0"))
+@router.get("/logs")
+def list_logs(
+    device: str | None = Query(default=None),
+    since: str | None = Query(default=None),
+    limit: int = Query(default=0),
+):
     return success_response(serial_manager.list_logs(device, since, limit))
 
 
-@serial_bp.get("/logs/<log_id>/content")
-def get_log_content(log_id: str):
+@router.get("/logs/{log_id}/content")
+async def get_log_content(log_id: str):
     try:
-        data = serial_manager.get_log_content(log_id)
+        data = await asyncio.to_thread(serial_manager.get_log_content, log_id)
     except KeyError as exc:
         return error_response("NOT_FOUND", str(exc), status_code=404)
     return success_response(data)
 
 
-@serial_bp.delete("/logs/<log_id>")
+@router.delete("/logs/{log_id}")
 def delete_log(log_id: str):
     try:
         data = serial_manager.delete_log(log_id)
@@ -149,9 +163,9 @@ def delete_log(log_id: str):
     return success_response(data)
 
 
-@serial_bp.put("/logs/<log_id>")
-def rename_log(log_id: str):
-    payload = request.get_json(silent=True) or {}
+@router.put("/logs/{log_id}")
+def rename_log(log_id: str, payload: dict | None = Body(default=None)):
+    payload = payload or {}
     display_name = payload.get("name") or payload.get("display_name")
     if not display_name or not str(display_name).strip():
         return error_response("VALIDATION_ERROR", "name is required", status_code=400)
@@ -162,9 +176,9 @@ def rename_log(log_id: str):
     return success_response(data)
 
 
-@serial_bp.post("/logs/export")
-def export_logs():
-    payload = request.get_json(silent=True) or {}
+@router.post("/logs/export")
+def export_logs(payload: dict | None = Body(default=None)):
+    payload = payload or {}
     log_ids = payload.get("log_ids", [])
     if not isinstance(log_ids, list):
         return error_response(
@@ -174,7 +188,7 @@ def export_logs():
     return success_response(data, status_code=201)
 
 
-@serial_bp.get("/logs/export/<archive_name>")
+@router.get("/logs/export/{archive_name}")
 def download_export(archive_name: str):
     safe_name = Path(archive_name).name
     if safe_name != archive_name:
@@ -182,9 +196,8 @@ def download_export(archive_name: str):
     archive_path = EXPORT_DIR / archive_name
     if not archive_path.exists():
         return error_response("NOT_FOUND", "Export archive not found", status_code=404)
-    return send_file(
-        archive_path,
-        as_attachment=True,
-        download_name=archive_path.name,
-        mimetype="application/zip",
+    return FileResponse(
+        path=str(archive_path),
+        filename=archive_path.name,
+        media_type="application/zip",
     )

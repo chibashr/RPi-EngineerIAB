@@ -1,7 +1,7 @@
-Flask
-flask-cors
-flask-sock
-gevent
+fastapi
+uvicorn[standard]
+python-multipart
+websockets
 psutil
 pyserial
 pyudev

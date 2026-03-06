@@ -151,10 +151,22 @@ install_python_dependencies() {
     if [ -f "$INSTALL_DIR/requirements.txt" ]; then
         "$venv_path/bin/pip" install --upgrade pip 2>&1 | tee -a "$INSTALL_LOG"
         "$venv_path/bin/pip" install -r "$INSTALL_DIR/requirements.txt" 2>&1 | tee -a "$INSTALL_LOG"
-        if ! "$venv_path/bin/python" -c "import flask" 2>/dev/null; then
-            log_error "Python dependencies failed (e.g. Flask not installed). Check $INSTALL_LOG."
+        if ! "$venv_path/bin/python" -c "import uvicorn" 2>/dev/null; then
+            log_error "Python dependencies failed (e.g. uvicorn not installed). Check $INSTALL_LOG."
             return 1
         fi
+        # Verify uvicorn can start the API before enabling the service
+        log_info "Verifying uvicorn can start API..."
+        (cd "$INSTALL_DIR" && "$venv_path/bin/python" -m uvicorn services.api_gateway.main:app --host 127.0.0.1 --port 5999) >> "$INSTALL_LOG" 2>&1 &
+        UVICORN_PID=$!
+        sleep 3
+        if curl -sf --connect-timeout 2 http://127.0.0.1:5999/api/v1/system/status >/dev/null 2>&1; then
+            log_info "uvicorn health check passed."
+        else
+            log_warn "uvicorn health check failed (API may not respond); continuing."
+        fi
+        kill "$UVICORN_PID" 2>/dev/null || true
+        wait "$UVICORN_PID" 2>/dev/null || true
     else
         log_error "requirements.txt not found under $INSTALL_DIR; cannot install API dependencies. Re-run deploy or copy requirements.txt."
         return 1

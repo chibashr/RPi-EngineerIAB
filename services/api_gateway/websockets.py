@@ -1,341 +1,506 @@
-"""WebSocket endpoints for serial console, capture streaming, and update progress."""
+"""WebSocket endpoints for serial console, capture streaming, and update progress.
+
+Migrated from flask-sock to FastAPI native WebSockets.
+"""
 
 from __future__ import annotations
 
+import asyncio
 import json
-import threading
+import queue
+import shutil
 import time
-from typing import Optional
+from typing import TYPE_CHECKING
 
-import gevent
-from flask_sock import Sock
-from gevent.event import Event as GeventEvent
-from simple_websocket import ConnectionClosed
+from fastapi import WebSocket
+from starlette.websockets import WebSocketDisconnect
 
+from lib.module_logger import get_api_logger
 from services.capture_manager import capture_manager
-from services.capture_manager.manager import split_bpf_filter
+from services.logging_service import logging_service
+from services.monitor_service import MonitorService
+from services.network_manager import NetworkManager
 from services.serial_manager import serial_manager
 from services.system_manager import SystemManager
-from services.network_manager import NetworkManager
-from services.monitor_service import MonitorService
-from services.logging_service import logging_service
-from lib.module_logger import get_service_logger
 from services.update_manager import update_manager
 
-try:
-    import serial  # type: ignore
-except ImportError:  # pragma: no cover - optional dependency
-    serial = None
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+
+logger = get_api_logger(__name__)
+_system_manager = SystemManager()
+_network_manager = NetworkManager()
+_monitor_service = MonitorService()
+
+STATUS_INTERVAL_SEC = 2.0
 
 
-def register_websockets(sock: Sock) -> None:
-    system_manager = SystemManager()
-    network_manager = NetworkManager()
-    monitor_service = MonitorService()
-    logger = get_service_logger(__name__)
+def register_websockets(app: "FastAPI") -> None:
+    """Register WebSocket routes on the FastAPI app."""
 
-    def _merged_monitor_payload() -> dict:
-        """Build monitor payload with health alerts + recent log alerts (same as GET /system/status)."""
-        try:
-            monitor = monitor_service.get_status()
-            alerts = list(monitor.get("alerts", []))
-        except Exception:
-            monitor = {}
-            alerts = []
-        try:
-            log_alerts = logging_service.get_recent_log_alerts(limit=30)
-            alerts.extend(log_alerts)
-            alerts.sort(key=lambda a: (a.get("timestamp") or ""), reverse=True)
-            alerts = alerts[:50]
-        except Exception:
-            pass
-        if monitor:
-            monitor = dict(monitor)
-            monitor["alerts"] = alerts
-        return monitor or {"alerts": alerts, "health": None}
-
-    @sock.route("/ws/status")
-    def status_stream(ws) -> None:  # type: ignore[no-untyped-def]
-        stop_event = threading.Event()
-        send_lock = threading.Lock()
-
-        def safe_send(payload: dict) -> bool:
-            try:
-                with send_lock:
-                    ws.send(json.dumps(payload))
-                return True
-            except Exception:
-                stop_event.set()
-                return False
-
-        def receiver() -> None:
-            while not stop_event.is_set():
-                try:
-                    message = ws.receive()
-                except Exception:
-                    break
-                if message is None:
-                    break
-                try:
-                    payload = json.loads(message)
-                except json.JSONDecodeError:
-                    continue
-                if payload.get("type") == "ping":
-                    safe_send({"type": "pong"})
-            stop_event.set()
-
-        thread = threading.Thread(target=receiver, daemon=True)
-        thread.start()
-
-        while not stop_event.is_set():
-            system_status = system_manager.get_status()
-            if not safe_send({"type": "system_metrics", "data": system_status}):
-                break
-            network_status = network_manager.get_status()
-            if not safe_send({"type": "network_status", "data": network_status}):
-                break
-            network_interfaces = network_manager.list_interfaces()
-            if not safe_send(
-                {"type": "network_interfaces", "data": network_interfaces}
-            ):
-                break
-            monitor_payload = _merged_monitor_payload()
-            if not safe_send({"type": "monitor_status", "data": monitor_payload}):
-                break
-            time.sleep(2)
-
-    @sock.route("/ws/serial/<session_id>")
-    def serial_console(ws, session_id: str) -> None:  # type: ignore[no-untyped-def]
-        logger.info("serial_console: WebSocket connect request session_id=%s", session_id[:8] if session_id else "?")
-        try:
-            session = serial_manager.get_session_record(session_id)
-        except KeyError as exc:
-            logger.warning("serial_console: session %s not found: %s", session_id[:8] if session_id else "?", exc)
-            ws.send(json.dumps({"type": "error", "message": "Session not found"}))
-            return
-        if not serial:
-            logger.error("serial_console: pyserial not installed")
-            ws.send(json.dumps({"type": "error", "message": "pyserial not installed"}))
-            try:
-                serial_manager.release_session(session_id)
-            except Exception:
-                pass
-            return
-        config = session.config or {}
-        baud_rate = int(config.get("baud_rate", 9600))
-        data_bits = int(config.get("data_bits", 8))
-        parity = str(config.get("parity", "none")).upper()
-        stop_bits = int(config.get("stop_bits", 1))
-        timeout = 0.1
-        logger.info("serial_console: opening %s baud=%s data_bits=%s parity=%s stop_bits=%s", session.device_id, baud_rate, data_bits, parity, stop_bits)
-        parity_map = {
-            "NONE": serial.PARITY_NONE,
-            "N": serial.PARITY_NONE,
-            "EVEN": serial.PARITY_EVEN,
-            "E": serial.PARITY_EVEN,
-            "ODD": serial.PARITY_ODD,
-            "O": serial.PARITY_ODD,
-        }
-        bytesize_map = {
-            5: serial.FIVEBITS,
-            6: serial.SIXBITS,
-            7: serial.SEVENBITS,
-            8: serial.EIGHTBITS,
-        }
-        stopbits_map = {1: serial.STOPBITS_ONE, 2: serial.STOPBITS_TWO}
-        try:
-            ser = serial.Serial(
-                session.device_id,
-                baudrate=baud_rate,
-                bytesize=bytesize_map.get(data_bits, serial.EIGHTBITS),
-                parity=parity_map.get(parity, serial.PARITY_NONE),
-                stopbits=stopbits_map.get(stop_bits, serial.STOPBITS_ONE),
-                timeout=timeout,
-            )
-        except Exception as exc:
-            logger.exception("serial_console: failed to open %s: %s", session.device_id, exc)
-            ws.send(json.dumps({"type": "error", "message": str(exc)}))
-            try:
-                serial_manager.release_session(session_id)
-            except Exception:
-                pass
-            return
-
-        logger.info("serial_console: port opened, starting reader for session %s", session_id[:8])
-        session.websocket_connected = True
-        stop_event = GeventEvent()
-        read_poll_interval = 0.05  # 50ms between polls when idle (RasPi-NetPal-style)
-
-        def reader() -> None:
-            last_status = time.time()
-            while not stop_event.is_set():
-                try:
-                    n = ser.in_waiting
-                    if n > 0:
-                        data = ser.read(n)
-                    else:
-                        gevent.sleep(read_poll_interval)
-                        continue
-                except Exception as read_exc:
-                    logger.warning("serial_console: reader error on %s: %s", session.device_id, read_exc)
-                    break
-                if data:
-                    serial_manager.record_rx(session_id, data)
-                    payload = {"type": "data", "data": data.decode(errors="ignore")}
-                    try:
-                        ws.send(json.dumps(payload))
-                    except Exception:
-                        stop_event.set()
-                        break
-                if time.time() - last_status > 1:
-                    last_status = time.time()
-                    status = {
-                        "type": "status",
-                        "bytes_tx": session.bytes_tx,
-                        "bytes_rx": session.bytes_rx,
-                    }
-                    try:
-                        ws.send(json.dumps(status))
-                    except Exception:
-                        stop_event.set()
-                        break
-
-        greenlet = gevent.spawn(reader)
-
+    @app.websocket("/ws/status")
+    async def status_stream(websocket: WebSocket) -> None:
+        client = websocket.client.host if websocket.client else "unknown"
+        logger.info("WS connect path=/ws/status client=%s", client)
+        start = time.monotonic()
+        tx_count = 0
+        await websocket.accept()
         try:
             while True:
                 try:
-                    message = ws.receive()
-                except ConnectionClosed:
-                    logger.info("serial_console: client disconnected session=%s", session_id[:8])
+                    # Non-blocking receive for ping
+                    try:
+                        msg = await asyncio.wait_for(websocket.receive_text(), timeout=0.1)
+                        data = json.loads(msg) if msg else {}
+                        if data.get("type") == "ping":
+                            await websocket.send_json({"type": "pong"})
+                            tx_count += 1
+                    except asyncio.TimeoutError:
+                        pass
+
+                    # Gather status (sync managers → run in executor)
+                    loop = asyncio.get_running_loop()
+                    system_status = await loop.run_in_executor(
+                        None, _system_manager.get_status
+                    )
+                    network_status = await loop.run_in_executor(
+                        None, _network_manager.get_status
+                    )
+                    interfaces_data = await loop.run_in_executor(
+                        None,
+                        lambda: _network_manager.list_interfaces(),
+                    )
+                    try:
+                        monitor_status = await loop.run_in_executor(
+                            None, _monitor_service.get_status
+                        )
+                    except Exception:
+                        monitor_status = {}
+
+                    # Merge monitor into system for system_metrics
+                    if monitor_status:
+                        system_status = dict(system_status)
+                        system_status["health"] = monitor_status.get("health")
+                        system_status["alerts"] = list(
+                            monitor_status.get("alerts", [])
+                        )
+                        system_status["monitor"] = monitor_status
+                    else:
+                        system_status = dict(system_status)
+                        system_status.setdefault("alerts", [])
+                    try:
+                        log_alerts = await loop.run_in_executor(
+                            None,
+                            lambda: logging_service.get_recent_log_alerts(limit=30),
+                        )
+                        system_status["alerts"].extend(log_alerts)
+                        system_status["alerts"].sort(
+                            key=lambda a: (a.get("timestamp") or ""),
+                            reverse=True,
+                        )
+                        system_status["alerts"] = system_status["alerts"][:50]
+                    except Exception:
+                        pass
+
+                    await websocket.send_json(
+                        {"type": "system_metrics", "data": system_status}
+                    )
+                    await websocket.send_json(
+                        {"type": "network_status", "data": network_status}
+                    )
+                    await websocket.send_json(
+                        {
+                            "type": "network_interfaces",
+                            "data": {"interfaces": interfaces_data.get("interfaces", [])},
+                        }
+                    )
+                    await websocket.send_json(
+                        {"type": "monitor_status", "data": monitor_status}
+                    )
+                    tx_count += 4
+                except WebSocketDisconnect:
                     break
-                if message is None:
-                    break
-                try:
-                    payload = json.loads(message)
-                except json.JSONDecodeError as je:
-                    logger.warning("serial_console: invalid JSON from client: %s", je)
-                    ws.send(json.dumps({"type": "error", "message": "Invalid JSON"}))
-                    continue
-                msg_type = payload.get("type")
-                if msg_type == "ping":
-                    ws.send(json.dumps({"type": "pong"}))
-                elif msg_type == "data":
-                    data = payload.get("data", "")
-                    if data:
-                        raw = data.encode("utf-8", errors="replace")
-                        ser.write(raw)
-                        ser.flush()
-                        serial_manager.record_tx(session_id, raw)
-                        logger.debug("serial_console: sent %d byte(s) to %s", len(raw), session.device_id)
-                elif msg_type == "control":
-                    action = payload.get("action")
-                    if action == "pause_logging":
-                        serial_manager.update_session(session_id, {"logging_paused": True})
-                    elif action == "resume_logging":
-                        serial_manager.update_session(session_id, {"logging_paused": False})
-                    elif action == "break":
-                        try:
-                            ser.send_break(duration=payload.get("duration", 0.25))
-                            logger.debug("serial_console: sent break to %s", session.device_id)
-                        except Exception as brk_exc:
-                            logger.warning("serial_console: break failed %s: %s", session.device_id, brk_exc)
+                await asyncio.sleep(STATUS_INTERVAL_SEC)
+        except WebSocketDisconnect:
+            duration = time.monotonic() - start
+            logger.info(
+                "WS disconnect path=/ws/status client=%s duration_s=%.1f tx=%d",
+                client,
+                duration,
+                tx_count,
+            )
         except Exception as exc:
-            logger.info("serial_console: main loop exited session=%s: %s", session_id[:8], exc)
+            logger.error(
+                "WS error path=/ws/status client=%s error=%s",
+                client,
+                str(exc),
+                exc_info=True,
+            )
+            raise
+
+    @app.websocket("/ws/serial/{session_id}")
+    async def serial_console(websocket: WebSocket, session_id: str) -> None:
+        client = websocket.client.host if websocket.client else "unknown"
+        logger.info(
+            "WS connect path=/ws/serial client=%s session=%s",
+            client,
+            session_id,
+        )
+        start = time.monotonic()
+        rx_tx: list[int] = [0, 0]  # [rx_count, tx_count]
+        await websocket.accept()
+        ser = None
+        stop_event = asyncio.Event()
+
+        try:
+            session = serial_manager.get_session_record(session_id)
+        except KeyError:
+            await websocket.send_json(
+                {"type": "error", "message": "Session not found"}
+            )
+            duration = time.monotonic() - start
+            logger.info(
+                "WS disconnect path=/ws/serial session=%s client=%s "
+                "duration_s=%.1f rx=%d tx=%d",
+                session_id,
+                client,
+                duration,
+                rx_tx[0],
+                rx_tx[1],
+            )
+            return
+
+        device_id = session.device_id
+        config = session.config or {}
+        baud_rate = int(config.get("baud_rate", 9600))
+
+        try:
+            import serial as pyserial  # type: ignore
+        except ImportError:
+            await websocket.send_json(
+                {"type": "error", "message": "pyserial not installed"}
+            )
+            duration = time.monotonic() - start
+            logger.info(
+                "WS disconnect path=/ws/serial session=%s client=%s "
+                "duration_s=%.1f rx=%d tx=%d",
+                session_id,
+                client,
+                duration,
+                rx_tx[0],
+                rx_tx[1],
+            )
+            return
+
+        try:
+            ser = pyserial.Serial(
+                device_id,
+                baudrate=baud_rate,
+                timeout=0.05,
+            )
+        except Exception as exc:
+            logger.warning("Serial open failed %s: %s", session_id[:8], exc)
+            await websocket.send_json(
+                {"type": "error", "message": str(exc)}
+            )
+            duration = time.monotonic() - start
+            logger.info(
+                "WS disconnect path=/ws/serial session=%s client=%s "
+                "duration_s=%.1f rx=%d tx=%d",
+                session_id,
+                client,
+                duration,
+                rx_tx[0],
+                rx_tx[1],
+            )
+            return
+
+        async def reader() -> None:
+            loop = asyncio.get_running_loop()
+            while not stop_event.is_set():
+                try:
+                    data = await loop.run_in_executor(None, ser.read, 256)
+                    if not data:
+                        await asyncio.sleep(0.01)
+                        continue
+                    serial_manager.record_rx(session_id, data)
+                    text = data.decode(errors="replace")
+                    await websocket.send_json({"type": "data", "data": text})
+                    rx_tx[1] += 1
+                except (WebSocketDisconnect, ConnectionError, OSError):
+                    break
+                except Exception as exc:
+                    logger.debug("Serial reader error: %s", exc)
+                    break
+
+        async def writer() -> None:
+            while not stop_event.is_set():
+                try:
+                    msg = await websocket.receive_text()
+                    rx_tx[0] += 1
+                    data = json.loads(msg) if msg else {}
+                    msg_type = data.get("type")
+                    if msg_type == "ping":
+                        await websocket.send_json({"type": "pong"})
+                        rx_tx[1] += 1
+                    elif msg_type == "data":
+                        payload = data.get("data", "")
+                        if isinstance(payload, str):
+                            out = payload.encode("utf-8", errors="replace")
+                            loop = asyncio.get_running_loop()
+                            await loop.run_in_executor(
+                                None, lambda: ser.write(out)
+                            )
+                            serial_manager.record_tx(session_id, out)
+                    elif msg_type == "control":
+                        action = data.get("action")
+                        if action == "pause_logging":
+                            serial_manager.update_session(
+                                session_id, {"logging_paused": True}
+                            )
+                        elif action == "resume_logging":
+                            serial_manager.update_session(
+                                session_id, {"logging_paused": False}
+                            )
+                        elif action == "break":
+                            duration = float(data.get("duration", 0.25))
+                            loop = asyncio.get_running_loop()
+                            await loop.run_in_executor(
+                                None,
+                                lambda: _send_break(ser, duration),
+                            )
+                except WebSocketDisconnect:
+                    break
+                except Exception as exc:
+                    logger.debug("Serial writer error: %s", exc)
+                    break
+
+        async def status_emitter() -> None:
+            while not stop_event.is_set():
+                await asyncio.sleep(1.0)
+                try:
+                    s = serial_manager.get_session(session_id)
+                    await websocket.send_json(
+                        {
+                            "type": "status",
+                            "bytes_tx": s.get("bytes_tx", 0),
+                            "bytes_rx": s.get("bytes_rx", 0),
+                        }
+                    )
+                    rx_tx[1] += 1
+                except (WebSocketDisconnect, KeyError):
+                    break
+
+        def _send_break(port, dur: float) -> None:
+            port.break_condition = True
+            import time
+            time.sleep(dur)
+            port.break_condition = False
+
+        try:
+            reader_task = asyncio.create_task(reader())
+            writer_task = asyncio.create_task(writer())
+            status_task = asyncio.create_task(status_emitter())
+            await asyncio.gather(reader_task, writer_task, status_task)
+        except Exception as exc:
+            logger.error(
+                "WS error path=/ws/serial session=%s error=%s",
+                session_id,
+                str(exc),
+                exc_info=True,
+            )
+            raise
         finally:
+            duration = time.monotonic() - start
+            logger.info(
+                "WS disconnect path=/ws/serial session=%s client=%s "
+                "duration_s=%.1f rx=%d tx=%d",
+                session_id,
+                client,
+                duration,
+                rx_tx[0],
+                rx_tx[1],
+            )
             stop_event.set()
-            greenlet.join(timeout=2.0)
-            session.websocket_connected = False
             try:
                 ser.close()
-                logger.info("serial_console: closed session %s device %s", session_id[:8], session.device_id)
-            except Exception as close_exc:
-                logger.warning("serial_console: error closing port %s: %s", session.device_id, close_exc)
-            try:
-                serial_manager.release_session(session_id)
-            except Exception as rel_exc:
-                logger.warning("serial_console: release_session failed: %s", rel_exc)
+            except Exception:
+                pass
+            serial_manager.release_session(session_id)
 
-    @sock.route("/ws/updates/apply")
-    def updates_apply_stream(ws) -> None:  # type: ignore[no-untyped-def]
-        """Stream update apply progress (same steps as CLI) over WebSocket."""
-        send_lock = threading.Lock()
-
-        def send_message(msg_type: str, payload: dict) -> None:
-            try:
-                with send_lock:
-                    ws.send(json.dumps({"type": msg_type, **payload}))
-            except Exception as e:
-                logger.debug("Update stream send failed: %s", e)
+    @app.websocket("/ws/updates/apply")
+    async def updates_apply_stream(websocket: WebSocket) -> None:
+        client = websocket.client.host if websocket.client else "unknown"
+        logger.info("WS connect path=/ws/updates/apply client=%s", client)
+        start = time.monotonic()
+        tx_count = 0
+        await websocket.accept()
+        progress_queue: queue.Queue = queue.Queue()
 
         def progress_callback(line: str) -> None:
-            send_message("progress", {"line": line})
+            progress_queue.put(("progress", line))
 
         def run_apply() -> None:
             try:
-                result = update_manager.apply_update(progress_callback=progress_callback)
-                send_message("done", {"result": result})
-                time.sleep(0.25)  # allow client to receive "done" before handler return closes the socket
+                result = update_manager.apply_update(
+                    progress_callback=progress_callback
+                )
+                progress_queue.put(("done", result))
             except Exception as exc:
-                logger.exception("Update apply failed in stream: %s", exc)
-                send_message("error", {"message": str(exc)})
+                progress_queue.put(("error", str(exc)))
 
-        thread = threading.Thread(target=run_apply, daemon=True)
-        thread.start()
-        thread.join(timeout=180)
-        if thread.is_alive():
-            send_message("error", {"message": "Update timed out after 3 minutes."})
-
-    @sock.route("/ws/capture/<capture_id>")
-    def capture_stream(ws, capture_id: str) -> None:  # type: ignore[no-untyped-def]
-        job = capture_manager.get_job(capture_id)
-        if not job:
-            ws.send(json.dumps({"type": "error", "message": "Capture not found"}))
-            return
-        interface = job.interface
-        filter_expr = job.filter or ""
-        if not _which("tcpdump"):
-            ws.send(json.dumps({"type": "error", "message": "tcpdump not installed"}))
-            return
-        cmd = ["tcpdump", "-l", "-n", "-i", interface]
-        if filter_expr:
-            try:
-                cmd += split_bpf_filter(filter_expr)
-            except ValueError as exc:
-                ws.send(json.dumps({"type": "error", "message": str(exc)}))
-                return
-        proc = _popen_stream(cmd)
-        if not proc:
-            ws.send(json.dumps({"type": "error", "message": "Unable to start tcpdump"}))
-            return
-        try:
-            for line in proc.stdout:  # type: ignore[union-attr]
-                payload = {"type": "packet", "summary": line.strip()}
+        async def drain_queue() -> None:
+            nonlocal tx_count
+            loop = asyncio.get_running_loop()
+            while True:
                 try:
-                    ws.send(json.dumps(payload))
+                    kind, payload = await loop.run_in_executor(
+                        None, progress_queue.get
+                    )
+                    if kind == "progress":
+                        await websocket.send_json(
+                            {"type": "progress", "line": payload}
+                        )
+                        tx_count += 1
+                    elif kind == "done":
+                        await websocket.send_json(
+                            {"type": "done", "result": payload}
+                        )
+                        tx_count += 1
+                        return
+                    elif kind == "error":
+                        await websocket.send_json(
+                            {"type": "error", "message": str(payload)}
+                        )
+                        tx_count += 1
+                        return
                 except Exception:
-                    break
-        finally:
-            proc.terminate()
+                    return
+
+        try:
+            apply_task = asyncio.create_task(asyncio.to_thread(run_apply))
+            drain_task = asyncio.create_task(drain_queue())
+            await asyncio.gather(apply_task, drain_task)
+        except WebSocketDisconnect:
+            duration = time.monotonic() - start
+            logger.info(
+                "WS disconnect path=/ws/updates/apply client=%s duration_s=%.1f tx=%d",
+                client,
+                duration,
+                tx_count,
+            )
+        except Exception as exc:
+            logger.error(
+                "WS error path=/ws/updates/apply client=%s error=%s",
+                client,
+                str(exc),
+                exc_info=True,
+            )
             try:
-                proc.wait(timeout=5)
+                await websocket.send_json(
+                    {"type": "error", "message": str(exc)}
+                )
             except Exception:
-                proc.kill()
-                proc.wait()
+                pass
+            raise
 
-
-def _popen_stream(cmd: list[str]) -> Optional["subprocess.Popen[str]"]:
-    import subprocess
-
-    try:
-        return subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+    @app.websocket("/ws/capture/{capture_id}")
+    async def capture_stream(websocket: WebSocket, capture_id: str) -> None:
+        client = websocket.client.host if websocket.client else "unknown"
+        logger.info(
+            "WS connect path=/ws/capture client=%s capture=%s",
+            client,
+            capture_id,
         )
-    except OSError:
-        return None
+        start = time.monotonic()
+        tx_count = 0
+        await websocket.accept()
+        try:
+            job = capture_manager.get_job(capture_id)
+            if not job or not job.file_path or not job.file_path.exists():
+                await websocket.send_json(
+                    {"type": "error", "message": "Capture not found"}
+                )
+                duration = time.monotonic() - start
+                logger.info(
+                    "WS disconnect path=/ws/capture capture=%s client=%s "
+                    "duration_s=%.1f tx=%d",
+                    capture_id,
+                    client,
+                    duration,
+                    tx_count,
+                )
+                return
+            if not shutil.which("tshark"):
+                await websocket.send_json(
+                    {"type": "error", "message": "tshark not installed"}
+                )
+                duration = time.monotonic() - start
+                logger.info(
+                    "WS disconnect path=/ws/capture capture=%s client=%s "
+                    "duration_s=%.1f tx=%d",
+                    capture_id,
+                    client,
+                    duration,
+                    tx_count,
+                )
+                return
 
-
-def _which(binary: str) -> Optional[str]:
-    import shutil
-
-    return shutil.which(binary)
+            proc = await asyncio.create_subprocess_exec(
+                "tshark",
+                "-r",
+                str(job.file_path),
+                "-l",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            try:
+                if proc.stdout:
+                    async for line in proc.stdout:
+                        line_str = line.decode(errors="replace").strip()
+                        if line_str:
+                            await websocket.send_json(
+                                {"type": "packet", "summary": line_str}
+                            )
+                            tx_count += 1
+            except (WebSocketDisconnect, ConnectionError):
+                pass
+            finally:
+                try:
+                    proc.terminate()
+                    await proc.wait()
+                except ProcessLookupError:
+                    pass
+            duration = time.monotonic() - start
+            logger.info(
+                "WS disconnect path=/ws/capture capture=%s client=%s "
+                "duration_s=%.1f tx=%d",
+                capture_id,
+                client,
+                duration,
+                tx_count,
+            )
+        except WebSocketDisconnect:
+            duration = time.monotonic() - start
+            logger.info(
+                "WS disconnect path=/ws/capture capture=%s client=%s "
+                "duration_s=%.1f tx=%d",
+                capture_id,
+                client,
+                duration,
+                tx_count,
+            )
+        except Exception as exc:
+            logger.error(
+                "WS error path=/ws/capture capture=%s error=%s",
+                capture_id,
+                str(exc),
+                exc_info=True,
+            )
+            try:
+                await websocket.send_json(
+                    {"type": "error", "message": str(exc)}
+                )
+            except Exception:
+                pass
+            raise

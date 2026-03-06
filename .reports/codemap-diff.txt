@@ -1,27 +1,35 @@
 # Codemap diff report
-# Generated: 2026-03-05
+# Generated: 2026-03-06
 
 ## Scan type
-Initial scan (no previous codemaps found).
+Full regeneration (final review).
 
-## Codemaps created
+## Codemaps updated
 - docs/CODEMAPS/architecture.md
 - docs/CODEMAPS/backend.md
 - docs/CODEMAPS/frontend.md
 - docs/CODEMAPS/data.md
 - docs/CODEMAPS/dependencies.md
 
+## Architecture changes
+- Framework: Flask → FastAPI (uvicorn ASGI server)
+- Entry point: services/api_gateway/main.py (create_app, uvicorn)
+- Static serving: FastAPI StaticFiles (html=True for /, /advanced/)
+- Dashboard: stubbed (501, Phase 1 migration)
+- WebSockets: FastAPI native (status, serial, updates, capture)
+- serial_manager: gevent.threadpool → concurrent.futures.ThreadPoolExecutor
+
 ## Structure summary
-- Project type: Single app (Flask API + static web)
-- Entry: services/api_gateway/main.py
+- Project type: Single app (FastAPI + static web)
+- Entry: services/api_gateway/main.py (create_app, uvicorn)
 - Source dirs: services/, lib/, modules/, web/, bin/
 - API prefix: /api/v1/*; WebSockets: /ws/*
+- Files scanned: ~130 Python, ~23 JS
 
-## New / notable
-- Core blueprints: dashboard, system, network, serial, capture, updates, backup, logs, modules, remote
-- Module APIs: example_module, syslog_receiver, snmp_trap_receiver, file_share
-- Data: no central DB; config/version, module SQLite (snmp, syslog), file-based captures/logs
-- Dependencies: Flask, flask-cors, flask-sock, gevent, psutil, pyserial, pyudev; pytest (dev)
+## Dependencies
+- Removed: Flask, flask-cors, flask-sock, gevent
+- Added: fastapi, uvicorn[standard], python-multipart, websockets
+- Dev: pytest, pytest-timeout, httpx
 
 ## Staleness
-- N/A (first run). Re-run after major features or refactors to detect doc drift.
+- Codemaps refreshed 2026-03-06. Re-run after Phase 3 (WebSocket handlers) or Phase 6 (module routes).

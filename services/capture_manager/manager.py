@@ -93,7 +93,7 @@ class CaptureManager:
             cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
         self._active[capture_id] = job
-        logger.info("Capture started: %s on %s (name=%s)", capture_id[:8], job.interface, job.name)
+        logger.info("Capture started id=%s interface=%s filter=%r", capture_id[:8], job.interface, job.filter)
         if job.duration_seconds:
             threading.Thread(
                 target=self._stop_after, args=(capture_id, job.duration_seconds), daemon=True
@@ -121,7 +121,10 @@ class CaptureManager:
             job.process.terminate()
         job.stopped_at = _timestamp()
         self._completed[capture_id] = job
-        logger.info("Capture stopped: %s (%s)", capture_id[:8], job.name)
+        packets = 0
+        if job.file_path and job.file_path.exists() and _which("tshark"):
+            packets = _tshark_stats(job.file_path).get("packet_count", 0)
+        logger.info("Capture stopped id=%s packets=%d", capture_id[:8], packets)
         return self._job_payload(job)
 
     def list_completed(self) -> Dict[str, List[Dict[str, object]]]:

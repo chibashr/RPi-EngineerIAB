@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
-from flask import jsonify
+from starlette.responses import JSONResponse
 
 
 def _timestamp() -> str:
@@ -16,11 +16,11 @@ def success_response(
     data: Any,
     meta: Optional[Dict[str, Any]] = None,
     status_code: int = 200,
-) -> Tuple[Any, int]:
+) -> JSONResponse:
     payload = {"data": data, "meta": {"timestamp": _timestamp()}}
     if meta:
         payload["meta"].update(meta)
-    return jsonify(payload), status_code
+    return JSONResponse(content=payload, status_code=status_code)
 
 
 def error_response(
@@ -28,6 +28,6 @@ def error_response(
     message: str,
     details: Optional[Dict[str, Any]] = None,
     status_code: int = 500,
-) -> Tuple[Any, int]:
+) -> JSONResponse:
     payload = {"error": {"code": code, "message": message, "details": details or {}}}
-    return jsonify(payload), status_code
+    return JSONResponse(content=payload, status_code=status_code)

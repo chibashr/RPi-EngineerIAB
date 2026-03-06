@@ -38,3 +38,10 @@ git reset --hard "origin/$BRANCH"
 
 mkdir -p "$(dirname "$VERSION_FILE")"
 printf '%s' "$TARGET_VERSION" > "$VERSION_FILE"
+
+# Restart services so they pick up the new code
+if [ -d /run/systemd/system ]; then
+    systemctl restart rpi-engineer rpi-engineer-api rpi-engineer-network rpi-engineer-serial \
+        rpi-engineer-capture rpi-engineer-system rpi-engineer-monitor rpi-engineer-update \
+        rpi-engineer-logging 2>/dev/null || true
+fi

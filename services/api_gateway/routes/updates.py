@@ -1,6 +1,8 @@
 """Updates API routes."""
 
-from flask import Blueprint
+from __future__ import annotations
+
+from fastapi import APIRouter
 
 from lib.module_logger import get_service_logger
 from services.update_manager import update_manager
@@ -8,10 +10,10 @@ from services.update_manager import update_manager
 from ..response import error_response, success_response
 
 logger = get_service_logger(__name__)
-updates_bp = Blueprint("updates", __name__, url_prefix="/api/v1/updates")
+updates_router = APIRouter(prefix="/api/v1/updates", tags=["updates"])
 
 
-@updates_bp.get("/check")
+@updates_router.get("/check")
 def check_updates():
     try:
         payload = update_manager.check_for_updates()
@@ -20,7 +22,7 @@ def check_updates():
     return success_response(payload)
 
 
-@updates_bp.post("/apply")
+@updates_router.post("/apply")
 def apply_update():
     try:
         payload = update_manager.apply_update()
@@ -33,7 +35,7 @@ def apply_update():
     return success_response(payload)
 
 
-@updates_bp.post("/reconfigure")
+@updates_router.post("/reconfigure")
 def reconfigure():
     """Re-run install script in reconfigure mode (existing config). Requires sudo for install.sh."""
     try:
@@ -45,7 +47,7 @@ def reconfigure():
     return success_response(payload)
 
 
-@updates_bp.post("/reinstall")
+@updates_router.post("/reinstall")
 def reinstall_from_scratch():
     """Run install script in reinstall_from_scratch mode (full reinstall using existing config). Requires sudo for install.sh."""
     try:
@@ -57,7 +59,7 @@ def reinstall_from_scratch():
     return success_response(payload)
 
 
-@updates_bp.post("/rollback")
+@updates_router.post("/rollback")
 def rollback_update():
     try:
         payload = update_manager.rollback_update()

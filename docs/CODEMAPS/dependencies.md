@@ -1,6 +1,6 @@
 # Dependencies
 
-<!-- Generated: 2026-03-05 | Files scanned: 140+ | Token estimate: ~400 -->
+<!-- Generated: 2026-03-06 | Docs: ENV.md, RUNBOOK.md synced | Token estimate: ~400 -->
 
 ## External Services
 
@@ -11,10 +11,10 @@
 
 | Package | Purpose |
 |---------|---------|
-| Flask | API gateway |
-| flask-cors | CORS for /api, /ws |
-| flask-sock | WebSockets |
-| gevent | Async WSGI (optional, env RPI_ENGINEER_USE_GEVENT) |
+| fastapi | API gateway |
+| uvicorn[standard] | ASGI server |
+| python-multipart | Form/file uploads |
+| websockets | WebSocket support |
 | psutil | System info |
 | pyserial | Serial devices |
 | pyudev | USB device detection |
@@ -22,6 +22,7 @@
 ## Dev (requirements-dev.txt)
 
 - pytest — unit/integration tests
+- httpx — async HTTP client for tests
 
 ## Shared Libraries (lib/)
 

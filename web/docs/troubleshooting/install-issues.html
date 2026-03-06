@@ -90,8 +90,8 @@ curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/api/v1/system/status</pr
 </ol>
 <p>After the API is running, reload the dashboard or click <strong>Retry</strong> in the red banner; the statuses should then load.</p>
 
-<h2 id="api-flask-modulenotfound">API fails: ModuleNotFoundError: No module named 'flask'</h2>
-<p><strong>Symptom:</strong> <code>journalctl -u rpi-engineer-api</code> shows <code>ModuleNotFoundError: No module named 'flask'</code>. The API keeps restarting and the dashboard shows "Cannot connect to the API."</p>
+<h2 id="api-deps-modulenotfound">API fails: ModuleNotFoundError (flask, uvicorn, fastapi)</h2>
+<p><strong>Symptom:</strong> <code>journalctl -u rpi-engineer-api</code> shows <code>ModuleNotFoundError: No module named 'uvicorn'</code> (or <code>flask</code>, <code>fastapi</code>). The API keeps restarting and the dashboard shows "Cannot connect to the API."</p>
 <p><strong>Cause:</strong> The Python virtual environment at <code>/opt/rpi-engineer/venv</code> does not have the API dependencies installed (e.g. <code>requirements.txt</code> was missing during deploy, or the venv was never fully installed).</p>
 <p><strong>Resolution:</strong></p>
 <ol>

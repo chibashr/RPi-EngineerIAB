@@ -1,6 +1,11 @@
 """Packet capture API routes."""
 
-from flask import Blueprint, send_file, request
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, Body
+from fastapi.responses import FileResponse
 
 from lib.module_logger import get_service_logger
 from services.capture_manager import capture_manager
@@ -8,19 +13,19 @@ from services.capture_manager import capture_manager
 from ..response import error_response, success_response
 
 logger = get_service_logger(__name__)
-capture_bp = Blueprint("capture", __name__, url_prefix="/api/v1/capture")
+capture_router = APIRouter(prefix="/api/v1/capture", tags=["capture"])
 
 
-@capture_bp.get("/interfaces")
+@capture_router.get("/interfaces")
 def list_interfaces():
     return success_response(capture_manager.list_interfaces())
 
 
-@capture_bp.post("/start")
-def start_capture():
-    payload = request.get_json(silent=True) or {}
+@capture_router.post("/start")
+def start_capture(payload: Optional[Dict[str, Any]] = Body(default=None)):
+    data_in = payload or {}
     try:
-        data = capture_manager.start_capture(payload)
+        data = capture_manager.start_capture(data_in)
         logger.info("Capture started via API: %s on %s", data.get("capture_id", "")[:8], data.get("interface"))
     except ValueError as exc:
         logger.warning("Capture start validation error: %s", exc)
@@ -31,12 +36,12 @@ def start_capture():
     return success_response(data, status_code=201)
 
 
-@capture_bp.get("/active")
+@capture_router.get("/active")
 def list_active_captures():
     return success_response(capture_manager.list_active())
 
 
-@capture_bp.get("/active/<capture_id>")
+@capture_router.get("/active/{capture_id}")
 def get_active_capture(capture_id: str):
     try:
         data = capture_manager.get_active(capture_id)
@@ -46,7 +51,7 @@ def get_active_capture(capture_id: str):
     return success_response(data)
 
 
-@capture_bp.post("/active/<capture_id>/stop")
+@capture_router.post("/active/{capture_id}/stop")
 def stop_active_capture(capture_id: str):
     try:
         data = capture_manager.stop_capture(capture_id)
@@ -57,12 +62,12 @@ def stop_active_capture(capture_id: str):
     return success_response(data)
 
 
-@capture_bp.get("/completed")
+@capture_router.get("/completed")
 def list_completed_captures():
     return success_response(capture_manager.list_completed())
 
 
-@capture_bp.get("/completed/<capture_id>")
+@capture_router.get("/completed/{capture_id}")
 def get_completed_capture(capture_id: str):
     try:
         data = capture_manager.get_completed(capture_id)
@@ -71,7 +76,7 @@ def get_completed_capture(capture_id: str):
     return success_response(data)
 
 
-@capture_bp.get("/completed/<capture_id>/download")
+@capture_router.get("/completed/{capture_id}/download")
 def download_capture(capture_id: str):
     try:
         job = capture_manager.get_job(capture_id)
@@ -81,10 +86,15 @@ def download_capture(capture_id: str):
     if not job or not job.file_path or not job.file_path.exists():
         return error_response("NOT_FOUND", "Capture not found", status_code=404)
     logger.info("Capture downloaded: %s", capture_id[:8])
-    return send_file(str(job.file_path), as_attachment=True)
+    filename = job.file_path.name
+    return FileResponse(
+        str(job.file_path),
+        media_type="application/octet-stream",
+        filename=filename,
+    )
 
 
-@capture_bp.delete("/completed/<capture_id>")
+@capture_router.delete("/completed/{capture_id}")
 def delete_capture(capture_id: str):
     try:
         data = capture_manager.delete_completed(capture_id)
@@ -95,7 +105,7 @@ def delete_capture(capture_id: str):
     return success_response(data)
 
 
-@capture_bp.get("/<capture_id>/stats")
+@capture_router.get("/{capture_id}/stats")
 def get_capture_stats(capture_id: str):
     try:
         data = capture_manager.get_stats(capture_id)
@@ -104,7 +114,7 @@ def get_capture_stats(capture_id: str):
     return success_response(data)
 
 
-@capture_bp.get("/<capture_id>/packets")
+@capture_router.get("/{capture_id}/packets")
 def get_capture_packets(capture_id: str):
     try:
         data = capture_manager.get_packets(capture_id)
@@ -113,7 +123,7 @@ def get_capture_packets(capture_id: str):
     return success_response(data)
 
 
-@capture_bp.get("/<capture_id>/conversations")
+@capture_router.get("/{capture_id}/conversations")
 def get_capture_conversations(capture_id: str):
     try:
         data = capture_manager.get_conversations(capture_id)
@@ -122,7 +132,7 @@ def get_capture_conversations(capture_id: str):
     return success_response(data)
 
 
-@capture_bp.get("/<capture_id>/protocols")
+@capture_router.get("/{capture_id}/protocols")
 def get_capture_protocols(capture_id: str):
     try:
         data = capture_manager.get_protocols(capture_id)

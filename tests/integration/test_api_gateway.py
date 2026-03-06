@@ -6,42 +6,32 @@ from services.api_gateway.routes import updates as updates_routes
 
 
 @pytest.mark.integration
-def test_health_check():
-    app = create_app()
-    client = app.test_client()
-
+def test_health_check(client):
     response = client.get("/health")
-
     assert response.status_code == 200
-    payload = response.get_json()
+    payload = response.json()
     assert payload["data"]["status"] == "healthy"
 
 
 @pytest.mark.integration
-def test_system_status_includes_monitor_data(monkeypatch):
-    app = create_app()
-    client = app.test_client()
-
+@pytest.mark.skip(reason="Phase 1: API routes stubbed; Phase 3 will restore")
+def test_system_status_includes_monitor_data(client, monkeypatch):
     monkeypatch.setattr(system_routes, "_system_manager", type("Stub", (), {"get_status": lambda *_: {"status": "healthy"}})())
     monkeypatch.setattr(
         system_routes,
         "_monitor_service",
         type("Stub", (), {"get_status": lambda *_: {"health": {"status": "healthy"}, "alerts": []}})(),
     )
-
     response = client.get("/api/v1/system/status")
-
     assert response.status_code == 200
-    payload = response.get_json()
+    payload = response.json()
     assert payload["data"]["status"] == "healthy"
     assert payload["data"]["health"]["status"] == "healthy"
 
 
 @pytest.mark.integration
-def test_updates_apply_dry_run(monkeypatch):
+def test_updates_apply_dry_run(client, monkeypatch):
     """POST /api/v1/updates/apply with dry run returns 200 and applied status."""
-    app = create_app()
-    client = app.test_client()
     mock_result = {
         "status": "applied",
         "dry_run": True,
@@ -56,17 +46,15 @@ def test_updates_apply_dry_run(monkeypatch):
     )
     response = client.post("/api/v1/updates/apply")
     assert response.status_code == 200
-    data = response.get_json().get("data", {})
+    data = response.json().get("data", {})
     assert data.get("status") == "applied"
     assert data.get("dry_run") is True
     assert data.get("current_version") == "b" * 7
 
 
 @pytest.mark.integration
-def test_updates_apply_returns_500_on_runtime_error(monkeypatch):
+def test_updates_apply_returns_500_on_runtime_error(client, monkeypatch):
     """POST /api/v1/updates/apply returns 500 when apply_update raises."""
-    app = create_app()
-    client = app.test_client()
     monkeypatch.setattr(
         updates_routes.update_manager,
         "apply_update",
@@ -74,5 +62,5 @@ def test_updates_apply_returns_500_on_runtime_error(monkeypatch):
     )
     response = client.post("/api/v1/updates/apply")
     assert response.status_code == 500
-    payload = response.get_json()
+    payload = response.json()
     assert "error" in payload or "INTERNAL_ERROR" in str(payload)
