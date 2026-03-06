@@ -26,6 +26,14 @@ cd "$ROOT_DIR"
 git remote get-url origin >/dev/null 2>&1 || git remote add origin "$REPO"
 git remote set-url origin "$REPO"
 git fetch origin "$BRANCH"
+# Show diffs on branch so user can verify what is being updated
+if git rev-parse "origin/$BRANCH" >/dev/null 2>&1; then
+    echo "--- Changes on branch $BRANCH (HEAD..origin/$BRANCH) ---"
+    git log --oneline HEAD.."origin/$BRANCH" 2>/dev/null || true
+    git diff --stat HEAD.."origin/$BRANCH" 2>/dev/null || true
+    git diff HEAD.."origin/$BRANCH" 2>/dev/null || true
+    echo "--- End of diff ---"
+fi
 git reset --hard "origin/$BRANCH"
 
 mkdir -p "$(dirname "$VERSION_FILE")"

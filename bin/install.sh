@@ -20,9 +20,8 @@ DEFAULT_HOTSPOT_IP="192.168.50.1"
 DEFAULT_HOTSPOT_DHCP_START="192.168.50.10"
 DEFAULT_HOTSPOT_DHCP_END="192.168.50.100"
 
-# Git clone/fetch URL; override with RPI_ENGINEER_REPO_URL to use a mirror (e.g. when GitHub is unreachable).
-REPO_URL="${RPI_ENGINEER_REPO_URL:-https://github.com/chibashr/RPi-EngineerIAB.git}"
-BRANCH="${RPI_ENGINEER_REPO_BRANCH:-main}"
+REPO_URL="https://github.com/chibashr/RPi-EngineerIAB.git"
+BRANCH="main"
 
 INSTALL_LOG="/tmp/rpi-engineer-install-$(date +%Y%m%d-%H%M%S).log"
 INSTALL_PROGRESS_FILE="/tmp/rpi-engineer-install.progress"
@@ -278,126 +277,6 @@ run_preflight_checks() {
     check_internet
     check_dpkg_status
     log_info "Pre-flight checks passed."
-}
-
-# Quick update: git fetch + reset in install dir only. No wizard, no deps, no service reconfig.
-run_quick_update() {
-    log_step "Quick update (repo only)"
-    if [ ! -d "$INSTALL_DIR/.git" ]; then
-        log_error "Install directory is not a git repository. Use Upgrade instead."
-        exit 1
-    fi
-    git config --system --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
-    if ! git -C "$INSTALL_DIR" fetch origin "$BRANCH" >> "$INSTALL_LOG" 2>&1; then
-        log_error "git fetch failed (check network and $INSTALL_LOG)."
-        exit 1
-    fi
-    if ! git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH" >> "$INSTALL_LOG" 2>&1; then
-        log_error "git reset failed (check $INSTALL_LOG)."
-        exit 1
-    fi
-    write_version_file
-    log_info "Restarting services..."
-    if [ -d /run/systemd/system ]; then
-        systemctl restart rpi-engineer rpi-engineer-api rpi-engineer-network rpi-engineer-serial \
-            rpi-engineer-capture rpi-engineer-system rpi-engineer-monitor rpi-engineer-update \
-            rpi-engineer-logging nginx >> "$INSTALL_LOG" 2>&1 || true
-    fi
-    echo "Quick update complete. Repository updated to latest $BRANCH."
-}
-
-# Uninstall: stop services, remove configs, remove app and data.
-run_uninstall() {
-    log_step "Uninstalling RPi Engineer-in-a-Box"
-    if [ ! -d "$INSTALL_DIR" ] && [ ! -d "$CONFIG_DIR" ]; then
-        log_warn "No installation found at $INSTALL_DIR or $CONFIG_DIR."
-        exit 0
-    fi
-
-    if [ "${NONINTERACTIVE:-0}" != "1" ]; then
-        interactive_read -r -p "Remove data and logs too? (y/n) [n]: " remove_data
-    elif [ "${RPI_ENGINEER_REMOVE_DATA:-0}" = "1" ]; then
-        remove_data="y"
-    else
-        remove_data="n"
-    fi
-
-    # Stop and disable services
-    if [ -d /run/systemd/system ]; then
-        log_info "Stopping and disabling services..."
-        for svc in rpi-engineer rpi-engineer-api rpi-engineer-network rpi-engineer-serial \
-            rpi-engineer-capture rpi-engineer-system rpi-engineer-monitor rpi-engineer-update \
-            rpi-engineer-logging rpi-engineer-wlan0; do
-            systemctl stop "$svc" 2>/dev/null || true
-            systemctl disable "$svc" 2>/dev/null || true
-        done
-        systemctl daemon-reload
-    fi
-
-    # Remove systemd unit files
-    for unit in rpi-engineer rpi-engineer-api rpi-engineer-network rpi-engineer-serial \
-        rpi-engineer-capture rpi-engineer-system rpi-engineer-monitor rpi-engineer-update \
-        rpi-engineer-logging rpi-engineer-wlan0; do
-        rm -f "/etc/systemd/system/${unit}.service"
-    done
-    rm -rf /etc/systemd/system/hostapd.service.d
-    [ -d /run/systemd/system ] && systemctl daemon-reload
-
-    # Restore nginx default site
-    if command -v nginx >/dev/null 2>&1; then
-        rm -f /etc/nginx/sites-enabled/rpi-engineer
-        if [ -f /etc/nginx/sites-available/default ]; then
-            ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
-        fi
-        nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
-    fi
-
-    # Remove sudoers rules
-    rm -f /etc/sudoers.d/rpi-engineer-apply-web-permissions
-    rm -f /etc/sudoers.d/rpi-engineer-apply-update
-    rm -f /etc/sudoers.d/rpi-engineer-create-config-backup
-
-    # Remove NetworkManager config
-    rm -f /etc/NetworkManager/conf.d/rpi-engineer-wlan0-unmanaged.conf
-
-    # Remove dhcpcd config (denyinterfaces wlan0)
-    if [ -f /etc/dhcpcd.conf ]; then
-        sed -i '/# RPi Engineer-in-a-Box/d' /etc/dhcpcd.conf 2>/dev/null || true
-        sed -i '/denyinterfaces wlan0/d' /etc/dhcpcd.conf 2>/dev/null || true
-    fi
-
-    # Remove dnsmasq config
-    rm -f /etc/dnsmasq.d/rpi-engineer.conf
-
-    # Remove hostapd config (we created it)
-    rm -f /etc/hostapd/hostapd.conf
-    if [ -f /etc/default/hostapd ]; then
-        sed -i 's|^DAEMON_CONF=.*|DAEMON_CONF=""|' /etc/default/hostapd 2>/dev/null || true
-    fi
-
-    # Remove network interfaces.d
-    rm -f /etc/network/interfaces.d/wlan0
-
-    # Remove install directory
-    if [ -d "$INSTALL_DIR" ]; then
-        log_info "Removing $INSTALL_DIR"
-        rm -rf "$INSTALL_DIR"
-    fi
-
-    # Remove config directory
-    if [ -d "$CONFIG_DIR" ]; then
-        log_info "Removing $CONFIG_DIR"
-        rm -rf "$CONFIG_DIR"
-    fi
-
-    # Optionally remove data and logs
-    if [[ "${remove_data:-n}" =~ ^[Yy]$ ]]; then
-        [ -d "$DATA_DIR" ] && rm -rf "$DATA_DIR" && log_info "Removed $DATA_DIR"
-        [ -d "$LOG_DIR" ] && rm -rf "$LOG_DIR" && log_info "Removed $LOG_DIR"
-    fi
-
-    # Note: we do not remove the rpi-engineer user/group; they may be referenced elsewhere.
-    echo "Uninstall complete."
 }
 
 get_default_hotspot_ssid() {
@@ -778,6 +657,126 @@ load_install_conf() {
     log_info "Loaded previous choices from $conf (hostname=$TARGET_HOSTNAME, ssid=$HOTSPOT_SSID)."
 }
 
+# Quick update: git fetch + reset in install dir only. No wizard, no deps, no service reconfig.
+run_quick_update() {
+    log_step "Quick update (repo only)"
+    if [ ! -d "$INSTALL_DIR/.git" ]; then
+        log_error "Install directory is not a git repository. Use Upgrade instead."
+        exit 1
+    fi
+    git config --system --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+    if ! git -C "$INSTALL_DIR" fetch origin "$BRANCH" >> "$INSTALL_LOG" 2>&1; then
+        log_error "git fetch failed (check network and $INSTALL_LOG)."
+        exit 1
+    fi
+    if ! git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH" >> "$INSTALL_LOG" 2>&1; then
+        log_error "git reset failed (check $INSTALL_LOG)."
+        exit 1
+    fi
+    write_version_file
+    log_info "Restarting services..."
+    if [ -d /run/systemd/system ]; then
+        systemctl restart rpi-engineer rpi-engineer-api rpi-engineer-network rpi-engineer-serial \
+            rpi-engineer-capture rpi-engineer-system rpi-engineer-monitor rpi-engineer-update \
+            rpi-engineer-logging nginx >> "$INSTALL_LOG" 2>&1 || true
+    fi
+    echo "Quick update complete. Repository updated to latest $BRANCH."
+}
+
+# Uninstall: stop services, remove configs, remove app and data.
+run_uninstall() {
+    log_step "Uninstalling RPi Engineer-in-a-Box"
+    if [ ! -d "$INSTALL_DIR" ] && [ ! -d "$CONFIG_DIR" ]; then
+        log_warn "No installation found at $INSTALL_DIR or $CONFIG_DIR."
+        exit 0
+    fi
+
+    if [ "${NONINTERACTIVE:-0}" != "1" ]; then
+        interactive_read -r -p "Remove data and logs too? (y/n) [n]: " remove_data
+    elif [ "${RPI_ENGINEER_REMOVE_DATA:-0}" = "1" ]; then
+        remove_data="y"
+    else
+        remove_data="n"
+    fi
+
+    # Stop and disable services
+    if [ -d /run/systemd/system ]; then
+        log_info "Stopping and disabling services..."
+        for svc in rpi-engineer rpi-engineer-api rpi-engineer-network rpi-engineer-serial \
+            rpi-engineer-capture rpi-engineer-system rpi-engineer-monitor rpi-engineer-update \
+            rpi-engineer-logging rpi-engineer-wlan0; do
+            systemctl stop "$svc" 2>/dev/null || true
+            systemctl disable "$svc" 2>/dev/null || true
+        done
+        systemctl daemon-reload
+    fi
+
+    # Remove systemd unit files
+    for unit in rpi-engineer rpi-engineer-api rpi-engineer-network rpi-engineer-serial \
+        rpi-engineer-capture rpi-engineer-system rpi-engineer-monitor rpi-engineer-update \
+        rpi-engineer-logging rpi-engineer-wlan0; do
+        rm -f "/etc/systemd/system/${unit}.service"
+    done
+    rm -rf /etc/systemd/system/hostapd.service.d
+    [ -d /run/systemd/system ] && systemctl daemon-reload
+
+    # Restore nginx default site
+    if command -v nginx >/dev/null 2>&1; then
+        rm -f /etc/nginx/sites-enabled/rpi-engineer
+        if [ -f /etc/nginx/sites-available/default ]; then
+            ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+        fi
+        nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
+    fi
+
+    # Remove sudoers rules
+    rm -f /etc/sudoers.d/rpi-engineer-apply-web-permissions
+    rm -f /etc/sudoers.d/rpi-engineer-apply-update
+    rm -f /etc/sudoers.d/rpi-engineer-create-config-backup
+
+    # Remove NetworkManager config
+    rm -f /etc/NetworkManager/conf.d/rpi-engineer-wlan0-unmanaged.conf
+
+    # Remove dhcpcd config (denyinterfaces wlan0)
+    if [ -f /etc/dhcpcd.conf ]; then
+        sed -i '/# RPi Engineer-in-a-Box/d' /etc/dhcpcd.conf 2>/dev/null || true
+        sed -i '/denyinterfaces wlan0/d' /etc/dhcpcd.conf 2>/dev/null || true
+    fi
+
+    # Remove dnsmasq config
+    rm -f /etc/dnsmasq.d/rpi-engineer.conf
+
+    # Remove hostapd config (we created it)
+    rm -f /etc/hostapd/hostapd.conf
+    if [ -f /etc/default/hostapd ]; then
+        sed -i 's|^DAEMON_CONF=.*|DAEMON_CONF=""|' /etc/default/hostapd 2>/dev/null || true
+    fi
+
+    # Remove network interfaces.d
+    rm -f /etc/network/interfaces.d/wlan0
+
+    # Remove install directory
+    if [ -d "$INSTALL_DIR" ]; then
+        log_info "Removing $INSTALL_DIR"
+        rm -rf "$INSTALL_DIR"
+    fi
+
+    # Remove config directory
+    if [ -d "$CONFIG_DIR" ]; then
+        log_info "Removing $CONFIG_DIR"
+        rm -rf "$CONFIG_DIR"
+    fi
+
+    # Optionally remove data and logs
+    if [[ "${remove_data:-n}" =~ ^[Yy]$ ]]; then
+        [ -d "$DATA_DIR" ] && rm -rf "$DATA_DIR" && log_info "Removed $DATA_DIR"
+        [ -d "$LOG_DIR" ] && rm -rf "$LOG_DIR" && log_info "Removed $LOG_DIR"
+    fi
+
+    # Note: we do not remove the rpi-engineer user/group; they may be referenced elsewhere.
+    echo "Uninstall complete."
+}
+
 # Run apt-get install. When NONINTERACTIVE=1 or no TTY, use DEBIAN_FRONTEND=noninteractive.
 # Otherwise allow debconf prompts so user can respond.
 apt_install_interactive() {
@@ -962,20 +961,6 @@ backup_existing_install() {
 }
 
 ensure_source_dir() {
-    # Optional offline mode: when RPI_ENGINEER_SKIP_CLONE=1, use the existing SOURCE_DIR
-    # as long as it contains critical files, and never attempt a git clone. This is
-    # intended for environments where the device cannot reach GitHub.
-    if [ "${RPI_ENGINEER_SKIP_CLONE:-0}" = "1" ]; then
-        if [ -d "$SOURCE_DIR/services" ] && [ -d "$SOURCE_DIR/web" ] && \
-           [ -f "$SOURCE_DIR/web/index.html" ] && \
-           [ -f "$SOURCE_DIR/services/logging_service/manager.py" ] && \
-           [ -f "$SOURCE_DIR/bin/apply-web-permissions.sh" ]; then
-            log_info "RPI_ENGINEER_SKIP_CLONE=1; using existing source at $SOURCE_DIR (no git clone)."
-            return 0
-        fi
-        log_error "RPI_ENGINEER_SKIP_CLONE=1 but $SOURCE_DIR is missing critical files; cannot proceed without git clone."
-        exit 1
-    fi
     # When running from install dir (e.g. /opt/rpi-engineer), clone to get a fresh source
     # for deploy; otherwise we would skip deploy and leave broken/incomplete state.
     if [ "$SOURCE_DIR" = "$INSTALL_DIR" ]; then
@@ -1054,47 +1039,31 @@ deploy_files() {
         exit 1
     fi
 
-    # Offline deploy: when we have a separate source tree, copy from SOURCE_DIR into INSTALL_DIR
-    # instead of git fetch/reset (avoids GitHub access). Use when running from /tmp/rpi-src etc.
-    if [ "$SOURCE_DIR" != "$INSTALL_DIR" ] && [ -d "$SOURCE_DIR/services" ] && [ -d "$SOURCE_DIR/web" ]; then
-        if [ "$INSTALL_MODE" = "upgrade" ] && [ -d "$INSTALL_DIR" ] && [ "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
+    if [ -d "$INSTALL_DIR/.git" ]; then
+        if [ "$INSTALL_MODE" = "upgrade" ]; then
             backup_existing_install
         fi
-        mkdir -p "$INSTALL_DIR"
-        log_info "Offline deploy: copying from $SOURCE_DIR to $INSTALL_DIR (no git)."
-        for dir in web services lib bin; do
-            if [ -d "$SOURCE_DIR/$dir" ]; then
-                copy_path "$SOURCE_DIR/$dir" "$INSTALL_DIR/$dir"
-            fi
-        done
-        if [ -f "$SOURCE_DIR/requirements.txt" ]; then
-            cp "$SOURCE_DIR/requirements.txt" "$INSTALL_DIR/requirements.txt"
-        fi
-        # Preserve existing .git in install dir if present (for later updates when network is available)
-        if [ -d "$INSTALL_DIR/.git" ]; then
-            log_info "Preserved existing .git in $INSTALL_DIR"
-        fi
-    elif [ -d "$INSTALL_DIR/.git" ]; then
-        if [ "${RPI_ENGINEER_SKIP_CLONE:-0}" = "1" ]; then
-            log_info "Existing git repository at $INSTALL_DIR; RPI_ENGINEER_SKIP_CLONE=1, skipping git fetch."
+        log_info "Existing git repository found at $INSTALL_DIR; updating."
+        if git -C "$INSTALL_DIR" remote get-url origin >/dev/null 2>&1; then
+            git -C "$INSTALL_DIR" remote set-url origin "$REPO_URL" >> "$INSTALL_LOG" 2>&1 || true
         else
-            if [ "$INSTALL_MODE" = "upgrade" ]; then
-                backup_existing_install
-            fi
-            log_info "Existing git repository found at $INSTALL_DIR; updating."
-            if git -C "$INSTALL_DIR" remote get-url origin >/dev/null 2>&1; then
-                git -C "$INSTALL_DIR" remote set-url origin "$REPO_URL" >> "$INSTALL_LOG" 2>&1 || true
-            else
-                git -C "$INSTALL_DIR" remote add origin "$REPO_URL" >> "$INSTALL_LOG" 2>&1 || true
-            fi
-            if ! git -C "$INSTALL_DIR" fetch origin "$BRANCH" >> "$INSTALL_LOG" 2>&1; then
-                log_error "git fetch failed (check network and $INSTALL_LOG)."
-                exit 1
-            fi
-            if ! git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH" >> "$INSTALL_LOG" 2>&1; then
-                log_error "git reset failed (check $INSTALL_LOG)."
-                exit 1
-            fi
+            git -C "$INSTALL_DIR" remote add origin "$REPO_URL" >> "$INSTALL_LOG" 2>&1 || true
+        fi
+        if ! git -C "$INSTALL_DIR" fetch origin "$BRANCH" >> "$INSTALL_LOG" 2>&1; then
+            log_error "git fetch failed (check network and $INSTALL_LOG)."
+            exit 1
+        fi
+        # Show diffs on branch so user can verify what is being updated
+        if git -C "$INSTALL_DIR" rev-parse "origin/$BRANCH" >/dev/null 2>&1; then
+            echo "--- Changes on branch $BRANCH (HEAD..origin/$BRANCH) ---" | tee -a "$INSTALL_LOG"
+            git -C "$INSTALL_DIR" log --oneline HEAD.."origin/$BRANCH" 2>/dev/null | tee -a "$INSTALL_LOG" || true
+            git -C "$INSTALL_DIR" diff --stat HEAD.."origin/$BRANCH" 2>/dev/null | tee -a "$INSTALL_LOG" || true
+            git -C "$INSTALL_DIR" diff HEAD.."origin/$BRANCH" 2>/dev/null | tee -a "$INSTALL_LOG" || true
+            echo "--- End of diff ---" | tee -a "$INSTALL_LOG"
+        fi
+        if ! git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH" >> "$INSTALL_LOG" 2>&1; then
+            log_error "git reset failed (check $INSTALL_LOG)."
+            exit 1
         fi
     else
         if [ -d "$INSTALL_DIR" ] && [ "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then

@@ -114,6 +114,14 @@ deploy_files() {
             log_error "git fetch failed (check network and $INSTALL_LOG)."
             exit 1
         fi
+        # Show diffs on branch so user can verify what is being updated
+        if git -C "$INSTALL_DIR" rev-parse "origin/$BRANCH" >/dev/null 2>&1; then
+            echo "--- Changes on branch $BRANCH (HEAD..origin/$BRANCH) ---" | tee -a "$INSTALL_LOG"
+            git -C "$INSTALL_DIR" log --oneline HEAD.."origin/$BRANCH" 2>/dev/null | tee -a "$INSTALL_LOG" || true
+            git -C "$INSTALL_DIR" diff --stat HEAD.."origin/$BRANCH" 2>/dev/null | tee -a "$INSTALL_LOG" || true
+            git -C "$INSTALL_DIR" diff HEAD.."origin/$BRANCH" 2>/dev/null | tee -a "$INSTALL_LOG" || true
+            echo "--- End of diff ---" | tee -a "$INSTALL_LOG"
+        fi
         if ! git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH" >> "$INSTALL_LOG" 2>&1; then
             log_error "git reset failed (check $INSTALL_LOG)."
             exit 1

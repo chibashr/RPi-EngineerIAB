@@ -669,6 +669,9 @@ class UpdateManager:
                     )
                     if proc.returncode == 0:
                         ran_sudo_ok = True
+                        if proc.stdout and proc.stdout.strip():
+                            for line in proc.stdout.strip().splitlines():
+                                emit(line)
                         emit("apply-update.sh completed.")
                     else:
                         err = (proc.stderr or "").strip() or (proc.stdout or "").strip()
