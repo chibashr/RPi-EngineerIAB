@@ -230,13 +230,24 @@ class ModuleManager:
         return {"enabled": False, "module_id": module_id}
 
     def register_module_routes(self, app) -> None:  # type: ignore[no-untyped-def]
-        """Register API routes for all installed modules, then start only enabled ones."""
+        """Register API routes for all installed modules, then start only enabled ones.
+        Must be called at startup (e.g. FastAPI lifespan) before first request."""
         self.attach_app(app)
         for record in self._registry.values():
             self._register_module_api_routes(record)
         for record in self._registry.values():
             if record.enabled:
                 self._start_module(record)
+
+    def discover_and_register(self, app) -> None:  # type: ignore[no-untyped-def]
+        """Discover modules and register their FastAPI routers. Call during app lifespan startup."""
+        self.register_module_routes(app)
+
+    def cleanup(self) -> None:
+        """Shut down all enabled modules. Call during app lifespan shutdown."""
+        for record in self._registry.values():
+            if record.enabled:
+                self._shutdown_module(record)
 
     def get_web_components(self) -> List[Dict[str, object]]:
         components: List[Dict[str, object]] = []
@@ -262,7 +273,9 @@ class ModuleManager:
         return None
 
     def _register_module_api_routes(self, record: ModuleRecord) -> None:
-        """Register a module's API blueprint only (no service start)."""
+        """Register a module's FastAPI router. Routes are mounted at startup; FastAPI does not
+        support adding routes after lifespan completes. Enable/disable: when disabled, handlers
+        should return 404 (or 409) — routes remain mounted but module is logically off."""
         if record.routes_registered or not self._app:
             return
         api_path = record.path / "api.py"
@@ -271,16 +284,31 @@ class ModuleManager:
         try:
             module = importlib.import_module(f"{record.module_id}.api")
         except Exception as exc:
-            logger.warning("Module API import failed %s: %s", record.module_id, exc)
+            logger.warning("Module load failed id=%s error=%s", record.module_id, exc)
             record.state = "error"
             return
-        if module and hasattr(module, "register_routes"):
+        logger.info("Module loaded id=%s", record.module_id)
+        router = getattr(module, "router", None)
+        if router is not None:
             try:
-                module.register_routes(self._app)
+                prefix = self._get_module_api_prefix(record)
+                self._app.include_router(router, prefix=prefix)
                 record.routes_registered = True
+                logger.info("Module routes registered id=%s prefix=%s", record.module_id, prefix)
             except Exception as exc:
-                logger.warning("Module route registration failed %s: %s", record.module_id, exc)
+                logger.warning("Module load failed id=%s error=%s", record.module_id, exc)
                 record.state = "error"
+
+    def _get_module_api_prefix(self, record: ModuleRecord) -> str:
+        """Derive API prefix from module metadata or convention."""
+        routes = record.metadata.get("api_routes") or []
+        if routes and isinstance(routes[0], dict):
+            path = routes[0].get("path", "")
+            if path and "/" in path:
+                parts = path.strip("/").split("/")
+                if len(parts) >= 3:
+                    return "/" + "/".join(parts[:3])
+        return f"/api/v1/{record.module_id}"
 
     def _start_module(self, record: ModuleRecord) -> None:
         """Start a module's service (main.initialize()); API routes must already be registered."""

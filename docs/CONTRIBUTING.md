@@ -24,7 +24,7 @@
 - `pytest tests/unit/ -v` — unit tests
 - `pytest tests/unit/ -v --cov=services` — unit tests with coverage
 - `pytest tests/integration/ -v -m integration` — integration tests
-- `python services/api_gateway/main.py` — run API gateway (default http://0.0.0.0:5000)
+- `python -m uvicorn services.api_gateway.main:app --host 0.0.0.0 --port 5000` — run API gateway (default http://0.0.0.0:5000)
 
 <!-- END AUTO-GENERATED -->
 

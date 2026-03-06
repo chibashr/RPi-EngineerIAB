@@ -1,6 +1,6 @@
 # Frontend
 
-<!-- Generated: 2026-03-05 | Files scanned: 140+ | Token estimate: ~500 -->
+<!-- Generated: 2026-03-06 | Files scanned: 140+ | Token estimate: ~500 -->
 
 ## Page Tree
 
@@ -24,7 +24,7 @@
 ## Data Flow
 
 - Page load → fetch /api/v1/<group>/... for initial data
-- WebSocket /ws/status for live dashboard/status
+- WebSocket /ws/status for live dashboard/status (currently stubbed)
 - Forms → POST/PUT to /api/v1/... → UI refresh or WebSocket follow-up
 - Module assets: /modules/<module_id>/<path> served by gateway via module_manager.resolve_web_asset
 

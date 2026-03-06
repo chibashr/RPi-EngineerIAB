@@ -22,6 +22,11 @@ from pathlib import Path
 from typing import Optional
 
 
+def get_log_dir() -> Path:
+    """Public accessor for the log directory (used by logs API for discovery)."""
+    return _get_log_dir()
+
+
 def _get_log_dir() -> Path:
     """Get the log directory, creating fallback if needed."""
     repo_root = Path(__file__).resolve().parents[1]
@@ -124,6 +129,24 @@ def get_service_logger(module_path: str, log_file: Optional[str] = None) -> logg
     service_name = _get_service_name(module_path)
     return _get_app_logger(
         module_path, service_name, log_file or f"{service_name}.log"
+    )
+
+
+def get_api_logger(module_path: str, log_file: Optional[str] = None) -> logging.Logger:
+    """
+    Get a logger for API gateway (request logging, etc.).
+    Writes to api_gateway.log.
+
+    Args:
+        module_path: Typically __name__ (e.g., 'services.api_gateway.middleware.request_logger')
+        log_file: Optional log file name (defaults to 'api_gateway.log')
+
+    Returns:
+        Configured logger instance
+    """
+    display_name = _get_service_name(module_path)
+    return _get_app_logger(
+        module_path, display_name, log_file or "api_gateway.log"
     )
 
 

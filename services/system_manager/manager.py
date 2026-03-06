@@ -122,7 +122,7 @@ class SystemManager:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        logger.info("Service %s %s", action, service)
+        logger.info("Service action service=%s action=%s", service, action)
         return {"service": service, "action": action, "status": "ok"}
 
     def control_services_bulk(
@@ -155,7 +155,7 @@ class SystemManager:
         if not self._systemctl_available():
             raise RuntimeError("systemctl not available")
         cmd = "poweroff" if action == "shutdown" else "reboot"
-        logger.warning("Power action requested: %s", action)
+        logger.warning("Power command issued action=%s", action)
         subprocess.Popen(["systemctl", cmd])
         return {"action": action, "scheduled": True}
 
