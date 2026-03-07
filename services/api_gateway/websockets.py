@@ -439,7 +439,7 @@ def register_websockets(app: "FastAPI") -> None:
         await websocket.accept()
         try:
             job = capture_manager.get_job(capture_id)
-            if not job or not job.file_path or not job.file_path.exists():
+            if not job:
                 await websocket.send_json(
                     {"type": "error", "message": "Capture not found"}
                 )
@@ -468,14 +468,39 @@ def register_websockets(app: "FastAPI") -> None:
                 )
                 return
 
-            proc = await asyncio.create_subprocess_exec(
-                "tshark",
-                "-r",
-                str(job.file_path),
-                "-l",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
+            is_active = job.stopped_at is None
+            if is_active:
+                cmd = ["tshark", "-i", job.interface, "-l"]
+                if job.filter:
+                    cmd.extend(["-f", job.filter])
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+            else:
+                if not job.file_path or not job.file_path.exists():
+                    await websocket.send_json(
+                        {"type": "error", "message": "Capture not found"}
+                    )
+                    duration = time.monotonic() - start
+                    logger.info(
+                        "WS disconnect path=/ws/capture capture=%s client=%s "
+                        "duration_s=%.1f tx=%d",
+                        capture_id,
+                        client,
+                        duration,
+                        tx_count,
+                    )
+                    return
+                proc = await asyncio.create_subprocess_exec(
+                    "tshark",
+                    "-r",
+                    str(job.file_path),
+                    "-l",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
             try:
                 if proc.stdout:
                     async for line in proc.stdout:

@@ -39,6 +39,8 @@ class CaptureJob:
     stopped_at: Optional[str] = None
     file_path: Optional[Path] = None
     process: Optional[subprocess.Popen] = None
+    packet_count: Optional[int] = None
+    byte_count: Optional[int] = None
 
 
 class CaptureManager:
@@ -120,10 +122,12 @@ class CaptureManager:
         if job.process and job.process.poll() is None:
             job.process.terminate()
         job.stopped_at = _timestamp()
-        self._completed[capture_id] = job
-        packets = 0
         if job.file_path and job.file_path.exists() and _which("tshark"):
-            packets = _tshark_stats(job.file_path).get("packet_count", 0)
+            stats = _tshark_stats(job.file_path)
+            job.packet_count = stats.get("packet_count", 0)
+            job.byte_count = stats.get("byte_count", 0)
+        self._completed[capture_id] = job
+        packets = job.packet_count or 0
         logger.info("Capture stopped id=%s packets=%d", capture_id[:8], packets)
         return self._job_payload(job)
 
@@ -183,7 +187,7 @@ class CaptureManager:
         return self._active.get(capture_id) or self._completed.get(capture_id)
 
     def _job_payload(self, job: CaptureJob) -> Dict[str, object]:
-        return {
+        payload = {
             "capture_id": job.capture_id,
             "interface": job.interface,
             "name": job.name,
@@ -194,6 +198,11 @@ class CaptureManager:
             "stopped_at": job.stopped_at,
             "file_path": str(job.file_path) if job.file_path else "",
         }
+        if job.packet_count is not None:
+            payload["packet_count"] = job.packet_count
+        if job.byte_count is not None:
+            payload["byte_count"] = job.byte_count
+        return payload
 
     def _stop_after(self, capture_id: str, duration_seconds: int) -> None:
         time.sleep(duration_seconds)

@@ -1,4 +1,4 @@
-import { apiGet, apiPost, extractData } from "../api.js";
+import { apiDelete, apiGet, apiPost, extractData } from "../api.js";
 import { createStatusItem } from "../components.js";
 import { createWebSocketClient } from "../websocket.js";
 import { modalForm } from "../modal.js";
@@ -88,11 +88,19 @@ function createActiveCaptureItem(capture, isSelected) {
   return item;
 }
 
+function formatBytes(n) {
+  if (n == null || n === undefined) return "";
+  return n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`;
+}
+
 function createCompletedCaptureItem(capture) {
   const item = document.createElement("li");
   item.className = "status-item capture-completed-item";
   const label = capture.name || capture.capture_id || "Capture";
-  const meta = [capture.interface, capture.stopped_at].filter(Boolean).join(" · ") || "completed";
+  const metaParts = [capture.interface, capture.stopped_at];
+  if (capture.packet_count != null) metaParts.push(`${capture.packet_count} packets`);
+  if (capture.byte_count != null) metaParts.push(formatBytes(capture.byte_count));
+  const meta = metaParts.filter(Boolean).join(" · ") || "completed";
   const labelEl = document.createElement("span");
   labelEl.className = "status-label";
   labelEl.textContent = label;
@@ -222,6 +230,7 @@ function connectLiveViewTo(captureId) {
   }
   captureBuffer = [];
   if (elements.liveView) {
+    elements.liveView.classList.remove("live-view-error");
     elements.liveView.textContent = "Connecting...";
   }
   wsClient = createWebSocketClient(`/ws/capture/${captureId}`);
@@ -237,9 +246,23 @@ function connectLiveViewTo(captureId) {
     }
   });
   wsClient.on("packet", (message) => {
+    setLiveViewError(null);
     updateLiveView(message.summary || "");
   });
+  wsClient.on("error", (message) => {
+    const msg = message.message || "Live capture connection error.";
+    setLiveViewError(msg);
+    updateBanner(msg);
+  });
   wsClient.connect();
+}
+
+function setLiveViewError(message) {
+  if (!elements.liveView) return;
+  elements.liveView.classList.toggle("live-view-error", !!message);
+  if (message) {
+    elements.liveView.textContent = message;
+  }
 }
 
 async function stopCapture(captureId) {
@@ -253,7 +276,8 @@ async function stopCapture(captureId) {
         wsClient = null;
       }
       if (elements.liveView) {
-        elements.liveView.textContent = "Select an active capture to view live, or click here to connect to the first.";
+        elements.liveView.classList.remove("live-view-error");
+        elements.liveView.textContent = "Start a capture, then select it above or click here to view live packets.";
       }
     }
     try {
@@ -279,13 +303,16 @@ function getModalContainer() {
 }
 
 async function showCompletedCaptureView(capture) {
-  let stats = { packet_count: 0, byte_count: 0 };
+  let stats = {
+    packet_count: capture.packet_count ?? 0,
+    byte_count: capture.byte_count ?? 0,
+  };
   try {
     const payload = await apiGet(`/api/v1/capture/${capture.capture_id}/stats`);
     const data = extractData(payload) || {};
-    stats = { packet_count: data.packet_count ?? 0, byte_count: data.byte_count ?? 0 };
+    stats = { packet_count: data.packet_count ?? stats.packet_count, byte_count: data.byte_count ?? stats.byte_count };
   } catch (_) {
-    // keep defaults
+    // keep defaults from capture
   }
   const container = getModalContainer();
   container.setAttribute("aria-hidden", "false");
@@ -296,9 +323,8 @@ async function showCompletedCaptureView(capture) {
   overlay.setAttribute("aria-labelledby", "capture-view-title");
 
   const title = capture.name || capture.capture_id || "Capture";
-  const formatBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`);
   const dialog = document.createElement("div");
-  dialog.className = "modal-dialog modal-dialog-form";
+  dialog.className = "modal-dialog modal-dialog-form capture-view-modal";
   dialog.innerHTML = `
     <h2 id="capture-view-title" class="modal-title">${title.replace(/</g, "&lt;")}</h2>
     <div class="capture-view-details">
@@ -307,8 +333,19 @@ async function showCompletedCaptureView(capture) {
       <p><strong>Started</strong> ${(capture.started_at || "--").replace(/</g, "&lt;")} · <strong>Stopped</strong> ${(capture.stopped_at || "--").replace(/</g, "&lt;")}</p>
       <p><strong>Packets</strong> ${stats.packet_count} · <strong>Size</strong> ${formatBytes(stats.byte_count)}</p>
     </div>
+    <div class="capture-view-tabs">
+      <button type="button" class="capture-view-tab is-active" data-tab="packets">Packets</button>
+      <button type="button" class="capture-view-tab" data-tab="conversations">Conversations</button>
+      <button type="button" class="capture-view-tab" data-tab="protocols">Protocols</button>
+    </div>
+    <div class="capture-view-tab-panels">
+      <div class="capture-view-tab-panel is-active" data-panel="packets"><div class="capture-view-loading">Loading…</div></div>
+      <div class="capture-view-tab-panel" data-panel="conversations"><div class="capture-view-loading">Loading…</div></div>
+      <div class="capture-view-tab-panel" data-panel="protocols"><div class="capture-view-loading">Loading…</div></div>
+    </div>
     <div class="modal-actions">
       <button type="button" class="btn btn-secondary capture-view-export">Export</button>
+      <button type="button" class="btn btn-secondary capture-view-delete">Delete</button>
       <button type="button" class="btn btn-primary capture-view-new-similar">New similar</button>
       <button type="button" class="btn btn-secondary modal-close">Close</button>
     </div>
@@ -322,9 +359,77 @@ async function showCompletedCaptureView(capture) {
     }
   };
 
+  const loadTab = async (tab) => {
+    const panel = dialog.querySelector(`[data-panel="${tab}"]`);
+    if (!panel || panel.dataset.loaded === "true") return;
+    try {
+      if (tab === "packets") {
+        const payload = await apiGet(`/api/v1/capture/${capture.capture_id}/packets`);
+        const data = extractData(payload) || {};
+        const packets = data.packets || [];
+        const list = Array.isArray(packets) ? packets : [];
+        panel.innerHTML = list.length
+          ? `<ul class="capture-packet-list">${list.slice(0, 100).map((p) => {
+              let summary = "";
+              if (p && typeof p === "object" && p._source?.layers && typeof p._source.layers === "object") {
+                const info = p._source.layers.frame?.["frame.info"] || p._source.layers.frame?.["frame.time"];
+                summary = info ? String(info) : Object.keys(p._source.layers).filter((k) => k !== "frame").join(", ");
+              } else {
+                summary = (p && (p.summary || p.info)) ? String(p.summary || p.info) : JSON.stringify(p).slice(0, 80);
+              }
+              const time = (p && p._source?.layers?.frame?.["frame.time"]) ? String(p._source.layers.frame["frame.time"]) : "";
+              return `<li class="capture-packet-item"><span class="capture-packet-time">${(time || "").replace(/</g, "&lt;")}</span> <span class="capture-packet-summary">${String(summary).slice(0, 120).replace(/</g, "&lt;")}</span></li>`;
+            }).join("")}</ul>${list.length > 100 ? `<p class="capture-view-more">First 100 of ${list.length} packets shown.</p>` : ""}`
+          : "<p class=\"capture-view-empty\">No packets.</p>";
+      } else if (tab === "conversations") {
+        const payload = await apiGet(`/api/v1/capture/${capture.capture_id}/conversations`);
+        const data = extractData(payload) || {};
+        const lines = data.conversations || [];
+        const list = Array.isArray(lines) ? lines : (typeof lines === "string" ? lines.split("\n") : []);
+        panel.innerHTML = list.length
+          ? `<pre class="capture-conversations">${list.map((l) => String(l).replace(/</g, "&lt;")).join("\n")}</pre>`
+          : "<p class=\"capture-view-empty\">No conversations.</p>";
+      } else if (tab === "protocols") {
+        const payload = await apiGet(`/api/v1/capture/${capture.capture_id}/protocols`);
+        const data = extractData(payload) || {};
+        const protocols = data.protocols || {};
+        const entries = Object.entries(protocols).sort((a, b) => (b[1] || 0) - (a[1] || 0));
+        panel.innerHTML = entries.length
+          ? `<ul class="capture-protocol-list">${entries.map(([name, count]) => `<li><span class="capture-protocol-name">${String(name).replace(/</g, "&lt;")}</span> <span class="capture-protocol-count">${Number(count)}</span></li>`).join("")}</ul>`
+          : "<p class=\"capture-view-empty\">No protocol stats.</p>";
+      }
+    } catch (_) {
+      panel.innerHTML = "<p class=\"capture-view-empty\">Failed to load.</p>";
+    }
+    panel.dataset.loaded = "true";
+  };
+
+  dialog.querySelectorAll(".capture-view-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab;
+      dialog.querySelectorAll(".capture-view-tab").forEach((b) => b.classList.remove("is-active"));
+      dialog.querySelectorAll(".capture-view-tab-panel").forEach((p) => p.classList.remove("is-active"));
+      btn.classList.add("is-active");
+      const panel = dialog.querySelector(`[data-panel="${tab}"]`);
+      if (panel) panel.classList.add("is-active");
+      loadTab(tab);
+    });
+  });
+  loadTab("packets");
+
   dialog.querySelector(".capture-view-export").addEventListener("click", () => {
     exportCapture(capture);
     close();
+  });
+  dialog.querySelector(".capture-view-delete").addEventListener("click", async () => {
+    try {
+      await apiDelete(`/api/v1/capture/completed/${capture.capture_id}`);
+      showToast("Capture deleted.", "success");
+      close();
+      await loadCaptureData();
+    } catch (_) {
+      showToast("Unable to delete capture.", "error");
+    }
   });
   dialog.querySelector(".capture-view-new-similar").addEventListener("click", () => {
     close();
@@ -441,7 +546,9 @@ async function startCapture(interfaceValue, nameValue, filterValue) {
     const newCapture = extractData(payload);
     if (newCapture && newCapture.capture_id) {
       activeCaptures = [...activeCaptures, newCapture];
+      selectedActiveCaptureId = newCapture.capture_id;
       renderCaptures(elements.activeList, activeCaptures, "No active captures.");
+      connectLiveViewTo(newCapture.capture_id);
     }
     showToast("Capture started.", "success");
     try {
@@ -474,7 +581,8 @@ async function loadCaptureData() {
         wsClient = null;
       }
       if (elements.liveView) {
-        elements.liveView.textContent = "Select an active capture to view live, or click here to connect to the first.";
+        elements.liveView.classList.remove("live-view-error");
+        elements.liveView.textContent = "Start a capture, then select it above or click here to view live packets.";
       }
     }
     renderCaptures(elements.activeList, active, "No active captures.");
