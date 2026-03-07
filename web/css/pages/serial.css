@@ -19,6 +19,7 @@
 .status-table {
   width: 100%;
   border-collapse: collapse;
+  font-size: 0.9rem;
 }
 
 .status-table th,
@@ -26,17 +27,6 @@
   text-align: left;
   padding: 0.5rem 0;
   border-bottom: 1px solid var(--color-border);
-}
-
-.console-controls .field {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.console-controls .select {
-  min-width: 180px;
 }
 
 .device-actions {
@@ -58,19 +48,8 @@
   gap: 0.5rem;
 }
 
-.serial-split {
-  display: flex;
-  gap: 1.5rem;
-  align-items: stretch;
-  min-height: 400px;
-}
-
-.serial-device-list {
-  flex: 0 0 220px;
-  min-width: 200px;
-}
-
-.serial-device-list .device-item {
+/* Device list: full-width card */
+.device-item {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -78,86 +57,58 @@
   border-bottom: 1px solid var(--color-border);
 }
 
-.serial-device-list .device-item:last-child {
+.device-item:last-child {
   border-bottom: none;
 }
 
-.serial-device-list .device-name {
+.device-name {
   font-weight: 600;
   font-size: 0.9rem;
 }
 
-.serial-device-list .device-meta {
+.device-meta {
   font-size: 0.8rem;
   color: var(--color-muted);
 }
 
-.serial-device-list .device-actions {
+.device-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
 }
 
-.serial-console-area {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
+/* Sessions card: tabs + panels */
+.serial-sessions-card .tabs {
+  margin-bottom: 1rem;
 }
 
-.console-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--color-border);
-  min-height: 2.5rem;
-}
-
-.console-tab {
-  display: flex;
+.serial-sessions-card .tab-button {
+  display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.35rem 0.75rem;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.05);
-  border: 1px solid var(--color-border);
-  font-size: 0.9rem;
-  cursor: pointer;
 }
 
-.console-tab:hover {
-  background: rgba(0, 0, 0, 0.08);
-}
-
-.console-tab.is-active {
-  background: var(--color-accent);
-  color: white;
-  border-color: var(--color-accent);
-}
-
-.console-tab-close {
+.serial-tab-close {
   padding: 0 0.2rem;
   font-size: 1.1rem;
   line-height: 1;
   opacity: 0.7;
+  margin-left: 0.25rem;
 }
 
-.console-tab-close:hover {
+.serial-tab-close:hover {
   opacity: 1;
 }
 
 .console-tab-panels {
-  flex: 1;
   min-height: 0;
   position: relative;
-  margin-top: 1rem;
 }
 
 .console-tab-panel {
   display: none;
   flex-direction: column;
-  height: 100%;
+  gap: 0.75rem;
   min-height: 280px;
 }
 
@@ -172,103 +123,55 @@
   min-height: 280px;
   color: var(--color-muted);
   padding: 2rem;
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
 }
 
 .console-empty-state.is-visible {
   display: flex;
 }
 
-.console-tab-panel .console-controls {
-  margin-bottom: 0.5rem;
-}
-
-.console-card {
-  margin-top: 1.5rem;
-}
-
-.console-status {
-  margin-bottom: 0.75rem;
-  font-weight: 600;
-}
-
-.console-status.status-connected {
-  color: var(--color-success);
-}
-
-.console-status.status-connecting {
-  color: var(--color-info);
-}
-
-.console-status.status-disconnected,
-.console-status.status-error {
-  color: var(--color-muted);
-}
-
-.console-controls {
+/* Per-session: toolbar (actions) + settings (details) + status + console block */
+.console-toolbar {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
 }
 
-.console-window-wrapper {
-  position: relative;
+.console-settings {
+  margin: 0;
   border: 1px solid var(--color-border);
-  border-radius: 12px;
-  min-height: 220px;
-  max-height: 24em;
-  overflow-y: auto;
+  border-radius: 10px;
+  padding: 0.5rem 0.75rem;
+  background: rgba(90, 100, 114, 0.04);
 }
 
-.console-window-wrapper:focus-within {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-.console-window {
-  padding: 1rem;
-  min-height: 218px;
-  background: rgba(16, 18, 22, 0.06);
+.console-settings summary {
+  cursor: pointer;
+  font-size: 0.9rem;
   color: var(--color-muted);
-  font-family: "Courier New", monospace;
-  white-space: pre-wrap;
-  word-break: break-all;
-  line-height: 1.2;
-}
-
-/* Cisco / syntax highlighting */
-.console-window .sh-prompt {
-  color: var(--color-accent);
   font-weight: 600;
+  list-style: none;
 }
 
-.console-window .sh-error {
-  color: var(--color-danger);
+.console-settings summary::-webkit-details-marker {
+  display: none;
 }
 
-.console-window .sh-command {
-  color: var(--color-info);
+.console-settings[open] summary {
+  margin-bottom: 0.5rem;
 }
 
-.console-window .sh-config {
-  color: var(--color-success);
+.console-settings .field {
+  margin: 0.5rem 0 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.console-window .sh-status {
-  color: var(--color-muted);
-  font-style: italic;
-}
-
-.console-input-overlay {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: text;
-  font-size: 1rem;
-  padding: 1rem;
-  border: none;
-  background: transparent;
+.console-settings .select {
+  min-width: 140px;
 }
 
 .empty-state {
@@ -276,4 +179,19 @@
   border-radius: 12px;
   padding: 1rem;
   color: var(--color-muted);
+}
+
+.panel-meta {
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 639px) {
+  .page-header .toolbar {
+    width: 100%;
+  }
+
+  .serial-sessions-card .tabs {
+    flex-wrap: wrap;
+  }
 }

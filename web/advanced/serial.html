@@ -23,6 +23,7 @@
     <link rel="stylesheet" href="/css/layout.css" />
     <link rel="stylesheet" href="/css/components.css" />
     <link rel="stylesheet" href="/css/pages/advanced.css" />
+    <link rel="stylesheet" href="/css/console.css" />
     <link rel="stylesheet" href="/css/pages/serial.css" />
   </head>
   <body>
@@ -112,11 +113,6 @@
         </header>
 
         <main id="main-content" class="main-content">
-          <div
-            class="connection-banner"
-            id="serial-connection-banner"
-            role="status"
-          ></div>
           <div class="page-header">
             <div>
               <h1>Serial Console</h1>
@@ -124,31 +120,37 @@
                 Detect devices, manage sessions, and open live consoles.
               </p>
             </div>
-          </div>
-
-          <div class="serial-split">
-            <section class="card serial-device-list">
-              <div class="section-header">
-                <h2>Devices</h2>
-                <button class="btn btn-secondary btn-sm" id="refresh-serial">Refresh</button>
-              </div>
-              <div class="section-body" id="serial-device-list-body">
-                <p class="empty-state">Loading devices...</p>
-              </div>
-            </section>
-
-            <section class="card serial-console-area">
-              <div class="console-tabs" id="serial-console-tabs" role="tablist"></div>
-              <div class="console-tab-panels" id="serial-console-panels"></div>
-              <div class="console-empty-state" id="serial-console-empty">
-                <p>Connect a device to open a console.</p>
-              </div>
-            </section>
+            <div class="toolbar">
+              <button class="btn btn-secondary" id="refresh-serial">Refresh</button>
+              <button class="btn btn-primary" id="new-serial-session">New serial session</button>
+            </div>
           </div>
 
           <section class="card">
             <div class="section-header">
+              <h2>Devices</h2>
+            </div>
+            <div class="section-body" id="serial-device-list-body">
+              <p class="empty-state">Loading devices...</p>
+            </div>
+          </section>
+
+          <section class="card serial-sessions-card">
+            <div class="section-header">
+              <h2>Sessions</h2>
+              <span class="panel-meta" id="serial-sessions-meta" aria-live="polite"></span>
+            </div>
+            <div class="tabs" id="serial-console-tabs" role="tablist"></div>
+            <div class="console-tab-panels" id="serial-console-panels"></div>
+            <div class="console-empty-state" id="serial-console-empty">
+              <p>Start a new serial session to open a console.</p>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-header">
               <h2>Session Logs</h2>
+              <span class="panel-meta" id="serial-logs-meta" aria-live="polite"></span>
             </div>
             <div class="section-body">
               <table class="status-table" id="serial-logs-table">

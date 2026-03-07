@@ -28,6 +28,7 @@ function createSerialDom() {
       <tbody id="serial-logs-table-body"></tbody>
     </table>
     <button id="refresh-serial">Refresh</button>
+    <button id="new-serial-session">New serial session</button>
   `;
 }
 

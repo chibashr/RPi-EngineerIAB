@@ -110,9 +110,6 @@ const elements = {
   get consoleEmpty() {
     return document.getElementById("serial-console-empty");
   },
-  get banner() {
-    return document.getElementById("serial-connection-banner");
-  },
   get logsTable() {
     return document.getElementById("serial-logs-table-body");
   },
@@ -260,10 +257,11 @@ function statusLabel(deviceStatus, hasSession, isWsConnected, wsStatus) {
   return "Disconnected";
 }
 
-function updateBanner(message, isVisible = true) {
-  if (!elements.banner) return;
-  elements.banner.textContent = message;
-  elements.banner.classList.toggle("is-visible", isVisible);
+function updateSessionsMeta() {
+  const el = document.getElementById("serial-sessions-meta");
+  if (!el) return;
+  const n = sessionMap.size;
+  el.textContent = n > 0 ? `${n} active` : "";
 }
 
 function ensureTerminalLine(state) {
@@ -365,26 +363,33 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
 
   const tab = document.createElement("button");
   tab.type = "button";
-  tab.className = "console-tab";
+  tab.className = "tab-button";
   tab.setAttribute("role", "tab");
   tab.setAttribute("aria-selected", "false");
   tab.dataset.sessionId = sessionId;
-  tab.innerHTML = `<span>${deviceName}</span><span class="console-tab-close" aria-label="Close">×</span>`;
-  tab.querySelector(".console-tab-close").addEventListener("click", (e) => {
+  tab.appendChild(document.createTextNode(deviceName));
+  const closeSpan = document.createElement("span");
+  closeSpan.className = "serial-tab-close";
+  closeSpan.setAttribute("aria-label", "Close");
+  closeSpan.textContent = "×";
+  closeSpan.addEventListener("click", (e) => {
     e.stopPropagation();
     disconnectDevice(sessionId);
   });
-  tab.addEventListener("click", () => switchTab(sessionId));
+  tab.appendChild(closeSpan);
+  tab.addEventListener("click", (e) => {
+    if (e.target !== closeSpan) switchTab(sessionId);
+  });
   state.tabEl = tab;
 
   const panel = document.createElement("div");
-  panel.className = "console-tab-panel";
+  panel.className = "console-tab-panel console-block";
   panel.dataset.sessionId = sessionId;
   panel.setAttribute("role", "tabpanel");
   state.tabPanelEl = panel;
 
-  const controls = document.createElement("div");
-  controls.className = "console-controls";
+  const toolbar = document.createElement("div");
+  toolbar.className = "console-toolbar";
   const clearBtn = document.createElement("button");
   clearBtn.className = "btn btn-secondary btn-sm";
   clearBtn.textContent = "Clear";
@@ -403,8 +408,15 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   saveBtn.className = "btn btn-secondary btn-sm";
   saveBtn.textContent = "Save Log";
   saveBtn.addEventListener("click", () => saveSerialLogForSession(sessionId));
+  toolbar.append(clearBtn, breakBtn, saveBtn);
+
+  const details = document.createElement("details");
+  details.className = "console-settings";
+  const summary = document.createElement("summary");
+  summary.textContent = "Settings";
+  details.appendChild(summary);
   const syntaxSelect = document.createElement("select");
-  syntaxSelect.className = "select serial-syntax-select";
+  syntaxSelect.className = "select";
   syntaxSelect.title = "Syntax highlighting";
   syntaxSelect.innerHTML = '<option value="none">None</option><option value="cisco">Cisco</option><option value="custom">Custom</option>';
   syntaxSelect.value = syntaxMode();
@@ -439,8 +451,9 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   echoLabel.querySelector("input").addEventListener("change", (e) => {
     state.localEcho = e.target.checked;
   });
-  controls.append(clearBtn, breakBtn, saveBtn, syntaxLabel, echoLabel);
-  panel.appendChild(controls);
+  details.append(syntaxLabel, echoLabel);
+
+  panel.append(toolbar, details);
 
   const status = document.createElement("div");
   status.className = "console-status status-disconnected";
@@ -448,6 +461,8 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   state.statusEl = status;
   panel.appendChild(status);
 
+  const body = document.createElement("div");
+  body.className = "console-block-body";
   const wrapper = document.createElement("div");
   wrapper.className = "console-window-wrapper";
   state.wrapperEl = wrapper;
@@ -465,7 +480,8 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   input.spellcheck = false;
   state.inputEl = input;
   wrapper.append(terminal, input);
-  panel.appendChild(wrapper);
+  body.appendChild(wrapper);
+  panel.appendChild(body);
 
   elements.consoleTabs?.appendChild(tab);
   elements.consolePanels?.appendChild(panel);
@@ -473,6 +489,7 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   setupTerminalInputForSession(state);
   switchTab(sessionId);
   updateConsoleEmptyState();
+  updateSessionsMeta();
 
   state.wsClient = createWebSocketClient(`/ws/serial/${sessionId}`, { autoReconnect: false });
   state.wsClient.onStatus((status) => {
@@ -488,7 +505,6 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
       state.statusEl.className = "console-status status-" + status;
     }
     if (status === "connected") {
-      updateBanner("Serial console connected.", false);
       if (activeTabSessionId === sessionId) {
         state.inputEl?.focus();
       }
@@ -570,7 +586,7 @@ function switchTab(sessionId) {
   activeTabSessionId = sessionId;
   sessionMap.forEach((state, sid) => {
     const isActive = sid === sessionId;
-    state.tabEl?.classList.toggle("is-active", isActive);
+    state.tabEl?.classList.toggle("tab-button-active", isActive);
     state.tabEl?.setAttribute("aria-selected", isActive ? "true" : "false");
     state.tabPanelEl?.classList.toggle("is-active", isActive);
   });
@@ -597,6 +613,7 @@ function removeTabAndDisconnect(sessionId) {
     if (activeTabSessionId) switchTab(activeTabSessionId);
   }
   updateConsoleEmptyState();
+  updateSessionsMeta();
   renderDevices(deviceCache);
 }
 
@@ -679,7 +696,6 @@ function reconnectSession(sessionId) {
       state.statusEl.className = "console-status status-" + status;
     }
     if (status === "connected") {
-      updateBanner("Serial console connected.", false);
       showToast("Reconnected.", "success");
       if (activeTabSessionId === sessionId) {
         state.inputEl?.focus();
@@ -894,9 +910,16 @@ function formatDate(iso) {
   }
 }
 
+function updateLogsMeta(count) {
+  const el = document.getElementById("serial-logs-meta");
+  if (!el) return;
+  el.textContent = count > 0 ? `${count} sessions` : "";
+}
+
 function renderLogs(logs) {
   if (!elements.logsTable) return;
   elements.logsTable.textContent = "";
+  updateLogsMeta(logs?.length ?? 0);
   if (!logs.length) {
     const row = document.createElement("tr");
     row.appendChild(document.createElement("td"));
@@ -1051,6 +1074,40 @@ async function closeAllSessions() {
   }
 }
 
+async function openNewSerialSessionModal() {
+  if (!deviceCache.length) {
+    await loadDevices(true);
+  }
+  const available = deviceCache.filter((d) => {
+    const status = d.status || "unknown";
+    if (status === "in_use") return false;
+    const session = getSessionForDevice(d.id);
+    return !session || !isSessionWsConnected(session.session_id);
+  });
+  const options = available.map((d) => ({
+    value: d.id,
+    label: deviceDisplayName(d),
+  }));
+  if (!options.length) {
+    showToast("No devices available. Refresh or disconnect an existing session.", "error");
+    return;
+  }
+  const form = await modalForm(
+    [
+      {
+        name: "device_id",
+        label: "Device",
+        type: "select",
+        default: options[0].value,
+        options,
+      },
+    ],
+    "New serial session"
+  );
+  if (!form?.device_id) return;
+  await connectDevice(form.device_id);
+}
+
 async function init() {
   const refresh = document.getElementById("refresh-serial");
   if (refresh) {
@@ -1059,6 +1116,10 @@ async function init() {
       loadSessions();
       loadLogs();
     });
+  }
+  const newSessionBtn = document.getElementById("new-serial-session");
+  if (newSessionBtn) {
+    newSessionBtn.addEventListener("click", () => openNewSerialSessionModal());
   }
   await loadDevices();
   await loadSessions();
