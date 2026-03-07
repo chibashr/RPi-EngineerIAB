@@ -154,6 +154,20 @@ Environment=RPI_ENGINEER_DRY_RUN=0"
     else
         log_warn "systemd not detected; skipping daemon-reload."
     fi
+    # Allow web user (API runs as $SERVICE_USER) to run update and permission scripts with sudo (no password).
+    # Required for: in-app updates (apply-update.sh), post-update permissions (apply-web-permissions.sh), config backup.
+    add_sudoers_rule() {
+        local script="$1" name="$2"
+        [ -f "$script" ] || return 0
+        chmod 755 "$script"
+        mkdir -p /etc/sudoers.d
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: $script" > "/etc/sudoers.d/rpi-engineer-$name"
+        chmod 440 "/etc/sudoers.d/rpi-engineer-$name"
+    }
+    add_sudoers_rule "$INSTALL_DIR/bin/apply-web-permissions.sh" "apply-web-permissions"
+    add_sudoers_rule "$INSTALL_DIR/bin/apply-update.sh" "apply-update"
+    add_sudoers_rule "$INSTALL_DIR/bin/create-config-backup.sh" "create-config-backup"
+    log_info "Sudoers: $SERVICE_USER may run apply-update.sh, apply-web-permissions.sh, create-config-backup.sh as root (NOPASSWD)."
     SERVICES_CONFIGURED="yes"
     mark_step_done "services"
 }
@@ -255,16 +269,5 @@ EOF
     else
         log_warn "systemd not detected; nginx config written but not restarted."
     fi
-    add_sudoers_rule() {
-        local script="$1" name="$2"
-        [ -f "$script" ] || return 0
-        chmod 755 "$script"
-        mkdir -p /etc/sudoers.d
-        echo "$SERVICE_USER ALL=(root) NOPASSWD: $script" > "/etc/sudoers.d/rpi-engineer-$name"
-        chmod 440 "/etc/sudoers.d/rpi-engineer-$name"
-    }
-    add_sudoers_rule "$INSTALL_DIR/bin/apply-web-permissions.sh" "apply-web-permissions"
-    add_sudoers_rule "$INSTALL_DIR/bin/apply-update.sh" "apply-update"
-    add_sudoers_rule "$INSTALL_DIR/bin/create-config-backup.sh" "create-config-backup"
     mark_step_done "nginx"
 }

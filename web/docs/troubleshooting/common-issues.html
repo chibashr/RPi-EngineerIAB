@@ -30,10 +30,19 @@ chmod o+x /opt /opt/rpi-engineer</pre>
 <p><strong>Cause:</strong> The API user cannot create or write the update state file under the data directory (e.g. directory missing or wrong ownership in a container).</p>
 <p><strong>Resolution:</strong> (1) On a normal install, re-run the installer so it creates <code>data/updates</code> and <code>data/staging</code> and sets ownership to <code>root:SERVICE_GROUP</code> with dirs 775. (2) The app tries fallbacks when the primary path is not writable: first <code>repo/data/updates/state.json</code>, then the process temp dir (e.g. <code>$TMPDIR/rpi-engineer-updates/state.json</code>). If both data dirs are read-only (e.g. container), state is written to temp so updates can proceed; set <code>RPI_ENGINEER_DATA_DIR</code> to a writable directory if you prefer persistent state.</p>
 
+<h2>Web user (rpi-engineer) and sudo</h2>
+<p>The installer grants the <strong>API service user</strong> (<code>rpi-engineer</code>) permission to run these scripts as root <strong>without a password</strong> (NOPASSWD), so the web UI can apply updates and fix permissions:</p>
+<ul>
+  <li><code>/opt/rpi-engineer/bin/apply-update.sh</code> — in-app updates (git fetch, reset, version file)</li>
+  <li><code>/opt/rpi-engineer/bin/apply-web-permissions.sh</code> — web root, config dirs, dumpcap capabilities, nginx config</li>
+  <li><code>/opt/rpi-engineer/bin/create-config-backup.sh</code> — backup config before update</li>
+</ul>
+<p>These sudoers rules are created in <strong>configure_services</strong> (not only when nginx is installed), so they exist even on headless or no-nginx installs. Packet capture works without root because <code>dumpcap</code> is given file capabilities; updates work because the API can run <code>sudo apply-update.sh</code> and <code>sudo apply-web-permissions.sh</code>. If in-app update or capture still fails, run <code>sudo /opt/rpi-engineer/bin/apply-web-permissions.sh</code> once, or re-run the installer (Upgrade).</p>
+
 <h2>Permission denied when applying update</h2>
 <p><strong>Symptom:</strong> Clicking <strong>Update (keep configuration)</strong> shows an error such as <code>[Errno 13] Permission denied: '/etc/rpi-engineer/remote_access.conf'</code>.</p>
 <p><strong>Cause:</strong> The pre-update config backup runs as the API user and cannot read root-owned config files (e.g. <code>remote_access.conf</code>).</p>
-<p><strong>Resolution:</strong> Re-run the installer so it can add the sudoers rule for <code>create-config-backup.sh</code> (the service user can then run that script as root with NOPASSWD to create the backup). From the repo: <code>sudo ./bin/install.sh</code>, choose Upgrade and use existing configuration. If you already ran the installer after this fix was added, the in-app update should work without a password.</p>
+<p><strong>Resolution:</strong> Re-run the installer so it adds the sudoers rules (see “Web user and sudo” above). From the repo: <code>sudo ./bin/install.sh</code>, choose Upgrade and use existing configuration. The service user can then run <code>create-config-backup.sh</code>, <code>apply-update.sh</code>, and <code>apply-web-permissions.sh</code> as root with NOPASSWD.</p>
 
 <h2>Update failed: "dubious ownership" in repository</h2>
 <p><strong>Symptom:</strong> Update fails with <code>fatal: detected dubious ownership in repository at '/opt/rpi-engineer'</code> and suggests <code>git config --global --add safe.directory /opt/rpi-engineer</code>.</p>
