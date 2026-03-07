@@ -108,12 +108,67 @@
 .console-tab-panel {
   display: none;
   flex-direction: column;
-  gap: 0.75rem;
   min-height: 280px;
 }
 
 .console-tab-panel.is-active {
   display: flex;
+}
+
+/* Desktop: settings left (thin), console right (wide) */
+.console-panel-row {
+  display: flex;
+  flex-direction: row;
+  gap: 1.25rem;
+  align-items: stretch;
+  min-height: 0;
+  flex: 1;
+}
+
+.console-panel-side {
+  flex: 0 0 auto;
+  width: 200px;
+  max-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.console-panel-side .console-toolbar {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.console-panel-side .console-settings {
+  flex: 0 0 auto;
+}
+
+.console-panel-side .console-settings .field {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.console-panel-main {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.console-panel-main .console-block-body {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Fixed line count: no min/max so inline height controls viewport size */
+.console-window-wrapper.console-window-fixed-lines {
+  min-height: 0;
+  max-height: none;
+}
+
+.console-window-wrapper.console-window-fixed-lines .console-window {
+  min-height: 0;
 }
 
 .console-empty-state {
@@ -184,6 +239,58 @@
 .panel-meta {
   color: var(--color-muted);
   font-size: 0.85rem;
+}
+
+/* Session Logs: toolbar + pagination tabs */
+.logs-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.logs-toolbar .field {
+  flex-direction: row;
+  align-items: center;
+  margin: 0;
+}
+
+.logs-toolbar .per-page-select {
+  min-width: 4rem;
+}
+
+.logs-pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.logs-pagination .tab-button {
+  min-width: 2.25rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.logs-pagination .tab-button-active {
+  font-weight: 600;
+}
+
+/* Mobile: stack settings above console */
+@media (max-width: 767px) {
+  .console-panel-row {
+    flex-direction: column;
+  }
+
+  .console-panel-side {
+    width: 100%;
+    max-width: none;
+  }
+
+  .console-panel-side .console-toolbar {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
 }
 
 @media (max-width: 639px) {

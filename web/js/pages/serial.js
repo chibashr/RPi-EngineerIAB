@@ -4,6 +4,11 @@ import { modalForm, modalPrompt, modalConfirm } from "../modal.js";
 
 const SYNTAX_STORAGE_KEY = "rpi-serial-syntax";
 const CUSTOM_RULES_KEY = "rpi-serial-syntax-custom";
+const CONSOLE_LINES_KEY = "rpi-serial-console-lines";
+const DEFAULT_CONSOLE_LINES = 24;
+const CONSOLE_LINE_OPTIONS = [16, 24, 32, 48, 96];
+const CONSOLE_LINE_HEIGHT_REM = 1.26;
+const CONSOLE_PADDING_REM = 2;
 
 const CISCO_RULES = [
   { pattern: /^[^\s]+(>|#|\(config[^)]*\)#)/gm, class: "sh-prompt" },
@@ -17,6 +22,21 @@ function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
+}
+
+function getConsoleLines() {
+  try {
+    const n = parseInt(localStorage.getItem(CONSOLE_LINES_KEY), 10);
+    return CONSOLE_LINE_OPTIONS.includes(n) ? n : DEFAULT_CONSOLE_LINES;
+  } catch {
+    return DEFAULT_CONSOLE_LINES;
+  }
+}
+
+function applyConsoleLinesHeight(state) {
+  if (!state?.wrapperEl) return;
+  const lines = state.consoleLines ?? getConsoleLines();
+  state.wrapperEl.style.height = `${CONSOLE_PADDING_REM + lines * CONSOLE_LINE_HEIGHT_REM}rem`;
 }
 
 function getCustomRules() {
@@ -117,7 +137,11 @@ const elements = {
 
 let activeSessions = [];
 let deviceCache = [];
+let serialLogsCache = [];
+let logsPageSize = 10;
+let logsPageIndex = 0;
 const MAX_TERMINAL_LINES = 100;
+const LOGS_PAGE_SIZES = [10, 25, 50];
 let lastNotConnectedToast = 0;
 let connectingDeviceId = null;
 
@@ -351,6 +375,7 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
     connectTimeoutId: null,
     terminalBuffer: [],
     localEcho: false,
+    consoleLines: getConsoleLines(),
     syntaxRules: getSyntaxRules(syntaxMode()),
     tabEl: null,
     tabPanelEl: null,
@@ -444,6 +469,30 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   syntaxLabel.className = "field";
   syntaxLabel.innerHTML = '<span class="field-label">Syntax</span>';
   syntaxLabel.append(syntaxSelect, syntaxConfigBtn);
+  const linesLabel = document.createElement("label");
+  linesLabel.className = "field";
+  linesLabel.innerHTML = '<span class="field-label">Console lines</span>';
+  const linesSelect = document.createElement("select");
+  linesSelect.className = "select";
+  linesSelect.title = "Visible lines in console (fixed height)";
+  CONSOLE_LINE_OPTIONS.forEach((n) => {
+    const opt = document.createElement("option");
+    opt.value = String(n);
+    opt.textContent = String(n);
+    if (n === state.consoleLines) opt.selected = true;
+    linesSelect.appendChild(opt);
+  });
+  linesSelect.addEventListener("change", () => {
+    const n = parseInt(linesSelect.value, 10);
+    state.consoleLines = n;
+    try {
+      localStorage.setItem(CONSOLE_LINES_KEY, String(n));
+    } catch {
+      /* ignore */
+    }
+    applyConsoleLinesHeight(state);
+  });
+  linesLabel.appendChild(linesSelect);
   const echoLabel = document.createElement("label");
   echoLabel.className = "field checkbox-field";
   echoLabel.title = "Enable if the device does not echo typed characters";
@@ -451,20 +500,21 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   echoLabel.querySelector("input").addEventListener("change", (e) => {
     state.localEcho = e.target.checked;
   });
-  details.append(syntaxLabel, echoLabel);
+  details.append(syntaxLabel, linesLabel, echoLabel);
 
-  panel.append(toolbar, details);
+  const side = document.createElement("div");
+  side.className = "console-panel-side";
+  side.append(toolbar, details);
 
   const status = document.createElement("div");
   status.className = "console-status status-disconnected";
   status.textContent = "Connecting...";
   state.statusEl = status;
-  panel.appendChild(status);
 
   const body = document.createElement("div");
   body.className = "console-block-body";
   const wrapper = document.createElement("div");
-  wrapper.className = "console-window-wrapper";
+  wrapper.className = "console-window-wrapper console-window-fixed-lines";
   state.wrapperEl = wrapper;
   const terminal = document.createElement("div");
   terminal.className = "console-window";
@@ -481,7 +531,16 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   state.inputEl = input;
   wrapper.append(terminal, input);
   body.appendChild(wrapper);
-  panel.appendChild(body);
+  applyConsoleLinesHeight(state);
+
+  const main = document.createElement("div");
+  main.className = "console-panel-main";
+  main.append(status, body);
+
+  const row = document.createElement("div");
+  row.className = "console-panel-row";
+  row.append(side, main);
+  panel.appendChild(row);
 
   elements.consoleTabs?.appendChild(tab);
   elements.consolePanels?.appendChild(panel);
@@ -565,6 +624,9 @@ function setupTerminalInputForSession(state) {
   const sessionId = state.sessionId;
   if (!input || !wrapper) return;
   wrapper.tabIndex = 0;
+  const scrollToBottomOnFocus = () => scrollConsoleToBottom(state);
+  wrapper.addEventListener("focus", scrollToBottomOnFocus);
+  input.addEventListener("focus", scrollToBottomOnFocus);
   input.addEventListener("keydown", (event) => {
     const char = charFromKeyEvent(event);
     if (char !== null) {
@@ -916,11 +978,88 @@ function updateLogsMeta(count) {
   el.textContent = count > 0 ? `${count} sessions` : "";
 }
 
-function renderLogs(logs) {
+function renderLogs(logsArg) {
+  if (arguments.length > 0 && Array.isArray(logsArg)) {
+    serialLogsCache = logsArg;
+    logsPageIndex = 0;
+  }
   if (!elements.logsTable) return;
+  const logs = serialLogsCache;
+  const total = logs.length;
+  updateLogsMeta(total);
+
+  const toolbarEl = document.getElementById("serial-logs-toolbar");
+  if (toolbarEl) {
+    toolbarEl.textContent = "";
+    if (total > 0) {
+      const perPageLabel = document.createElement("label");
+      perPageLabel.className = "field";
+      perPageLabel.innerHTML = '<span class="field-label">Rows per page</span>';
+      const perPageSelect = document.createElement("select");
+      perPageSelect.className = "select per-page-select";
+      perPageSelect.setAttribute("aria-label", "Rows per page");
+      LOGS_PAGE_SIZES.forEach((n) => {
+        const opt = document.createElement("option");
+        opt.value = String(n);
+        opt.textContent = String(n);
+        if (n === logsPageSize) opt.selected = true;
+        perPageSelect.appendChild(opt);
+      });
+      perPageSelect.addEventListener("change", () => {
+        logsPageSize = Number(perPageSelect.value) || 10;
+        logsPageIndex = 0;
+        renderLogs();
+      });
+      perPageLabel.appendChild(perPageSelect);
+      toolbarEl.appendChild(perPageLabel);
+
+      const totalPages = Math.max(1, Math.ceil(total / logsPageSize));
+      if (logsPageIndex >= totalPages) logsPageIndex = totalPages - 1;
+      const pagination = document.createElement("div");
+      pagination.className = "logs-pagination";
+      const prevBtn = document.createElement("button");
+      prevBtn.type = "button";
+      prevBtn.className = "btn btn-secondary btn-sm tab-button";
+      prevBtn.textContent = "Previous";
+      prevBtn.disabled = logsPageIndex === 0;
+      prevBtn.addEventListener("click", () => {
+        if (logsPageIndex > 0) {
+          logsPageIndex--;
+          renderLogs();
+        }
+      });
+      pagination.appendChild(prevBtn);
+      for (let p = 0; p < totalPages; p++) {
+        const pageBtn = document.createElement("button");
+        pageBtn.type = "button";
+        pageBtn.className = "tab-button" + (p === logsPageIndex ? " tab-button-active" : "");
+        pageBtn.textContent = String(p + 1);
+        pageBtn.setAttribute("aria-label", `Page ${p + 1}`);
+        const page = p;
+        pageBtn.addEventListener("click", () => {
+          logsPageIndex = page;
+          renderLogs();
+        });
+        pagination.appendChild(pageBtn);
+      }
+      const nextBtn = document.createElement("button");
+      nextBtn.type = "button";
+      nextBtn.className = "btn btn-secondary btn-sm tab-button";
+      nextBtn.textContent = "Next";
+      nextBtn.disabled = logsPageIndex >= totalPages - 1;
+      nextBtn.addEventListener("click", () => {
+        if (logsPageIndex < totalPages - 1) {
+          logsPageIndex++;
+          renderLogs();
+        }
+      });
+      pagination.appendChild(nextBtn);
+      toolbarEl.appendChild(pagination);
+    }
+  }
+
   elements.logsTable.textContent = "";
-  updateLogsMeta(logs?.length ?? 0);
-  if (!logs.length) {
+  if (!total) {
     const row = document.createElement("tr");
     row.appendChild(document.createElement("td"));
     row.cells[0].colSpan = 6;
@@ -928,7 +1067,10 @@ function renderLogs(logs) {
     elements.logsTable.appendChild(row);
     return;
   }
-  logs.forEach((log) => {
+
+  const start = logsPageIndex * logsPageSize;
+  const pageLogs = logs.slice(start, start + logsPageSize);
+  pageLogs.forEach((log) => {
     const row = document.createElement("tr");
     [log.name || log.id, log.device || "--", formatDate(log.created || log.modified), formatDuration(log.duration_seconds), formatSize(log.size_bytes)].forEach((v) => {
       const cell = document.createElement("td");
@@ -1051,7 +1193,9 @@ async function loadLogs() {
   try {
     const payload = await apiGet("/api/v1/serial/logs");
     const data = extractData(payload) || {};
-    renderLogs(data.logs || []);
+    serialLogsCache = data.logs || [];
+    logsPageIndex = 0;
+    renderLogs();
   } catch {
     showToast("Unable to load serial logs.", "error");
   }
