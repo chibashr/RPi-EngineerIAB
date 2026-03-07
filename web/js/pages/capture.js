@@ -65,7 +65,7 @@ function createActiveCaptureItem(capture, isSelected) {
   labelEl.textContent = label;
   const valueEl = document.createElement("span");
   valueEl.className = "status-value";
-  valueEl.textContent = "active";
+  valueEl.textContent = capture.filter ? `active · ${capture.filter}` : "active";
   const actions = document.createElement("span");
   actions.className = "capture-active-actions";
   const stopBtn = document.createElement("button");
@@ -97,7 +97,7 @@ function createCompletedCaptureItem(capture) {
   const item = document.createElement("li");
   item.className = "status-item capture-completed-item";
   const label = capture.name || capture.capture_id || "Capture";
-  const metaParts = [capture.interface, capture.stopped_at];
+  const metaParts = [capture.interface, capture.filter, capture.stopped_at];
   if (capture.packet_count != null) metaParts.push(`${capture.packet_count} packets`);
   if (capture.byte_count != null) metaParts.push(formatBytes(capture.byte_count));
   const meta = metaParts.filter(Boolean).join(" · ") || "completed";
@@ -243,6 +243,12 @@ function connectLiveViewTo(captureId) {
       updateBanner("Connecting to live capture...");
     } else if (status === "error") {
       updateBanner("Live capture connection error.");
+    }
+  });
+  wsClient.on("live_started", () => {
+    setLiveViewError(null);
+    if (elements.liveView) {
+      elements.liveView.textContent = "Listening for packets…";
     }
   });
   wsClient.on("packet", (message) => {

@@ -476,7 +476,7 @@ def register_websockets(app: "FastAPI") -> None:
                 proc = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.PIPE,
                 )
             else:
                 if not job.file_path or not job.file_path.exists():
@@ -499,9 +499,11 @@ def register_websockets(app: "FastAPI") -> None:
                     str(job.file_path),
                     "-l",
                     stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.PIPE,
                 )
             try:
+                if is_active:
+                    await websocket.send_json({"type": "live_started"})
                 if proc.stdout:
                     async for line in proc.stdout:
                         line_str = line.decode(errors="replace").strip()
@@ -518,6 +520,20 @@ def register_websockets(app: "FastAPI") -> None:
                     await proc.wait()
                 except ProcessLookupError:
                     pass
+                if proc.returncode and proc.returncode != 0 and proc.stderr:
+                    try:
+                        stderr = (await proc.stderr.read()).decode(
+                            errors="replace"
+                        ).strip()
+                        if stderr:
+                            await websocket.send_json(
+                                {
+                                    "type": "error",
+                                    "message": f"tshark exited: {stderr[:500]}",
+                                }
+                            )
+                    except Exception:
+                        pass
             duration = time.monotonic() - start
             logger.info(
                 "WS disconnect path=/ws/capture capture=%s client=%s "

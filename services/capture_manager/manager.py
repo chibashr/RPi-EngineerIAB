@@ -80,7 +80,7 @@ class CaptureManager:
             file_path=file_path,
         )
 
-        if os.getenv("RPI_ENGINEER_DRY_RUN", "1") == "1":
+        if os.getenv("RPI_ENGINEER_DRY_RUN", "0") == "1":
             self._active[capture_id] = job
             return self._job_payload(job)
         if not _which("tcpdump"):
