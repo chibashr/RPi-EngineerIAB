@@ -10,10 +10,26 @@ from fastapi import APIRouter, Body, File, Form, Query, UploadFile
 from lib.module_logger import get_module_logger
 from services.api_gateway.response import error_response, success_response
 
-from . import main, user_store
-
 logger = get_module_logger(__name__)
 router = APIRouter(tags=["file_share"])
+
+_main = None
+_user_store = None
+try:
+    from . import main as _main_mod
+    from . import user_store as _user_store_mod
+    _main = _main_mod
+    _user_store = _user_store_mod
+except Exception as exc:
+    logger.warning("File share backends unavailable: %s", exc)
+
+
+def _unavailable():
+    return error_response(
+        "SERVICE_UNAVAILABLE",
+        "File Share module dependencies not installed (pyftpdlib, paramiko).",
+        status_code=503,
+    )
 
 
 def _resolve_subpath(share_root: Path, subpath: Optional[str]) -> Path:
@@ -41,21 +57,27 @@ def _list_dir(target: Path) -> List[Dict[str, object]]:
 
 @router.get("/status")
 def status():
-    return success_response(main.get_status())
+    if _main is None:
+        return _unavailable()
+    return success_response(_main.get_status())
 
 
 @router.get("/config")
 def get_config():
-    return success_response(main.load_config())
+    if _main is None:
+        return _unavailable()
+    return success_response(_main.load_config())
 
 
 @router.put("/config")
 def update_config(payload: Optional[dict] = Body(default=None)):
+    if _main is None:
+        return _unavailable()
     data = payload or {}
     if not isinstance(data, dict):
         return error_response("VALIDATION_ERROR", "Invalid configuration payload", status_code=400)
     try:
-        config = main.apply_config(data)
+        config = _main.apply_config(data)
         logger.info("File share config updated via API")
     except ValueError as exc:
         logger.warning("File share config validation: %s", exc)
@@ -65,11 +87,15 @@ def update_config(payload: Optional[dict] = Body(default=None)):
 
 @router.get("/users")
 def list_users():
-    return success_response({"users": user_store.list_users()})
+    if _user_store is None:
+        return _unavailable()
+    return success_response({"users": _user_store.list_users()})
 
 
 @router.post("/users")
 def create_user(payload: Optional[dict] = Body(default=None)):
+    if _user_store is None:
+        return _unavailable()
     data = payload or {}
     if not isinstance(data, dict):
         return error_response("VALIDATION_ERROR", "Invalid user payload", status_code=400)
@@ -79,7 +105,7 @@ def create_user(payload: Optional[dict] = Body(default=None)):
     if not isinstance(keys, list):
         return error_response("VALIDATION_ERROR", "ssh_public_keys must be a list", status_code=400)
     try:
-        user_store.create_user(username, password, keys)
+        _user_store.create_user(username, password, keys)
         logger.info("File share user created: %s", username)
     except ValueError as exc:
         logger.warning("File share user create validation: %s", exc)
@@ -89,8 +115,10 @@ def create_user(payload: Optional[dict] = Body(default=None)):
 
 @router.delete("/users/{username}")
 def delete_user(username: str):
+    if _user_store is None:
+        return _unavailable()
     try:
-        user_store.delete_user(username)
+        _user_store.delete_user(username)
         logger.info("File share user deleted: %s", username)
     except ValueError as exc:
         logger.warning("File share user delete: %s", exc)
@@ -100,12 +128,14 @@ def delete_user(username: str):
 
 @router.put("/users/{username}/password")
 def update_password(username: str, payload: Optional[dict] = Body(default=None)):
+    if _user_store is None:
+        return _unavailable()
     data = payload or {}
     if not isinstance(data, dict):
         return error_response("VALIDATION_ERROR", "Invalid payload", status_code=400)
     password = str(data.get("password") or "")
     try:
-        user_store.set_password(username, password)
+        _user_store.set_password(username, password)
     except ValueError as exc:
         return error_response("VALIDATION_ERROR", str(exc), status_code=400)
     return success_response({"updated": username})
@@ -116,9 +146,11 @@ async def upload_file(
     file: UploadFile = File(...),
     subpath: str = Form(""),
 ):
+    if _main is None:
+        return _unavailable()
     if not file or not file.filename:
         return error_response("VALIDATION_ERROR", "File is required", status_code=400)
-    config = main.load_config()
+    config = _main.load_config()
     share_root = Path(str(config["share_path"]))
     share_root.mkdir(parents=True, exist_ok=True)
     try:
@@ -136,7 +168,9 @@ async def upload_file(
 
 @router.get("/files")
 def list_files(subpath: str = Query("")):
-    config = main.load_config()
+    if _main is None:
+        return _unavailable()
+    config = _main.load_config()
     share_root = Path(str(config["share_path"]))
     share_root.mkdir(parents=True, exist_ok=True)
     try:

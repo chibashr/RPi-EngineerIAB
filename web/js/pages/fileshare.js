@@ -199,7 +199,14 @@ async function refreshAll() {
     await loadUsers();
     await loadFiles();
   } catch (error) {
-    showToast("Unable to load file share data.", "error");
+    const msg = error?.message || "";
+    const unavailable = msg.includes("503") || msg.includes("SERVICE_UNAVAILABLE");
+    showToast(
+      unavailable
+        ? "File Share module unavailable. Install pyftpdlib and paramiko, then enable the module."
+        : "Unable to load file share data.",
+      "error"
+    );
   }
 }
 

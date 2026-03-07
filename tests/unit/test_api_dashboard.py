@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 
-@pytest.mark.skip(reason="Phase 1: API routes stubbed; Phase 3 will restore")
 class TestDashboardStatus:
     """Tests for GET /api/v1/dashboard/status."""
 

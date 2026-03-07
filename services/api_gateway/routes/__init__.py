@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter
-
 from services.api_gateway.response import success_response
 from services.api_gateway.routes.backup import backup_router
 from services.api_gateway.routes.capture import capture_router
+from services.api_gateway.routes.dashboard import dashboard_router
 from services.api_gateway.routes.logs import logs_router
 from services.api_gateway.routes.modules import modules_router
 from services.api_gateway.routes.network import network_router
@@ -19,26 +18,6 @@ from services.api_gateway.routes.updates import updates_router
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
-
-# Stub routers for Phase 1 — full migration in Phase 3.
-# module_manager.register_module_routes deferred until Phase 6.
-
-_STUB_MESSAGE = {"message": "Migration in progress", "phase": 1}
-
-
-def _stub_router(name: str, prefix: str) -> APIRouter:
-    router = APIRouter(prefix=prefix, tags=[name])
-
-    @router.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
-    def _stub(path: str):
-        return success_response(_STUB_MESSAGE, status_code=501)
-
-    @router.api_route("", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
-    def _stub_root():
-        return success_response(_STUB_MESSAGE, status_code=501)
-
-    return router
-
 
 def register_routes(app: "FastAPI") -> None:
     """Register API routers on the FastAPI app."""
@@ -51,9 +30,4 @@ def register_routes(app: "FastAPI") -> None:
     app.include_router(backup_router)
     app.include_router(logs_router)
     app.include_router(serial_router)
-
-    prefixes = [
-        ("dashboard", "/api/v1/dashboard"),
-    ]
-    for name, prefix in prefixes:
-        app.include_router(_stub_router(name, prefix))
+    app.include_router(dashboard_router)
