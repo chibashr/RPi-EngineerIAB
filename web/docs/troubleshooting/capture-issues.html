@@ -8,6 +8,17 @@
 <p><strong>Common causes:</strong> Interface not available or missing permissions.</p>
 <p><strong>Resolution:</strong> Select another interface and retry.</p>
 
+<h2>Live view: Permission denied (dumpcap)</h2>
+<p><strong>Symptom:</strong> Live view shows an error like <code>Couldn't run dumpcap in child process: Permission denied</code> or <code>0 packets captured</code>.</p>
+<p><strong>Cause:</strong> Capturing raw packets on an interface requires elevated privileges. <code>tshark</code> uses <code>dumpcap</code>, which needs the <code>cap_net_raw</code> (and usually <code>cap_net_admin</code>) capability, or the process must run as root.</p>
+<p><strong>Resolution:</strong></p>
+<ol>
+  <li><strong>If you installed or upgraded recently:</strong> The installer and <code>apply-web-permissions.sh</code> set dumpcap capabilities automatically. Run <code>sudo /opt/rpi-engineer/bin/apply-web-permissions.sh</code> to re-apply (e.g. after a wireshark/tshark update that replaced dumpcap). Then <code>sudo systemctl restart rpi-engineer-api</code>.</li>
+  <li><strong>Manual (capabilities):</strong> Give <code>dumpcap</code> permission to capture without full root: <code>sudo setcap cap_net_raw,cap_net_admin=eip $(which dumpcap)</code>. Then restart the API: <code>sudo systemctl restart rpi-engineer-api</code>.</li>
+  <li><strong>Alternative:</strong> Run the API service as root (not recommended for production).</li>
+</ol>
+<p>After applying capabilities or running as root, start a new capture and open the live view again.</p>
+
 <h2>Capture file too large</h2>
 <p><strong>Symptom:</strong> Capture fills storage quickly.</p>
 <p><strong>Common causes:</strong> High traffic or no filter.</p>
@@ -24,4 +35,4 @@
   <li><a href="../reference/bpf-filters.html">BPF filter reference</a></li>
 </ul>
 
-<p><strong>Last updated:</strong> 2026-02-02</p>
+<p><strong>Last updated:</strong> 2026-03-06</p>

@@ -1247,6 +1247,17 @@ setup_user_permissions() {
     usermod -a -G dialout "$SERVICE_USER" || true
     usermod -a -G plugdev "$SERVICE_USER" || true
     usermod -a -G netdev "$SERVICE_USER" || true
+    # Packet capture: allow dumpcap to capture without root (tshark uses dumpcap)
+    DUMPCAP="$(command -v dumpcap 2>/dev/null)"
+    if [ -n "$DUMPCAP" ] && command -v setcap >/dev/null 2>&1; then
+        setcap cap_net_raw,cap_net_admin=eip "$DUMPCAP" 2>/dev/null || log_warn "Could not set capabilities on dumpcap (packet capture may require root)."
+    fi
+    # Capture data dir: API writes pcap files here
+    if [ -d "$INSTALL_DIR" ]; then
+        mkdir -p "$INSTALL_DIR/data/captures"
+        chown -R "root:$SERVICE_GROUP" "$INSTALL_DIR/data" 2>/dev/null || true
+        chmod -R 775 "$INSTALL_DIR/data" 2>/dev/null || true
+    fi
     mark_step_done "permissions"
 }
 

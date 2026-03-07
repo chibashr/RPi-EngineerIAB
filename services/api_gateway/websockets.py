@@ -34,6 +34,24 @@ _monitor_service = MonitorService()
 
 STATUS_INTERVAL_SEC = 2.0
 
+CAPTURE_PERMISSION_HINT = (
+    " Give dumpcap permission to capture: "
+    "sudo setcap cap_net_raw,cap_net_admin=eip $(which dumpcap); "
+    "or run the API as root. See Capture issues in Documentation."
+)
+
+
+def _capture_error_message(stderr: str, is_active: bool) -> str:
+    """Turn tshark/dumpcap stderr into a user-friendly message."""
+    err = stderr.strip()[:500]
+    if "Permission denied" in err and ("dumpcap" in err or "Couldn't run" in err):
+        return (
+            "Live capture requires permission to capture packets. "
+            "dumpcap could not run (Permission denied)."
+            + (CAPTURE_PERMISSION_HINT if is_active else "")
+        )
+    return f"tshark exited: {err}"
+
 
 def register_websockets(app: "FastAPI") -> None:
     """Register WebSocket routes on the FastAPI app."""
@@ -526,11 +544,9 @@ def register_websockets(app: "FastAPI") -> None:
                             errors="replace"
                         ).strip()
                         if stderr:
+                            msg = _capture_error_message(stderr, is_active)
                             await websocket.send_json(
-                                {
-                                    "type": "error",
-                                    "message": f"tshark exited: {stderr[:500]}",
-                                }
+                                {"type": "error", "message": msg}
                             )
                     except Exception:
                         pass

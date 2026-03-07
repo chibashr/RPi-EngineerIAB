@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Apply nginx config, web root, and config dir permissions so the web UI is reachable
-# and API can write (profiles, updates, hotspot). Run as root; can be invoked by the
-# update manager via sudo after an update.
+# Apply nginx config, web root, config dir, and capture permissions so the web UI
+# is reachable and API can write (profiles, updates, hotspot, packet capture).
+# Run as root; can be invoked by the update manager via sudo after an update.
 set -euo pipefail
 
 INSTALL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -12,6 +12,16 @@ if [ "$(id -u)" -ne 0 ]; then
     echo "This script must be run as root (use sudo)." >&2
     exit 1
 fi
+
+# Packet capture: allow dumpcap to capture without root (tshark uses dumpcap for live capture)
+DUMPCAP="$(command -v dumpcap 2>/dev/null)"
+if [ -n "$DUMPCAP" ] && command -v setcap >/dev/null 2>&1; then
+    setcap cap_net_raw,cap_net_admin=eip "$DUMPCAP" 2>/dev/null || true
+fi
+# Capture data dir: API writes pcap files here
+mkdir -p "${INSTALL_DIR}/data/captures"
+[ -d "${INSTALL_DIR}/data" ] && getent group "$SERVICE_GROUP" >/dev/null 2>&1 && \
+    chown -R "root:${SERVICE_GROUP}" "${INSTALL_DIR}/data" && chmod -R 775 "${INSTALL_DIR}/data" 2>/dev/null || true
 
 # Ensure API (rpi-engineer) can run updates via web UI: install dir must be group-writable.
 # Run this even when nginx is absent so updates work.
