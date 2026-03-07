@@ -2,7 +2,7 @@ const Nav = (() => {
   const SIDEBAR_ID = "sidebar";
   const TOGGLE_SELECTOR = ".nav-mobile-toggle";
   const OVERLAY_SELECTOR = ".nav-overlay";
-  const BREAKPOINT = 768;
+  const BREAKPOINT = 1024;
 
   let sidebar, toggle, overlay, focusableElements;
 
