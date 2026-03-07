@@ -869,6 +869,7 @@ install_required_packages() {
         network-manager dnsmasq hostapd iptables bridge-utils vlan
         cu minicom screen
         tcpdump tshark wireshark-common
+        libcap2-bin
         git curl wget jq bc lsof
         usbutils usb-modeswitch usb-modeswitch-data
         build-essential python3-dev
@@ -1247,10 +1248,19 @@ setup_user_permissions() {
     usermod -a -G dialout "$SERVICE_USER" || true
     usermod -a -G plugdev "$SERVICE_USER" || true
     usermod -a -G netdev "$SERVICE_USER" || true
-    # Packet capture: allow dumpcap to capture without root (tshark uses dumpcap)
+    # Packet capture: allow dumpcap to capture without root (API runs as $SERVICE_USER; tshark uses dumpcap)
     DUMPCAP="$(command -v dumpcap 2>/dev/null)"
     if [ -n "$DUMPCAP" ] && command -v setcap >/dev/null 2>&1; then
-        setcap cap_net_raw,cap_net_admin=eip "$DUMPCAP" 2>/dev/null || log_warn "Could not set capabilities on dumpcap (packet capture may require root)."
+        # Remove setuid if present so setcap can be applied (wireshark-common may install dumpcap setuid root)
+        [ -u "$DUMPCAP" ] && chmod u-s "$DUMPCAP" 2>/dev/null || true
+        if setcap cap_net_raw,cap_net_admin=eip "$DUMPCAP" 2>/dev/null; then
+            log_info "dumpcap capabilities set (packet capture allowed for $SERVICE_USER)."
+        else
+            log_warn "Could not set capabilities on dumpcap (packet capture may require root)."
+        fi
+    else
+        [ -z "$DUMPCAP" ] && log_warn "dumpcap not found; install tshark/wireshark-common for packet capture."
+        command -v setcap >/dev/null 2>&1 || log_warn "setcap not found; install libcap2-bin so dumpcap can capture without root."
     fi
     # Capture data dir: API writes pcap files here
     if [ -d "$INSTALL_DIR" ]; then

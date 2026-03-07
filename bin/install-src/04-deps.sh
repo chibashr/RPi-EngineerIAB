@@ -92,6 +92,7 @@ install_required_packages() {
         network-manager dnsmasq hostapd iptables bridge-utils vlan
         cu minicom screen
         tcpdump tshark wireshark-common
+        libcap2-bin
         git curl wget jq bc lsof
         usbutils usb-modeswitch usb-modeswitch-data
         build-essential python3-dev

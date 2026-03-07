@@ -13,9 +13,10 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-# Packet capture: allow dumpcap to capture without root (tshark uses dumpcap for live capture)
+# Packet capture: allow dumpcap to capture without root (API runs as rpi-engineer; tshark uses dumpcap)
 DUMPCAP="$(command -v dumpcap 2>/dev/null)"
 if [ -n "$DUMPCAP" ] && command -v setcap >/dev/null 2>&1; then
+    [ -u "$DUMPCAP" ] && chmod u-s "$DUMPCAP" 2>/dev/null || true
     setcap cap_net_raw,cap_net_admin=eip "$DUMPCAP" 2>/dev/null || true
 fi
 # Capture data dir: API writes pcap files here
