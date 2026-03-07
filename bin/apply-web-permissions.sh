@@ -133,3 +133,13 @@ if [ -d "${INSTALL_DIR}/web" ] && getent group "$SERVICE_GROUP" >/dev/null 2>&1;
         NGINX_USER=$(grep '^[[:space:]]*user[[:space:]]' /etc/nginx/nginx.conf | head -1 | awk '{print $2}' | tr -d ';')
     getent passwd "$NGINX_USER" >/dev/null 2>&1 && chown -R "$NGINX_USER:$NGINX_USER" "${INSTALL_DIR}/web"
 fi
+
+# Verify permissions; do not fail apply if verify fails (e.g. getcap not in PATH)
+VERIFY_SCRIPT="${INSTALL_DIR}/bin/verify-permissions.sh"
+if [ -x "$VERIFY_SCRIPT" ]; then
+    if "$VERIFY_SCRIPT" 2>&1; then
+        : # all checks passed
+    else
+        echo "verify-permissions reported issues; consider re-running this script or the installer." >&2
+    fi
+fi

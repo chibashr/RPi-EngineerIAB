@@ -1354,6 +1354,10 @@ Environment=RPI_ENGINEER_DRY_RUN=0"
     add_sudoers_rule "$INSTALL_DIR/bin/apply-update.sh" "apply-update"
     add_sudoers_rule "$INSTALL_DIR/bin/create-config-backup.sh" "create-config-backup"
     log_info "Sudoers: $SERVICE_USER may run apply-update.sh, apply-web-permissions.sh, create-config-backup.sh as root (NOPASSWD)."
+    if [ -x "$INSTALL_DIR/bin/verify-permissions.sh" ]; then
+        log_info "Verifying permissions..."
+        "$INSTALL_DIR/bin/verify-permissions.sh" >> "$INSTALL_LOG" 2>&1 || log_warn "Permission verification reported issues; see $INSTALL_LOG or run $INSTALL_DIR/bin/verify-permissions.sh"
+    fi
     SERVICES_CONFIGURED="yes"
     mark_step_done "services"
 }

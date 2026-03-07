@@ -38,6 +38,7 @@ chmod o+x /opt /opt/rpi-engineer</pre>
   <li><code>/opt/rpi-engineer/bin/create-config-backup.sh</code> — backup config before update</li>
 </ul>
 <p>These sudoers rules are created in <strong>configure_services</strong> (not only when nginx is installed), so they exist even on headless or no-nginx installs. Packet capture works without root because <code>dumpcap</code> is given file capabilities; updates work because the API can run <code>sudo apply-update.sh</code> and <code>sudo apply-web-permissions.sh</code>. If in-app update or capture still fails, run <code>sudo /opt/rpi-engineer/bin/apply-web-permissions.sh</code> once, or re-run the installer (Upgrade).</p>
+<p><strong>Verify permissions:</strong> Run <code>sudo /opt/rpi-engineer/bin/verify-permissions.sh</code> to check that dumpcap capabilities, sudoers rules, and install/config dir permissions are correct. The installer and <code>apply-web-permissions.sh</code> run this check automatically and log the result.</p>
 
 <h2>Permission denied when applying update</h2>
 <p><strong>Symptom:</strong> Clicking <strong>Update (keep configuration)</strong> shows an error such as <code>[Errno 13] Permission denied: '/etc/rpi-engineer/remote_access.conf'</code>.</p>
