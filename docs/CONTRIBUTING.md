@@ -14,17 +14,15 @@
 
 ## Available scripts
 
-<!-- AUTO-GENERATED from package.json - do not edit this table manually -->
+<!-- AUTO-GENERATED from package.json and requirements-dev.txt - do not edit this table manually -->
 
 | Command | Description |
 |---------|-------------|
 | `npm test` | Placeholder (no test specified; use pytest for Python tests) |
 
-**Python / tests**: Run from repo root:
-- `pytest tests/unit/ -v` — unit tests
-- `pytest tests/unit/ -v --cov=services` — unit tests with coverage
-- `pytest tests/integration/ -v -m integration` — integration tests
-- `python -m uvicorn services.api_gateway.main:app --host 0.0.0.0 --port 5000` — run API gateway (default http://0.0.0.0:5000)
+**Python (repo root):** `pytest tests/unit/ -v` (unit), `pytest tests/unit/ -v --cov=services` (coverage), `pytest tests/integration/ -v -m integration` (integration), `python -m uvicorn services.api_gateway.main:app --host 0.0.0.0 --port 5000` (API gateway).
+
+**Bin scripts (install/deploy):** `bin/install.sh`, `bin/start.sh`, `bin/stop.sh`, `bin/apply-update.sh`, `bin/install-src/*.sh`. See [Installation Specification](.planning/INSTALLATION-SPECIFICATION.md).
 
 <!-- END AUTO-GENERATED -->
 

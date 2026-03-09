@@ -208,9 +208,15 @@ class CaptureManager:
         stats = {"packet_count": 0, "byte_count": 0}
         if _which("tshark"):
             stats = _tshark_stats(job.file_path)
+        file_size = None
+        try:
+            file_size = job.file_path.stat().st_size
+        except OSError:
+            pass
         return {
             "packet_count": stats.get("packet_count", 0),
             "byte_count": stats.get("byte_count", 0),
+            "file_size": file_size,
             "duration_seconds": _duration_seconds(job),
             "protocols": {},
             "start_time": job.started_at,
@@ -298,6 +304,11 @@ class CaptureManager:
             payload["packet_count"] = job.packet_count
         if job.byte_count is not None:
             payload["byte_count"] = job.byte_count
+        if job.file_path and job.file_path.exists():
+            try:
+                payload["file_size"] = job.file_path.stat().st_size
+            except OSError:
+                pass
         return payload
 
     def _stop_after(self, capture_id: str, duration_seconds: int) -> None:

@@ -1,6 +1,6 @@
 # Dependencies
 
-<!-- Generated: 2026-03-06 | Docs: ENV.md, RUNBOOK.md synced | Token estimate: ~400 -->
+<!-- Generated: 2026-03-09 | Docs: ENV.md, RUNBOOK.md synced | Token estimate: ~400 -->
 
 ## External Services
 
@@ -22,7 +22,9 @@
 ## Dev (requirements-dev.txt)
 
 - pytest — unit/integration tests
+- pytest-timeout — test timeouts
 - httpx — async HTTP client for tests
+- beautifulsoup4 — HTML parsing (e.g. tests)
 
 ## Shared Libraries (lib/)
 

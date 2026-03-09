@@ -4,10 +4,10 @@
   padding: 2rem 1.5rem 3rem;
 }
 
-/* Shared panel/card: inherent border, reactive containment */
+/* Shared panel/card: visible border, reactive containment */
 .card,
 .panel {
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-card-border, var(--color-border));
   border-radius: 16px;
   min-width: 0;
   max-width: 100%;
@@ -23,7 +23,7 @@
 .card + .card,
 .card + section,
 section + .card {
-  margin-top: 1.5rem;
+  margin-top: 2rem;
 }
 
 .grid {

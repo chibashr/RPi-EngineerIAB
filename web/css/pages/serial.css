@@ -1,5 +1,45 @@
+/* Devices + Sessions row: stacked on small, side-by-side when comfortable */
+.serial-devices-sessions-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.serial-devices-sessions-row .serial-devices-card,
+.serial-devices-sessions-row .serial-sessions-card {
+  min-width: 0;
+}
+
+@media (min-width: 960px) {
+  .serial-devices-sessions-row {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 1.5rem;
+  }
+
+  .serial-devices-sessions-row .serial-devices-card,
+  .serial-devices-sessions-row .serial-sessions-card {
+    margin-top: 0;
+  }
+
+  .serial-devices-sessions-row .serial-devices-card {
+    flex: 0 0 33.333%;
+    max-width: 33.333%;
+  }
+
+  .serial-devices-sessions-row .serial-sessions-card {
+    flex: 1 1 66.666%;
+    min-width: 0;
+  }
+}
+
+.serial-devices-sessions-row + .card {
+  margin-top: 2rem;
+}
+
 .section-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
@@ -64,6 +104,8 @@
 .device-name {
   font-weight: 600;
   font-size: 0.9rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .device-meta {
@@ -79,6 +121,8 @@
 
 /* Sessions card: tabs + panels – larger hit targets for easier switching */
 .serial-sessions-card .tabs {
+  display: flex;
+  flex-wrap: wrap;
   margin-bottom: 1rem;
   gap: 0.6rem;
 }

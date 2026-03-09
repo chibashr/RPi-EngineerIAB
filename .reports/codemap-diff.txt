@@ -1,8 +1,8 @@
 # Codemap diff report
-# Generated: 2026-03-06
+# Generated: 2026-03-09
 
 ## Scan type
-Full regeneration (final review).
+Documentation sync: update-docs + update-codemaps. Codemaps refreshed in place (metadata only; structure unchanged).
 
 ## Codemaps updated
 - docs/CODEMAPS/architecture.md
@@ -11,25 +11,19 @@ Full regeneration (final review).
 - docs/CODEMAPS/data.md
 - docs/CODEMAPS/dependencies.md
 
-## Architecture changes
-- Framework: Flask → FastAPI (uvicorn ASGI server)
-- Entry point: services/api_gateway/main.py (create_app, uvicorn)
-- Static serving: FastAPI StaticFiles (html=True for /, /advanced/)
-- Dashboard: stubbed (501, Phase 1 migration)
-- WebSockets: FastAPI native (status, serial, updates, capture)
-- serial_manager: gevent.threadpool → concurrent.futures.ThreadPoolExecutor
+## Documentation updated
+- docs/ENV.md — added env vars from codebase (RPI_ENGINEER_DATA_DIR, CONFIG_DIR, MODULES_DIR, WS_BASE, UPDATE_*, API_BASE, LOG_* rotation/export, WAN_CHECK_INTERVAL)
+- docs/CONTRIBUTING.md — scripts section: Python commands, bin scripts reference
 
-## Structure summary
+## Architecture summary (unchanged)
 - Project type: Single app (FastAPI + static web)
 - Entry: services/api_gateway/main.py (create_app, uvicorn)
 - Source dirs: services/, lib/, modules/, web/, bin/
 - API prefix: /api/v1/*; WebSockets: /ws/*
-- Files scanned: ~130 Python, ~23 JS
 
-## Dependencies
-- Removed: Flask, flask-cors, flask-sock, gevent
-- Added: fastapi, uvicorn[standard], python-multipart, websockets
-- Dev: pytest, pytest-timeout, httpx
+## New dependencies noted
+- requirements-dev.txt: beautifulsoup4, pytest-timeout (documented in dependencies.md)
 
 ## Staleness
-- Codemaps refreshed 2026-03-06. Re-run after Phase 3 (WebSocket handlers) or Phase 6 (module routes).
+- No .env.example or openapi.yaml in repo; ENV.md and API reference remain source of truth.
+- Codemaps refreshed 2026-03-09. Re-run after major route or module changes.

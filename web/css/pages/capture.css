@@ -1,8 +1,9 @@
 .capture-lists-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 1rem;
+  gap: 2rem;
   align-items: start;
+  margin-top: 2rem;
 }
 
 .capture-lists-row > .card {
@@ -12,6 +13,16 @@
 /* Override layout: side-by-side cards must not get margin-top */
 .capture-lists-row > .card + .card {
   margin-top: 0;
+}
+
+/* Keep list content inside card border; allow wrapping so action buttons don't clip */
+.capture-lists-row .status-list {
+  min-width: 0;
+  padding-right: 0.125rem;
+}
+
+.capture-lists-row .status-list > li {
+  min-width: 0;
 }
 
 @media (max-width: 639px) {
@@ -49,7 +60,7 @@
   padding: 0.5rem 0.75rem;
   border-radius: 8px;
   cursor: pointer;
-  border: 1px solid transparent;
+  border: none;
 }
 
 .capture-active-item:hover {
@@ -57,7 +68,8 @@
 }
 
 .capture-active-item.is-selected {
-  border-color: var(--color-primary, #2563eb);
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: 2px;
   background: var(--color-surface-selected, rgba(37, 99, 235, 0.08));
 }
 
@@ -83,7 +95,7 @@
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
   border-radius: 8px;
-  border: 1px solid transparent;
+  border: none;
   min-width: 0;
 }
 

@@ -96,7 +96,8 @@ function createCompletedCaptureItem(capture) {
   const label = capture.name || capture.capture_id || "Capture";
   const metaParts = [capture.interface, capture.filter, capture.stopped_at];
   if (capture.packet_count != null) metaParts.push(`${capture.packet_count} packets`);
-  if (capture.byte_count != null) metaParts.push(formatBytes(capture.byte_count));
+  const size = capture.file_size != null ? capture.file_size : capture.byte_count;
+  if (size != null) metaParts.push(formatBytes(size));
   const meta = metaParts.filter(Boolean).join(" · ") || "completed";
   const labelEl = document.createElement("span");
   labelEl.className = "status-label";
@@ -306,7 +307,8 @@ function openCaptureViewModal(capture, { isLive }) {
   const container = getModalContainer();
   container.setAttribute("aria-hidden", "false");
 
-  let stats = { packet_count: capture.packet_count ?? 0, byte_count: capture.byte_count ?? 0 };
+  const sizeForDisplay = capture.file_size ?? capture.byte_count ?? 0;
+  let stats = { packet_count: capture.packet_count ?? 0, byte_count: sizeForDisplay };
   let wsClient = null;
   let captureBuffer = [];
   let loadedPackets = [];
@@ -316,7 +318,8 @@ function openCaptureViewModal(capture, { isLive }) {
     try {
       const payload = await apiGet(`/api/v1/capture/${capture.capture_id}/stats`);
       const data = extractData(payload) || {};
-      stats = { packet_count: data.packet_count ?? stats.packet_count, byte_count: data.byte_count ?? stats.byte_count };
+      const size = data.file_size ?? data.byte_count ?? stats.byte_count;
+      stats = { packet_count: data.packet_count ?? stats.packet_count, byte_count: size };
     } catch (_) {}
   };
 
@@ -612,7 +615,11 @@ function openCaptureViewModal(capture, { isLive }) {
 
 function exportCapture(capture) {
   const name = (capture.name || capture.capture_id || "capture").replace(/[^\w.-]/g, "_");
-  const filename = name.endsWith(".pcap") ? name : `${name}.pcap`;
+  const base = name.endsWith(".pcap") ? name.slice(0, -5) : name;
+  const dt = capture.stopped_at || capture.started_at || "";
+  const m = dt.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+  const suffix = m ? `${m[1].slice(-2)}${m[2]}${m[3]}${m[4]}${m[5]}${m[6]}` : "";
+  const filename = suffix ? `${base}_${suffix}.pcap` : `${base}.pcap`;
   const url = `/api/v1/capture/completed/${capture.capture_id}/download`;
   const a = document.createElement("a");
   a.href = url;
