@@ -39,6 +39,14 @@ git reset --hard "origin/$BRANCH"
 mkdir -p "$(dirname "$VERSION_FILE")"
 printf '%s' "$TARGET_VERSION" > "$VERSION_FILE"
 
+# Ensure install dir owned by rpi-engineer so in-app updates work when sudo is unavailable next time
+SERVICE_USER="${RPI_ENGINEER_SERVICE_USER:-rpi-engineer}"
+SERVICE_GROUP="${RPI_ENGINEER_SERVICE_GROUP:-rpi-engineer}"
+if getent passwd "$SERVICE_USER" >/dev/null 2>&1; then
+    chown -R "$SERVICE_USER:$SERVICE_GROUP" "$ROOT_DIR"
+    chmod -R g+w "$ROOT_DIR" 2>/dev/null || true
+fi
+
 # Restart services so they pick up the new code
 if [ -d /run/systemd/system ]; then
     systemctl restart rpi-engineer rpi-engineer-api rpi-engineer-network rpi-engineer-serial \
