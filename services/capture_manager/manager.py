@@ -57,9 +57,14 @@ class CaptureManager:
         self._network_manager = NetworkManager()
 
     def list_interfaces(self) -> Dict[str, List[str]]:
-        interfaces = [
-            iface["id"] for iface in self._network_manager.list_interfaces()["interfaces"]
-        ]
+        try:
+            ifaces = self._network_manager.list_interfaces().get("interfaces") or []
+            interfaces = [iface["id"] for iface in ifaces if isinstance(iface, dict) and iface.get("id")]
+        except Exception as exc:
+            logger.warning("NetworkManager list_interfaces failed: %s; using fallback", exc)
+            interfaces = _fallback_interface_names()
+        if not interfaces:
+            interfaces = _fallback_interface_names()
         return {"interfaces": interfaces}
 
     def start_capture(self, payload: Dict[str, object]) -> Dict[str, object]:
@@ -331,3 +336,31 @@ def split_bpf_filter(filter_expr: str) -> List[str]:
 
 def _which(binary: str) -> Optional[str]:
     return shutil.which(binary)
+
+
+def _fallback_interface_names() -> List[str]:
+    """Fallback when NetworkManager fails: read /sys/class/net or run ip link."""
+    names: List[str] = []
+    net_dir = Path("/sys/class/net")
+    if net_dir.exists():
+        for p in net_dir.iterdir():
+            if p.is_dir() and not p.name.startswith("."):
+                names.append(p.name)
+    if names:
+        return sorted(names)
+    if _which("ip"):
+        try:
+            result = subprocess.run(
+                ["ip", "-o", "link", "show"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    parts = line.strip().split(":")
+                    if len(parts) >= 2:
+                        names.append(parts[1].strip().split("@")[0])
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return sorted(set(names)) if names else []
