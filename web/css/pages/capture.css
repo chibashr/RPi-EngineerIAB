@@ -96,68 +96,65 @@
   margin-bottom: 0;
 }
 
-.capture-live-wrapper {
-  border: 1px dashed var(--color-border);
-  border-radius: 12px;
-  min-height: 120px;
-  cursor: pointer;
+.hidden {
+  display: none;
 }
 
-.capture-live-wrapper:has(.capture-live-table-container:not(.hidden)) {
-  cursor: default;
-  border-style: solid;
-}
-
-.empty-state {
-  padding: 1rem;
-  color: var(--color-muted);
-  white-space: pre-wrap;
-}
-
-.capture-live-wrapper .empty-state {
-  min-height: 80px;
-}
-
-.empty-state.live-view-error {
-  color: var(--color-danger, #dc2626);
-}
-
-.capture-live-table-container {
-  max-height: 40vh;
-  overflow: auto;
-}
-
-/* Keep table header visible and prevent body overlap */
-.capture-live-table-container .capture-table thead {
-  display: table-header-group;
-}
-
-.capture-live-table-container .capture-table th {
+/* Capture view modal: sticky toolbar anchored to top */
+.capture-view-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  margin-bottom: 0.5rem;
   background: var(--color-surface);
-  box-shadow: 0 1px 0 var(--color-border);
-}
-
-.capture-live-filter-row {
-  padding: 0.5rem 0.6rem;
   border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface-hover, rgba(0, 0, 0, 0.02));
+  flex-wrap: wrap;
 }
 
-.capture-live-filter-row .field {
+.capture-view-toolbar .capture-view-filter-field {
+  flex: 1;
+  min-width: 12rem;
   margin: 0;
 }
 
-.capture-live-filter-row .input {
+.capture-view-toolbar .input {
   font-size: 0.9rem;
   padding: 0.35rem 0.6rem;
 }
 
-.capture-live-table-container.hidden {
-  display: none;
+.capture-view-wrap-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--color-muted);
+  cursor: pointer;
+  user-select: none;
 }
 
-.hidden {
-  display: none;
+.capture-view-wrap-toggle input {
+  margin: 0;
+}
+
+.capture-packets-scroll {
+  max-height: 55vh;
+  overflow: auto;
+}
+
+.capture-view-packets-table.capture-view-wrap td.capture-info {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.capture-view-packets-table:not(.capture-view-wrap) td.capture-info {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40rem;
 }
 
 .capture-table {
