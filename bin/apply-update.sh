@@ -47,6 +47,13 @@ if getent passwd "$SERVICE_USER" >/dev/null 2>&1; then
     chmod -R g+w "$ROOT_DIR" 2>/dev/null || true
 fi
 
+# Re-apply web permissions (web dir -> www-data for nginx, nginx config, etc.)
+# Must run here because we restart the API below, which kills the update manager before it can call apply-web-permissions
+APPLY_WEB="$ROOT_DIR/bin/apply-web-permissions.sh"
+if [ -x "$APPLY_WEB" ]; then
+    "$APPLY_WEB" >> /tmp/rpi-engineer-apply-web.log 2>&1 || true
+fi
+
 # Restart services so they pick up the new code
 if [ -d /run/systemd/system ]; then
     systemctl restart rpi-engineer rpi-engineer-api rpi-engineer-network rpi-engineer-serial \
