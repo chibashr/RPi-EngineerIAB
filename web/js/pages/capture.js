@@ -118,6 +118,21 @@ function createCompletedCaptureItem(capture) {
   exportBtn.textContent = "Export";
   exportBtn.setAttribute("aria-label", `Export ${label}`);
   exportBtn.addEventListener("click", () => exportCapture(capture));
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "btn btn-secondary btn-sm";
+  deleteBtn.textContent = "Delete";
+  deleteBtn.setAttribute("aria-label", `Delete ${label}`);
+  deleteBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    try {
+      await apiDelete(`/api/v1/capture/completed/${capture.capture_id}`);
+      showToast("Capture deleted.", "success");
+      await loadCaptureData();
+    } catch (_) {
+      showToast("Unable to delete capture.", "error");
+    }
+  });
   const newSimilarBtn = document.createElement("button");
   newSimilarBtn.type = "button";
   newSimilarBtn.className = "btn btn-primary btn-sm";
@@ -126,6 +141,7 @@ function createCompletedCaptureItem(capture) {
   newSimilarBtn.addEventListener("click", () => newSimilarCapture(capture));
   actions.appendChild(viewBtn);
   actions.appendChild(exportBtn);
+  actions.appendChild(deleteBtn);
   actions.appendChild(newSimilarBtn);
   item.appendChild(labelEl);
   item.appendChild(valueEl);

@@ -28,9 +28,21 @@ logger = get_service_logger(__name__)
 
 
 def _capture_dir() -> Path:
-    """Persistent capture dir under /var/lib/rpi-engineer/captures (writable by rpi-engineer)."""
+    """Persistent capture dir: RPI_ENGINEER_DATA_DIR/captures or repo/data/captures fallback."""
     base = Path(os.getenv("RPI_ENGINEER_DATA_DIR", "/var/lib/rpi-engineer"))
-    return base / "captures"
+    path = base / "captures"
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    except OSError:
+        path = _REPO_ROOT / "data" / "captures"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+
+def _metadata_path() -> Path:
+    """Path to persisted capture metadata index."""
+    return _capture_dir() / "captures.json"
 
 
 @dataclass
@@ -49,6 +61,28 @@ class CaptureJob:
     byte_count: Optional[int] = None
 
 
+def _load_metadata() -> Dict[str, dict]:
+    """Load persisted capture metadata from disk."""
+    path = _metadata_path()
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Failed to load capture metadata: %s", exc)
+        return {}
+
+
+def _save_metadata(metadata: Dict[str, dict]) -> None:
+    """Persist capture metadata to disk."""
+    path = _metadata_path()
+    try:
+        path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    except OSError as exc:
+        logger.warning("Failed to save capture metadata: %s", exc)
+
+
 class CaptureManager:
     """Manage tcpdump captures and analysis."""
 
@@ -56,6 +90,7 @@ class CaptureManager:
         self._active: Dict[str, CaptureJob] = {}
         self._completed: Dict[str, CaptureJob] = {}
         self._network_manager = NetworkManager()
+        self._load_completed_from_disk()
 
     def list_interfaces(self) -> Dict[str, List[str]]:
         try:
@@ -80,7 +115,7 @@ class CaptureManager:
 
         capture_dir = _capture_dir()
         capture_dir.mkdir(parents=True, exist_ok=True)
-        file_path = capture_dir / f"{name}.pcap"
+        file_path = capture_dir / f"{capture_id}.pcap"
 
         job = CaptureJob(
             capture_id=capture_id,
@@ -139,6 +174,7 @@ class CaptureManager:
             job.packet_count = stats.get("packet_count", 0)
             job.byte_count = stats.get("byte_count", 0)
         self._completed[capture_id] = job
+        self._persist_completed()
         packets = job.packet_count or 0
         logger.info("Capture stopped id=%s packets=%d", capture_id[:8], packets)
         return self._job_payload(job)
@@ -157,7 +193,11 @@ class CaptureManager:
         if not job:
             raise KeyError("Completed capture not found")
         if job.file_path and job.file_path.exists():
-            job.file_path.unlink()
+            try:
+                job.file_path.unlink()
+            except OSError as exc:
+                logger.warning("Failed to delete capture file %s: %s", job.file_path, exc)
+        self._persist_completed()
         logger.info("Completed capture deleted: %s (%s)", capture_id[:8], job.name)
         return {"capture_id": capture_id, "deleted": True}
 
@@ -197,6 +237,50 @@ class CaptureManager:
 
     def get_job(self, capture_id: str) -> Optional[CaptureJob]:
         return self._active.get(capture_id) or self._completed.get(capture_id)
+
+    def _load_completed_from_disk(self) -> None:
+        """Restore completed captures from persisted metadata."""
+        meta = _load_metadata()
+        capture_dir = _capture_dir()
+        for cid, entry in meta.items():
+            if not isinstance(entry, dict):
+                continue
+            file_path = capture_dir / f"{cid}.pcap"
+            if not file_path.exists():
+                continue
+            job = CaptureJob(
+                capture_id=cid,
+                interface=entry.get("interface", ""),
+                name=entry.get("name", cid[:8]),
+                filter=entry.get("filter"),
+                duration_seconds=entry.get("duration_seconds"),
+                max_size_mb=entry.get("max_size_mb"),
+                started_at=entry.get("started_at", _timestamp()),
+                stopped_at=entry.get("stopped_at"),
+                file_path=file_path,
+                packet_count=entry.get("packet_count"),
+                byte_count=entry.get("byte_count"),
+            )
+            self._completed[cid] = job
+
+    def _persist_completed(self) -> None:
+        """Write completed captures metadata to disk."""
+        meta = {
+            cid: {
+                "capture_id": job.capture_id,
+                "interface": job.interface,
+                "name": job.name,
+                "filter": job.filter,
+                "duration_seconds": job.duration_seconds,
+                "max_size_mb": job.max_size_mb,
+                "started_at": job.started_at,
+                "stopped_at": job.stopped_at,
+                "packet_count": job.packet_count,
+                "byte_count": job.byte_count,
+            }
+            for cid, job in self._completed.items()
+        }
+        _save_metadata(meta)
 
     def _job_payload(self, job: CaptureJob) -> Dict[str, object]:
         payload = {

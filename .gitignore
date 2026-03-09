@@ -19,6 +19,8 @@ htmlcov/*
 coverage/*
 node_modules/*
 logs/*
+data/captures/*
+*.pcap
 .DS_Store
 Thumbs.db
 .planning/*
