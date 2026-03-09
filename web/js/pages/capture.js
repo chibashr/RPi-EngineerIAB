@@ -187,7 +187,7 @@ function updateBanner(message, isVisible = true) {
 function parseTsharkLine(line) {
   const s = String(line).trim();
   if (!s) return null;
-  const m = s.match(/^\s*(\d+)\s+([\d.]+)\s+(\S+)\s+[→->]\s+(\S+)\s+(\S+)\s+(\d+)\s*(.*)$/);
+  const m = s.match(/^\s*(\d+)\s+([\d.]+)\s+(\S+)\s+(?:→|->)\s+(\S+)\s+(\S+)\s+(\d+)\s*(.*)$/);
   if (m) {
     return { no: m[1], time: m[2], source: m[3], dest: m[4], protocol: m[5], length: m[6], info: m[7] || "" };
   }
