@@ -11,6 +11,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -238,7 +239,42 @@ class CaptureManager:
             time.sleep(1)
 
 
+def _capinfos_stats(path: Path) -> Dict[str, int]:
+    """Prefer capinfos for packet/byte counts; more reliable than tshark io,stat."""
+    capinfos = _which("capinfos")
+    if not capinfos:
+        return {}
+    result = subprocess.run(
+        [capinfos, "-c", "-d", "-M", str(path)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return {}
+    packet_count = 0
+    byte_count = 0
+    for line in result.stdout.splitlines():
+        m = re.match(r"Number of packets:\s*(\d+)", line, re.IGNORECASE)
+        if m:
+            packet_count = int(m.group(1))
+            continue
+        m = re.match(r"Total length(?:\s+of packets)?:\s*([\d.]+)", line, re.IGNORECASE)
+        if m:
+            byte_count = int(float(m.group(1)))
+    if packet_count or byte_count:
+        return {"packet_count": packet_count, "byte_count": byte_count}
+    return {}
+
+
 def _tshark_stats(path: Path) -> Dict[str, int]:
+    capinfos_result = _capinfos_stats(path)
+    if capinfos_result and (
+        capinfos_result.get("packet_count", 0) > 0 or capinfos_result.get("byte_count", 0) > 0
+    ):
+        return {
+            "packet_count": capinfos_result.get("packet_count", 0),
+            "byte_count": capinfos_result.get("byte_count", 0),
+        }
     result = subprocess.run(
         ["tshark", "-r", str(path), "-q", "-z", "io,stat,0"],
         capture_output=True,
@@ -253,12 +289,22 @@ def _tshark_stats(path: Path) -> Dict[str, int]:
             continue
         if "|" in line:
             parts = [part.strip() for part in line.split("|")]
-            if len(parts) >= 4 and parts[1].isdigit():
-                packet_count = int(parts[1])
+            for i, p in enumerate(parts):
+                if p.isdigit() and packet_count == 0 and i >= 1:
+                    packet_count = int(p)
+                    break
+            for i, p in enumerate(parts):
+                try:
+                    v = int(float(p))
+                    if v > byte_count and packet_count > 0:
+                        byte_count = v
+                except ValueError:
+                    pass
+            if packet_count and not byte_count and len(parts) >= 4:
                 try:
                     byte_count = int(float(parts[3]))
                 except ValueError:
-                    byte_count = 0
+                    pass
     return {"packet_count": packet_count, "byte_count": byte_count}
 
 

@@ -127,6 +127,31 @@
   overflow: auto;
 }
 
+/* Keep table header visible and prevent body overlap */
+.capture-live-table-container .capture-table thead {
+  display: table-header-group;
+}
+
+.capture-live-table-container .capture-table th {
+  background: var(--color-surface);
+  box-shadow: 0 1px 0 var(--color-border);
+}
+
+.capture-live-filter-row {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-hover, rgba(0, 0, 0, 0.02));
+}
+
+.capture-live-filter-row .field {
+  margin: 0;
+}
+
+.capture-live-filter-row .input {
+  font-size: 0.9rem;
+  padding: 0.35rem 0.6rem;
+}
+
 .capture-live-table-container.hidden {
   display: none;
 }
@@ -154,17 +179,31 @@
   background: var(--color-surface-hover, rgba(0, 0, 0, 0.04));
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
 }
 
 .capture-table td.capture-info {
   white-space: normal;
-  max-width: 24rem;
+  max-width: 36rem;
   word-break: break-word;
+}
+
+.capture-view-modal .capture-table td.capture-info {
+  max-width: none;
 }
 
 .capture-table tbody tr:hover {
   background: var(--color-surface-hover, rgba(0, 0, 0, 0.04));
+}
+
+/* View modal: much wider for packet data */
+.capture-view-modal {
+  max-width: min(95vw, 1400px);
+  width: 100%;
+}
+
+.capture-view-modal .capture-view-tab-panels {
+  max-height: 70vh;
 }
 
 /* View modal: tabs and panels */
@@ -202,7 +241,7 @@
 
 .capture-view-modal .capture-view-tab-panel {
   display: none;
-  max-height: 420px;
+  max-height: 65vh;
   overflow: auto;
 }
 

@@ -177,6 +177,12 @@
                 Start a capture, then select it above or click here to view live packets.
               </div>
               <div id="live-view-table-container" class="capture-live-table-container hidden">
+                <div class="capture-live-filter-row">
+                  <label class="field">
+                    <span class="field-label sr-only">Filter packets</span>
+                    <input class="input" id="live-capture-filter" type="text" placeholder="Filter by protocol, IP, or info (e.g. DNS, 192.168)" />
+                  </label>
+                </div>
                 <table class="capture-table" id="live-view-table">
                   <thead>
                     <tr>

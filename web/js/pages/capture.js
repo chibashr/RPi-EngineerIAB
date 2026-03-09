@@ -12,6 +12,7 @@ const elements = {
   liveViewEmpty: document.getElementById("live-view-empty"),
   liveViewTableContainer: document.getElementById("live-view-table-container"),
   liveViewTableBody: document.querySelector("#live-view-table tbody"),
+  liveCaptureFilter: document.getElementById("live-capture-filter"),
   banner: document.getElementById("capture-connection-banner"),
 };
 
@@ -227,6 +228,24 @@ function packetToTableRow(p) {
   return `<tr><td>${escapeHtml(no)}</td><td>${escapeHtml(time)}</td><td>${escapeHtml(src)}</td><td>${escapeHtml(dst)}</td><td>${escapeHtml(protocol)}</td><td>${escapeHtml(len)}</td><td class="capture-info">${escapeHtml(info)}</td></tr>`;
 }
 
+function matchesLiveFilter(parsed, filterText) {
+  if (!filterText || !filterText.trim()) return true;
+  const q = filterText.trim().toLowerCase();
+  const s = [
+    parsed.no,
+    parsed.time,
+    parsed.source,
+    parsed.dest,
+    parsed.protocol,
+    parsed.length,
+    parsed.info,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return s.includes(q);
+}
+
 function updateLiveView(text) {
   const lines = String(text).split("\n").filter((l) => l.trim());
   captureBuffer = captureBuffer.concat(lines);
@@ -236,10 +255,17 @@ function updateLiveView(text) {
   if (!elements.liveViewTableBody || !elements.liveViewTableContainer || !elements.liveViewEmpty) return;
   elements.liveViewEmpty.classList.add("hidden");
   elements.liveViewTableContainer.classList.remove("hidden");
+  renderLiveTable();
+}
+
+function renderLiveTable() {
+  if (!elements.liveViewTableBody || !elements.liveViewTableContainer) return;
+  const filterText = elements.liveCaptureFilter?.value ?? "";
   elements.liveViewTableBody.innerHTML = "";
   captureBuffer.forEach((line) => {
     const p = parseTsharkLine(line);
     if (!p) return;
+    if (!matchesLiveFilter(p, filterText)) return;
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${escapeHtml(p.no)}</td><td>${escapeHtml(p.time)}</td><td>${escapeHtml(p.source)}</td><td>${escapeHtml(p.dest)}</td><td>${escapeHtml(p.protocol)}</td><td>${escapeHtml(p.length)}</td><td class="capture-info">${escapeHtml(p.info)}</td>`;
     elements.liveViewTableBody.appendChild(tr);
@@ -586,6 +612,11 @@ function setupActions() {
   const liveViewWrapper = document.getElementById("live-view-wrapper");
   if (liveViewWrapper) {
     liveViewWrapper.addEventListener("click", connectLiveView);
+  }
+
+  if (elements.liveCaptureFilter) {
+    elements.liveCaptureFilter.addEventListener("input", renderLiveTable);
+    elements.liveCaptureFilter.addEventListener("keydown", (e) => e.stopPropagation());
   }
 }
 
