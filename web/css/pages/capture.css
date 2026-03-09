@@ -1,3 +1,15 @@
+.capture-lists-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 767px) {
+  .capture-lists-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .section-header {
   display: flex;
   align-items: center;
