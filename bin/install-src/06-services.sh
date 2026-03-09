@@ -120,6 +120,8 @@ create_service_unit() {
     local exec_start="$3"
     local run_user="$4"
     local extra_env="${5:-}"
+    local no_new_privs="yes"
+    [ "${6:-}" = "allow_capabilities" ] && no_new_privs="no"
     cat > "/etc/systemd/system/${name}.service" <<EOF
 [Unit]
 Description=$description
@@ -137,7 +139,7 @@ Group=$SERVICE_GROUP
 Environment=PYTHONUNBUFFERED=1
 ${extra_env}
 UMask=027
-NoNewPrivileges=yes
+NoNewPrivileges=$no_new_privs
 PrivateTmp=yes
 
 [Install]
@@ -151,7 +153,7 @@ configure_services() {
     create_master_service
     local api_env="Environment=RPI_ENGINEER_ROOT=${INSTALL_DIR}
 Environment=RPI_ENGINEER_DRY_RUN=0"
-    create_service_unit "rpi-engineer-api" "RPi Engineer API Gateway" "$INSTALL_DIR/venv/bin/python -m uvicorn services.api_gateway.main:app --host 0.0.0.0 --port 5000 --workers 1 --loop asyncio" "$SERVICE_USER" "$api_env"
+    create_service_unit "rpi-engineer-api" "RPi Engineer API Gateway" "$INSTALL_DIR/venv/bin/python -m uvicorn services.api_gateway.main:app --host 0.0.0.0 --port 5000 --workers 1 --loop asyncio" "$SERVICE_USER" "$api_env" "allow_capabilities"
     create_service_unit "rpi-engineer-network" "RPi Engineer Network Manager" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/network_manager/manager.py" "root"
     create_service_unit "rpi-engineer-serial" "RPi Engineer Serial Manager" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/serial_manager/manager.py" "$SERVICE_USER"
     create_service_unit "rpi-engineer-capture" "RPi Engineer Capture Manager" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/capture_manager/manager.py" "root"
