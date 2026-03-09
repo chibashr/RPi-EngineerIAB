@@ -9,7 +9,9 @@ const elements = {
   filterInput: document.getElementById("capture-filter"),
   activeList: document.getElementById("active-capture-list"),
   completedList: document.getElementById("completed-capture-list"),
-  liveView: document.getElementById("live-view"),
+  liveViewEmpty: document.getElementById("live-view-empty"),
+  liveViewTableContainer: document.getElementById("live-view-table-container"),
+  liveViewTableBody: document.querySelector("#live-view-table tbody"),
   banner: document.getElementById("capture-connection-banner"),
 };
 
@@ -181,17 +183,68 @@ function updateBanner(message, isVisible = true) {
   elements.banner.classList.toggle("is-visible", isVisible);
 }
 
-function updateLiveView(text) {
-  if (!elements.liveView) {
-    return;
+/** Parse tshark line into columns: No, Time, Source, Dest, Protocol, Length, Info */
+function parseTsharkLine(line) {
+  const s = String(line).trim();
+  if (!s) return null;
+  const m = s.match(/^\s*(\d+)\s+([\d.]+)\s+(\S+)\s+[→->]\s+(\S+)\s+(\S+)\s+(\d+)\s*(.*)$/);
+  if (m) {
+    return { no: m[1], time: m[2], source: m[3], dest: m[4], protocol: m[5], length: m[6], info: m[7] || "" };
   }
-  const lines = String(text).split("\n");
+  return { no: "", time: "", source: "", dest: "", protocol: "", length: "", info: s };
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** Extract table row HTML from tshark JSON packet */
+function packetToTableRow(p) {
+  const layers = p?._source?.layers || {};
+  const frame = layers.frame || {};
+  const ip = layers.ip || {};
+  const eth = layers.eth || {};
+  const val = (obj, key) => {
+    const v = obj[key];
+    return Array.isArray(v) ? (v[0] ?? "") : (v ?? "");
+  };
+  const no = val(frame, "frame.number") || (p._index ?? "");
+  const time = val(frame, "frame.time_relative") || val(frame, "frame.time") || "";
+  const src = val(ip, "ip.src") || val(eth, "eth.src") || "";
+  const dst = val(ip, "ip.dst") || val(eth, "eth.dst") || "";
+  const protocols = val(frame, "frame.protocols") || "";
+  const protocol = protocols.split(":").pop() || "";
+  const len = val(frame, "frame.len") || "";
+  let info = val(frame, "frame.info") || "";
+  if (!info && (layers.tcp || layers.udp)) {
+    const tcp = layers.tcp || layers.udp || {};
+    const sp = val(tcp, "tcp.srcport") || val(tcp, "udp.srcport");
+    const dp = val(tcp, "tcp.dstport") || val(tcp, "udp.dstport");
+    if (sp || dp) info = [sp, "→", dp].filter(Boolean).join(" ");
+  }
+  if (!info && layers.arp) info = "ARP";
+  if (!info && (p.summary || p.info)) info = String(p.summary || p.info);
+  return `<tr><td>${escapeHtml(no)}</td><td>${escapeHtml(time)}</td><td>${escapeHtml(src)}</td><td>${escapeHtml(dst)}</td><td>${escapeHtml(protocol)}</td><td>${escapeHtml(len)}</td><td class="capture-info">${escapeHtml(info)}</td></tr>`;
+}
+
+function updateLiveView(text) {
+  const lines = String(text).split("\n").filter((l) => l.trim());
   captureBuffer = captureBuffer.concat(lines);
   if (captureBuffer.length > MAX_CAPTURE_LINES) {
     captureBuffer = captureBuffer.slice(-MAX_CAPTURE_LINES);
   }
-  elements.liveView.textContent = captureBuffer.join("\n");
-  elements.liveView.scrollTop = elements.liveView.scrollHeight;
+  if (!elements.liveViewTableBody || !elements.liveViewTableContainer || !elements.liveViewEmpty) return;
+  elements.liveViewEmpty.classList.add("hidden");
+  elements.liveViewTableContainer.classList.remove("hidden");
+  elements.liveViewTableBody.innerHTML = "";
+  captureBuffer.forEach((line) => {
+    const p = parseTsharkLine(line);
+    if (!p) return;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${escapeHtml(p.no)}</td><td>${escapeHtml(p.time)}</td><td>${escapeHtml(p.source)}</td><td>${escapeHtml(p.dest)}</td><td>${escapeHtml(p.protocol)}</td><td>${escapeHtml(p.length)}</td><td class="capture-info">${escapeHtml(p.info)}</td>`;
+    elements.liveViewTableBody.appendChild(tr);
+  });
+  elements.liveViewTableContainer.scrollTop = elements.liveViewTableContainer.scrollHeight;
 }
 
 function selectAndViewActiveCapture(captureId) {
@@ -229,10 +282,12 @@ function connectLiveViewTo(captureId) {
     wsClient.close();
   }
   captureBuffer = [];
-  if (elements.liveView) {
-    elements.liveView.classList.remove("live-view-error");
-    elements.liveView.textContent = "Connecting...";
+  setLiveViewError(null);
+  if (elements.liveViewEmpty) {
+    elements.liveViewEmpty.textContent = "Connecting...";
+    elements.liveViewEmpty.classList.remove("hidden");
   }
+  if (elements.liveViewTableContainer) elements.liveViewTableContainer.classList.add("hidden");
   wsClient = createWebSocketClient(`/ws/capture/${captureId}`);
   wsClient.onStatus((status) => {
     if (status === "connected") {
@@ -247,8 +302,14 @@ function connectLiveViewTo(captureId) {
   });
   wsClient.on("live_started", () => {
     setLiveViewError(null);
-    if (elements.liveView) {
-      elements.liveView.textContent = "Listening for packets…";
+    captureBuffer = [];
+    if (elements.liveViewEmpty) {
+      elements.liveViewEmpty.textContent = "Listening for packets…";
+      elements.liveViewEmpty.classList.remove("hidden");
+    }
+    if (elements.liveViewTableContainer) {
+      elements.liveViewTableContainer.classList.add("hidden");
+      if (elements.liveViewTableBody) elements.liveViewTableBody.innerHTML = "";
     }
   });
   wsClient.on("packet", (message) => {
@@ -264,11 +325,13 @@ function connectLiveViewTo(captureId) {
 }
 
 function setLiveViewError(message) {
-  if (!elements.liveView) return;
-  elements.liveView.classList.toggle("live-view-error", !!message);
+  if (!elements.liveViewEmpty) return;
+  elements.liveViewEmpty.classList.toggle("live-view-error", !!message);
   if (message) {
-    elements.liveView.textContent = message;
+    elements.liveViewEmpty.textContent = message;
+    elements.liveViewEmpty.classList.remove("hidden");
   }
+  if (elements.liveViewTableContainer && message) elements.liveViewTableContainer.classList.add("hidden");
 }
 
 async function stopCapture(captureId) {
@@ -281,10 +344,12 @@ async function stopCapture(captureId) {
         wsClient.close();
         wsClient = null;
       }
-      if (elements.liveView) {
-        elements.liveView.classList.remove("live-view-error");
-        elements.liveView.textContent = "Start a capture, then select it above or click here to view live packets.";
+      if (elements.liveViewEmpty) {
+        elements.liveViewEmpty.classList.remove("live-view-error");
+        elements.liveViewEmpty.textContent = "Start a capture, then select it above or click here to view live packets.";
+        elements.liveViewEmpty.classList.remove("hidden");
       }
+      if (elements.liveViewTableContainer) elements.liveViewTableContainer.classList.add("hidden");
     }
     try {
       await loadCaptureData();
@@ -374,19 +439,13 @@ async function showCompletedCaptureView(capture) {
         const data = extractData(payload) || {};
         const packets = data.packets || [];
         const list = Array.isArray(packets) ? packets : [];
-        panel.innerHTML = list.length
-          ? `<ul class="capture-packet-list">${list.slice(0, 100).map((p) => {
-              let summary = "";
-              if (p && typeof p === "object" && p._source?.layers && typeof p._source.layers === "object") {
-                const info = p._source.layers.frame?.["frame.info"] || p._source.layers.frame?.["frame.time"];
-                summary = info ? String(info) : Object.keys(p._source.layers).filter((k) => k !== "frame").join(", ");
-              } else {
-                summary = (p && (p.summary || p.info)) ? String(p.summary || p.info) : JSON.stringify(p).slice(0, 80);
-              }
-              const time = (p && p._source?.layers?.frame?.["frame.time"]) ? String(p._source.layers.frame["frame.time"]) : "";
-              return `<li class="capture-packet-item"><span class="capture-packet-time">${(time || "").replace(/</g, "&lt;")}</span> <span class="capture-packet-summary">${String(summary).slice(0, 120).replace(/</g, "&lt;")}</span></li>`;
-            }).join("")}</ul>${list.length > 100 ? `<p class="capture-view-more">First 100 of ${list.length} packets shown.</p>` : ""}`
-          : "<p class=\"capture-view-empty\">No packets.</p>";
+        if (!list.length) {
+          panel.innerHTML = "<p class=\"capture-view-empty\">No packets.</p>";
+        } else {
+          const rows = list.slice(0, 500).map((p) => packetToTableRow(p));
+          const more = list.length > 500 ? `<p class="capture-view-more">First 500 of ${list.length} packets shown.</p>` : "";
+          panel.innerHTML = `<div class="capture-packets-table-wrap"><table class="capture-table"><thead><tr><th>No.</th><th>Time</th><th>Source</th><th>Destination</th><th>Protocol</th><th>Length</th><th>Info</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>${more}`;
+        }
       } else if (tab === "conversations") {
         const payload = await apiGet(`/api/v1/capture/${capture.capture_id}/conversations`);
         const data = extractData(payload) || {};
@@ -524,9 +583,9 @@ function setupActions() {
     });
   }
 
-  const liveView = document.getElementById("live-view");
-  if (liveView) {
-    liveView.addEventListener("click", connectLiveView);
+  const liveViewWrapper = document.getElementById("live-view-wrapper");
+  if (liveViewWrapper) {
+    liveViewWrapper.addEventListener("click", connectLiveView);
   }
 }
 
@@ -586,10 +645,12 @@ async function loadCaptureData() {
         wsClient.close();
         wsClient = null;
       }
-      if (elements.liveView) {
-        elements.liveView.classList.remove("live-view-error");
-        elements.liveView.textContent = "Start a capture, then select it above or click here to view live packets.";
+      if (elements.liveViewEmpty) {
+        elements.liveViewEmpty.classList.remove("live-view-error");
+        elements.liveViewEmpty.textContent = "Start a capture, then select it above or click here to view live packets.";
+        elements.liveViewEmpty.classList.remove("hidden");
       }
+      if (elements.liveViewTableContainer) elements.liveViewTableContainer.classList.add("hidden");
     }
     renderCaptures(elements.activeList, active, "No active captures.");
   } catch (error) {

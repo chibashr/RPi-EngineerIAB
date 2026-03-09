@@ -172,8 +172,26 @@
             <div class="section-header">
               <h2>Live Viewer</h2>
             </div>
-            <div class="empty-state" id="live-view" aria-live="polite">
-              Start a capture, then select it above or click here to view live packets.
+            <div id="live-view-wrapper" class="capture-live-wrapper">
+              <div class="empty-state" id="live-view-empty" aria-live="polite">
+                Start a capture, then select it above or click here to view live packets.
+              </div>
+              <div id="live-view-table-container" class="capture-live-table-container hidden">
+                <table class="capture-table" id="live-view-table">
+                  <thead>
+                    <tr>
+                      <th>No.</th>
+                      <th>Time</th>
+                      <th>Source</th>
+                      <th>Destination</th>
+                      <th>Protocol</th>
+                      <th>Length</th>
+                      <th>Info</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
             </div>
           </section>
 
