@@ -1,10 +1,14 @@
 .capture-lists-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 1rem;
 }
 
-@media (max-width: 767px) {
+.capture-lists-row > .card {
+  min-width: 0;
+}
+
+@media (max-width: 639px) {
   .capture-lists-row {
     grid-template-columns: 1fr;
   }
