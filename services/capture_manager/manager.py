@@ -218,8 +218,8 @@ class CaptureManager:
         }
 
     def get_packets(self, capture_id: str) -> Dict[str, object]:
-        job = self._completed.get(capture_id)
-        if not job or not job.file_path:
+        job = self.get_job(capture_id)
+        if not job or not job.file_path or not job.file_path.exists():
             raise KeyError("Capture not found")
         return {"packets": _tshark_packets(job.file_path)}
 

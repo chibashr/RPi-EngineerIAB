@@ -237,6 +237,38 @@ function matchesPacketFilter(parsedOrRow, filterText) {
   return s.includes(q);
 }
 
+function packetJsonToParsed(p) {
+  const layers = p?._source?.layers || {};
+  const frame = layers.frame || {};
+  const ip = layers.ip || {};
+  const eth = layers.eth || {};
+  const val = (obj, key) => {
+    const v = obj?.[key];
+    return Array.isArray(v) ? (v[0] ?? "") : (v ?? "");
+  };
+  const src = val(ip, "ip.src") || val(eth, "eth.src") || "";
+  const dst = val(ip, "ip.dst") || val(eth, "eth.dst") || "";
+  const protocols = val(frame, "frame.protocols") || "";
+  let info = val(frame, "frame.info") || "";
+  if (!info && (layers.tcp || layers.udp)) {
+    const tcp = layers.tcp || layers.udp || {};
+    const sp = val(tcp, "tcp.srcport") || val(tcp, "udp.srcport");
+    const dp = val(tcp, "tcp.dstport") || val(tcp, "udp.dstport");
+    if (sp || dp) info = [sp, "→", dp].filter(Boolean).join(" ");
+  }
+  if (!info && layers.arp) info = "ARP";
+  if (!info && (p.summary || p.info)) info = String(p.summary || p.info);
+  return {
+    no: String(val(frame, "frame.number") || p?._index || ""),
+    time: val(frame, "frame.time_relative") || val(frame, "frame.time") || "",
+    source: src,
+    dest: dst,
+    protocol: protocols.split(":").pop() || "",
+    length: val(frame, "frame.len") || "",
+    info,
+  };
+}
+
 function packetSearchable(p) {
   const layers = p?._source?.layers || {};
   const frame = layers.frame || {};
@@ -371,8 +403,7 @@ function openCaptureViewModal(capture, { isLive }) {
     if (!packetsTbody) return;
     const filterText = filterInput?.value ?? "";
     packetsTbody.innerHTML = "";
-    captureBuffer.forEach((line) => {
-      const p = parseTsharkLine(line);
+    captureBuffer.forEach((p) => {
       if (!p || !matchesPacketFilter(p, filterText)) return;
       const tr = document.createElement("tr");
       tr.innerHTML = `<td>${escapeHtml(p.no)}</td><td>${escapeHtml(p.time)}</td><td>${escapeHtml(p.source)}</td><td>${escapeHtml(p.dest)}</td><td>${escapeHtml(p.protocol)}</td><td>${escapeHtml(p.length)}</td><td class="capture-info">${escapeHtml(p.info)}</td>`;
@@ -408,6 +439,24 @@ function openCaptureViewModal(capture, { isLive }) {
   };
 
   if (isLive) {
+    (async () => {
+      try {
+        const payload = await apiGet(`/api/v1/capture/${capture.capture_id}/packets`);
+        const data = extractData(payload) || {};
+        const packets = Array.isArray(data.packets) ? data.packets : [];
+        packets.forEach((p) => {
+          const parsed = packetJsonToParsed(p);
+          captureBuffer.push(parsed);
+        });
+        if (captureBuffer.length > MAX_CAPTURE_LINES) {
+          captureBuffer = captureBuffer.slice(-MAX_CAPTURE_LINES);
+        }
+        renderPacketsFromBuffer();
+      } catch (_) {
+        /* no existing packets yet */
+      }
+    })();
+
     wsClient = createWebSocketClient(`/ws/capture/${capture.capture_id}`);
     wsClient.onStatus((status) => {
       if (status === "connected") updateBanner("Live capture connected.", false);
@@ -416,12 +465,14 @@ function openCaptureViewModal(capture, { isLive }) {
       else if (status === "error") updateBanner("Live capture connection error.");
     });
     wsClient.on("live_started", () => {
-      captureBuffer = [];
       renderPacketsFromBuffer();
     });
     wsClient.on("packet", (message) => {
       const lines = String(message.summary || "").split("\n").filter((l) => l.trim());
-      captureBuffer = captureBuffer.concat(lines);
+      lines.forEach((line) => {
+        const p = parseTsharkLine(line);
+        if (p) captureBuffer.push(p);
+      });
       if (captureBuffer.length > MAX_CAPTURE_LINES) {
         captureBuffer = captureBuffer.slice(-MAX_CAPTURE_LINES);
       }
