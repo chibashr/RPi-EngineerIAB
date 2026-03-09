@@ -36,7 +36,7 @@ export function ensureSimpleMode() {
 
 export function ensureAdvancedMode() {
   if (getStoredMode() === "simple") {
-    window.location.assign("/");
+    setMode("advanced");
   }
 }
 
