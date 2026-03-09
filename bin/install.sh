@@ -865,6 +865,8 @@ install_required_packages() {
     fi
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "packages"; then log_info "Step 'packages' already completed; skipping."; DEPS_INSTALLED="yes"; return 0; fi
     log_step "Installing required packages"
+    # Allow non-superusers (wireshark group) to capture packets; must be set before wireshark-common installs
+    echo "wireshark-common wireshark-common/install-setuid boolean true" | debconf-set-selections 2>/dev/null || true
     local packages=(
         python3 python3-pip python3-venv
         network-manager dnsmasq hostapd iptables bridge-utils vlan
@@ -1260,15 +1262,20 @@ setup_user_permissions() {
         [ -z "$TCPDUMP" ] && log_warn "tcpdump not found; install tcpdump for packet capture."
         command -v setcap >/dev/null 2>&1 || log_warn "setcap not found; install libcap2-bin so tcpdump can capture without root."
     fi
-    # Also allow dumpcap (tshark live view) when present; resolve real path for setcap
+    # Also allow dumpcap/tshark (live view, analysis) when present
     DUMPCAP="$(command -v dumpcap 2>/dev/null)"
     if [ -n "$DUMPCAP" ]; then
+        # Ensure wireshark-common allows non-superusers to capture (Debian/Ubuntu)
+        if dpkg -s wireshark-common >/dev/null 2>&1; then
+            echo "wireshark-common wireshark-common/install-setuid boolean true" | debconf-set-selections 2>/dev/null || true
+            DEBIAN_FRONTEND=noninteractive dpkg-reconfigure wireshark-common >> "$INSTALL_LOG" 2>&1 || true
+        fi
+        getent group wireshark >/dev/null 2>&1 && usermod -aG wireshark "$SERVICE_USER" 2>/dev/null || true
         DUMPCAP="$(readlink -f "$DUMPCAP" 2>/dev/null || echo "$DUMPCAP")"
         if command -v setcap >/dev/null 2>&1; then
             [ -u "$DUMPCAP" ] && chmod u-s "$DUMPCAP" 2>/dev/null || true
             setcap cap_net_raw,cap_net_admin=eip "$DUMPCAP" 2>/dev/null || true
         fi
-        getent group wireshark >/dev/null 2>&1 && usermod -aG wireshark "$SERVICE_USER" 2>/dev/null || true
     fi
     # Persistent capture dir: /var/lib/rpi-engineer/captures (API writes pcap files here)
     mkdir -p "$DATA_DIR/captures"

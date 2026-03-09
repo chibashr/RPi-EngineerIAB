@@ -19,15 +19,20 @@ TCPDUMP="$(command -v tcpdump 2>/dev/null)"
 if [ -n "$TCPDUMP" ] && command -v setcap >/dev/null 2>&1; then
     setcap cap_net_raw,cap_net_admin=eip "$TCPDUMP" 2>/dev/null || true
 fi
-# Also allow dumpcap (tshark live view); resolve real path for setcap
+# Also allow dumpcap/tshark (live view, analysis)
 DUMPCAP="$(command -v dumpcap 2>/dev/null)"
 if [ -n "$DUMPCAP" ]; then
+    # Ensure wireshark-common allows non-superusers to capture (Debian/Ubuntu)
+    if dpkg -s wireshark-common >/dev/null 2>&1; then
+        echo "wireshark-common wireshark-common/install-setuid boolean true" | debconf-set-selections 2>/dev/null || true
+        DEBIAN_FRONTEND=noninteractive dpkg-reconfigure wireshark-common 2>/dev/null || true
+    fi
+    getent group wireshark >/dev/null 2>&1 && usermod -aG wireshark "$SERVICE_USER" 2>/dev/null || true
     DUMPCAP="$(readlink -f "$DUMPCAP" 2>/dev/null || echo "$DUMPCAP")"
     if command -v setcap >/dev/null 2>&1; then
         [ -u "$DUMPCAP" ] && chmod u-s "$DUMPCAP" 2>/dev/null || true
         setcap cap_net_raw,cap_net_admin=eip "$DUMPCAP" 2>/dev/null || true
     fi
-    getent group wireshark >/dev/null 2>&1 && usermod -aG wireshark "$SERVICE_USER" 2>/dev/null || true
 fi
 # Persistent capture dir: /var/lib/rpi-engineer/captures
 DATA_DIR="${RPI_ENGINEER_DATA_DIR:-/var/lib/rpi-engineer}"

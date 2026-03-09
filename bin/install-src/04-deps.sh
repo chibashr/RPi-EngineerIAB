@@ -87,6 +87,8 @@ install_required_packages() {
     fi
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "packages"; then log_info "Step 'packages' already completed; skipping."; DEPS_INSTALLED="yes"; return 0; fi
     log_step "Installing required packages"
+    # Allow non-superusers (wireshark group) to capture packets; must be set before wireshark-common installs
+    echo "wireshark-common wireshark-common/install-setuid boolean true" | debconf-set-selections 2>/dev/null || true
     local packages=(
         python3 python3-pip python3-venv
         network-manager dnsmasq hostapd iptables bridge-utils vlan

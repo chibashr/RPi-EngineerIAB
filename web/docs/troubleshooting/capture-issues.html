@@ -16,6 +16,7 @@
   <li><strong>If you installed or upgraded recently:</strong> The installer and <code>apply-web-permissions.sh</code> set tcpdump capabilities automatically. Run <code>sudo /opt/rpi-engineer/bin/apply-web-permissions.sh</code> to re-apply (e.g. after a tcpdump package update). Then <code>sudo systemctl restart rpi-engineer-api</code>.</li>
   <li><strong>Manual (capabilities):</strong> Give <code>tcpdump</code> permission to capture without root: <code>sudo setcap cap_net_raw,cap_net_admin=eip /usr/sbin/tcpdump</code>. Verify with <code>getcap /usr/sbin/tcpdump</code>. Then restart the API: <code>sudo systemctl restart rpi-engineer-api</code>.</li>
   <li><strong>Verify as service user:</strong> <code>sudo -u rpi-engineer tcpdump -i any -c 5</code> — if that works, the web API will too.</li>
+  <li><strong>tshark "Operation not permitted":</strong> On Debian/Ubuntu, run <code>sudo dpkg-reconfigure wireshark-common</code> and choose "Yes" for "Should non-superusers be able to capture packets?", then <code>sudo usermod -aG wireshark rpi-engineer</code> and restart the API. Or run <code>sudo /opt/rpi-engineer/bin/apply-web-permissions.sh</code> to apply all fixes.</li>
   <li><strong>Alternative:</strong> Run the API service as root (not recommended for production).</li>
 </ol>
 <p>Captures are stored in <code>/var/lib/rpi-engineer/captures</code>. Ensure that directory exists and is owned by <code>rpi-engineer</code>.</p>
