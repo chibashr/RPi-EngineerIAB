@@ -2,10 +2,16 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 1rem;
+  align-items: start;
 }
 
 .capture-lists-row > .card {
   min-width: 0;
+}
+
+/* Override layout: side-by-side cards must not get margin-top */
+.capture-lists-row > .card + .card {
+  margin-top: 0;
 }
 
 @media (max-width: 639px) {
@@ -73,19 +79,26 @@
 .capture-completed-item {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
   border-radius: 8px;
   border: 1px solid transparent;
+  min-width: 0;
 }
 
 .capture-completed-item .status-label {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
 .capture-completed-item .status-value {
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--color-muted);
   font-size: 0.9rem;
 }
