@@ -243,7 +243,8 @@ function applyUpdateWithLog(applyButton, logWrapper, logPre) {
         finish(true, "Dry run: update not applied. Set RPI_ENGINEER_DRY_RUN=0 to apply.");
       } else if (data.status === "applied") {
         appendLog("Update applied successfully (configuration kept).");
-        finish(true, "Update applied successfully (configuration kept).");
+        appendLog("App recently updated. If you have issues, reboot.");
+        finish(true, "Update applied. If you have issues, reboot.");
       } else if (data.status === "up_to_date") {
         appendLog("Already up to date.");
         finish(true, "System is already up to date.");
@@ -288,7 +289,8 @@ function applyUpdateWithLog(applyButton, logWrapper, logPre) {
           finish(true, "Dry run: update not applied. Set RPI_ENGINEER_DRY_RUN=0 to apply.");
         } else if (d.status === "applied") {
           appendLog("Update applied successfully.");
-          finish(true, "Update applied successfully (configuration kept).");
+          appendLog("App recently updated. If you have issues, reboot.");
+          finish(true, "Update applied. If you have issues, reboot.");
         } else {
           appendLog("Already up to date.");
           finish(true, "System is already up to date.");
