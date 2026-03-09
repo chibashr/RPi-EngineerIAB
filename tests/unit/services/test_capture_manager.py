@@ -11,7 +11,7 @@ def test_split_bpf_filter_rejects_flags():
 
 @pytest.mark.unit
 def test_start_and_stop_capture_dry_run(tmp_path, monkeypatch):
-    monkeypatch.setattr(capture_manager, "CAPTURE_DIR", tmp_path)
+    monkeypatch.setattr(capture_manager, "_capture_dir", lambda: tmp_path)
     manager = capture_manager.CaptureManager()
     monkeypatch.setattr(manager._network_manager, "list_interfaces", lambda: {"interfaces": [{"id": "eth0"}]})
 
@@ -28,7 +28,7 @@ def test_start_and_stop_capture_dry_run(tmp_path, monkeypatch):
 
 @pytest.mark.unit
 def test_get_stats_returns_defaults_without_tshark(tmp_path, monkeypatch):
-    monkeypatch.setattr(capture_manager, "CAPTURE_DIR", tmp_path)
+    monkeypatch.setattr(capture_manager, "_capture_dir", lambda: tmp_path)
     manager = capture_manager.CaptureManager()
     monkeypatch.setattr(capture_manager, "_which", lambda _: None)
 

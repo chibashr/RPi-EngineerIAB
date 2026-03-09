@@ -6,6 +6,7 @@ set -euo pipefail
 
 INSTALL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG_DIR="${RPI_ENGINEER_CONFIG_DIR:-/etc/rpi-engineer}"
+SERVICE_USER="rpi-engineer"
 SERVICE_GROUP="rpi-engineer"
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -13,21 +14,27 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-# Packet capture: allow dumpcap to capture without root (API runs as rpi-engineer; tshark uses dumpcap)
+# Packet capture: allow tcpdump to capture without root (API runs as rpi-engineer)
+TCPDUMP="$(command -v tcpdump 2>/dev/null)"
+if [ -n "$TCPDUMP" ] && command -v setcap >/dev/null 2>&1; then
+    setcap cap_net_raw,cap_net_admin=eip "$TCPDUMP" 2>/dev/null || true
+fi
+# Also allow dumpcap (tshark live view)
 DUMPCAP="$(command -v dumpcap 2>/dev/null)"
 if [ -n "$DUMPCAP" ] && command -v setcap >/dev/null 2>&1; then
     [ -u "$DUMPCAP" ] && chmod u-s "$DUMPCAP" 2>/dev/null || true
     setcap cap_net_raw,cap_net_admin=eip "$DUMPCAP" 2>/dev/null || true
 fi
-# Capture data dir: API writes pcap files here
-mkdir -p "${INSTALL_DIR}/data/captures"
-[ -d "${INSTALL_DIR}/data" ] && getent group "$SERVICE_GROUP" >/dev/null 2>&1 && \
-    chown -R "root:${SERVICE_GROUP}" "${INSTALL_DIR}/data" && chmod -R 775 "${INSTALL_DIR}/data" 2>/dev/null || true
+# Persistent capture dir: /var/lib/rpi-engineer/captures
+DATA_DIR="${RPI_ENGINEER_DATA_DIR:-/var/lib/rpi-engineer}"
+mkdir -p "${DATA_DIR}/captures"
+getent group "$SERVICE_GROUP" >/dev/null 2>&1 && chown -R "$SERVICE_USER:$SERVICE_GROUP" "${DATA_DIR}/captures" 2>/dev/null || true
+chmod -R 775 "${DATA_DIR}/captures" 2>/dev/null || true
 
-# Ensure API (rpi-engineer) can run updates via web UI: install dir must be group-writable.
+# Ensure API (rpi-engineer) can run updates via web UI: install dir owned by service user.
 # Run this even when nginx is absent so updates work.
 if getent group "$SERVICE_GROUP" >/dev/null 2>&1; then
-    chown -R "root:${SERVICE_GROUP}" "$INSTALL_DIR"
+    chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
     chmod -R g+w "$INSTALL_DIR" 2>/dev/null || true
     [ -d "$INSTALL_DIR/.git" ] && chmod -R g+w "$INSTALL_DIR/.git" 2>/dev/null || true
     if command -v git >/dev/null 2>&1 && [ -d "$INSTALL_DIR/.git" ]; then

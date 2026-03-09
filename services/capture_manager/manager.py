@@ -24,7 +24,12 @@ from lib.module_logger import get_service_logger
 from services.network_manager import NetworkManager
 
 logger = get_service_logger(__name__)
-CAPTURE_DIR = Path("/opt/rpi-engineer/data/captures")
+
+
+def _capture_dir() -> Path:
+    """Persistent capture dir under /var/lib/rpi-engineer/captures (writable by rpi-engineer)."""
+    base = Path(os.getenv("RPI_ENGINEER_DATA_DIR", "/var/lib/rpi-engineer"))
+    return base / "captures"
 
 
 @dataclass
@@ -67,8 +72,9 @@ class CaptureManager:
         duration_seconds = payload.get("duration_seconds")
         max_size_mb = payload.get("max_size_mb")
 
-        CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
-        file_path = CAPTURE_DIR / f"{name}.pcap"
+        capture_dir = _capture_dir()
+        capture_dir.mkdir(parents=True, exist_ok=True)
+        file_path = capture_dir / f"{name}.pcap"
 
         job = CaptureJob(
             capture_id=capture_id,

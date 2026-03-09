@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify that RPi Engineer permissions are correctly applied (dumpcap, sudoers, install/config dirs).
+# Verify that RPi Engineer permissions are correctly applied (tcpdump, sudoers, install/config dirs).
 # Run as root (or sudo). Exit 0 if all critical checks pass, 1 otherwise.
 # Usage: sudo /opt/rpi-engineer/bin/verify-permissions.sh
 set -euo pipefail
@@ -21,16 +21,16 @@ check() {
     fi
 }
 
-# 1. dumpcap capabilities (packet capture without root)
-DUMPCAP="$(command -v dumpcap 2>/dev/null)"
-if [ -z "$DUMPCAP" ]; then
-    check "dumpcap present" "no" "install tshark/wireshark-common for packet capture"
+# 1. tcpdump capabilities (packet capture without root; API uses tcpdump)
+TCPDUMP="$(command -v tcpdump 2>/dev/null)"
+if [ -z "$TCPDUMP" ]; then
+    check "tcpdump present" "no" "install tcpdump for packet capture"
 else
-    CAPS="$(getcap "$DUMPCAP" 2>/dev/null || true)"
+    CAPS="$(getcap "$TCPDUMP" 2>/dev/null || true)"
     if echo "$CAPS" | grep -q "cap_net_raw.*cap_net_admin"; then
-        check "dumpcap capabilities" "yes"
+        check "tcpdump capabilities" "yes"
     else
-        check "dumpcap capabilities" "no" "run: sudo setcap cap_net_raw,cap_net_admin=eip $DUMPCAP (or sudo $INSTALL_DIR/bin/apply-web-permissions.sh)"
+        check "tcpdump capabilities" "no" "run: sudo setcap cap_net_raw,cap_net_admin=eip $TCPDUMP (or sudo $INSTALL_DIR/bin/apply-web-permissions.sh)"
     fi
 fi
 
@@ -50,16 +50,13 @@ for name in apply-web-permissions apply-update create-config-backup; do
     fi
 done
 
-# 3. Install dir group-writable (updates from web UI)
+# 3. Install dir owned by service user (updates from web UI)
 if [ -d "$INSTALL_DIR" ]; then
-    STAT="$(stat -c "%a %G" "$INSTALL_DIR" 2>/dev/null || true)"
-    MODE="${STAT%% *}"
-    GRP="${STAT#* }"
-    G_BIT=$((MODE / 10 % 10))
-    if [ "$GRP" = "$SERVICE_GROUP" ] && [ "$G_BIT" -ge 2 ] 2>/dev/null; then
-        check "install dir group writable" "yes"
+    OWNER="$(stat -c "%U" "$INSTALL_DIR" 2>/dev/null || true)"
+    if [ "$OWNER" = "$SERVICE_USER" ]; then
+        check "install dir ownership" "yes"
     else
-        check "install dir group writable" "no" "chown root:$SERVICE_GROUP $INSTALL_DIR; chmod -R g+w $INSTALL_DIR"
+        check "install dir ownership" "no" "chown -R $SERVICE_USER:$SERVICE_GROUP $INSTALL_DIR"
     fi
 else
     check "install dir exists" "no" "$INSTALL_DIR"
@@ -79,25 +76,22 @@ else
     check "config/version writable by group" "yes"
 fi
 
-# 5. Data/captures dir exists and writable by group
-CAPTURES_DIR="$INSTALL_DIR/data/captures"
-if [ -d "$INSTALL_DIR/data" ]; then
-    mkdir -p "$CAPTURES_DIR" 2>/dev/null || true
-    if [ -d "$CAPTURES_DIR" ]; then
-        STAT="$(stat -c "%a %G" "$CAPTURES_DIR" 2>/dev/null || true)"
-        CMODE="${STAT%% *}"
-        CGRP="${STAT#* }"
-        C_BIT=$(( CMODE / 10 % 10 ))
-        if [ "$CGRP" = "$SERVICE_GROUP" ] && [ "$C_BIT" -ge 2 ] 2>/dev/null; then
-            check "data/captures dir" "yes"
-        else
-            check "data/captures dir" "no" "chown -R root:$SERVICE_GROUP $INSTALL_DIR/data; chmod -R 775 $INSTALL_DIR/data"
-        fi
+# 5. Capture dir exists and writable by group (/var/lib/rpi-engineer/captures)
+DATA_DIR="${RPI_ENGINEER_DATA_DIR:-/var/lib/rpi-engineer}"
+CAPTURES_DIR="$DATA_DIR/captures"
+mkdir -p "$CAPTURES_DIR" 2>/dev/null || true
+if [ -d "$CAPTURES_DIR" ]; then
+    STAT="$(stat -c "%a %G" "$CAPTURES_DIR" 2>/dev/null || true)"
+    CMODE="${STAT%% *}"
+    CGRP="${STAT#* }"
+    C_BIT=$(( CMODE / 10 % 10 ))
+    if [ "$CGRP" = "$SERVICE_GROUP" ] && [ "$C_BIT" -ge 2 ] 2>/dev/null; then
+        check "captures dir" "yes"
     else
-        check "data/captures dir" "no" "mkdir -p $CAPTURES_DIR"
+        check "captures dir" "no" "chown -R $SERVICE_USER:$SERVICE_GROUP $CAPTURES_DIR; chmod -R 775 $CAPTURES_DIR"
     fi
 else
-    check "data/captures dir" "no" "install dir data missing"
+    check "captures dir" "no" "mkdir -p $CAPTURES_DIR"
 fi
 
 # 6. Service user exists and is in dialout (serial)
