@@ -19,11 +19,15 @@ TCPDUMP="$(command -v tcpdump 2>/dev/null)"
 if [ -n "$TCPDUMP" ] && command -v setcap >/dev/null 2>&1; then
     setcap cap_net_raw,cap_net_admin=eip "$TCPDUMP" 2>/dev/null || true
 fi
-# Also allow dumpcap (tshark live view)
+# Also allow dumpcap (tshark live view); resolve real path for setcap
 DUMPCAP="$(command -v dumpcap 2>/dev/null)"
-if [ -n "$DUMPCAP" ] && command -v setcap >/dev/null 2>&1; then
-    [ -u "$DUMPCAP" ] && chmod u-s "$DUMPCAP" 2>/dev/null || true
-    setcap cap_net_raw,cap_net_admin=eip "$DUMPCAP" 2>/dev/null || true
+if [ -n "$DUMPCAP" ]; then
+    DUMPCAP="$(readlink -f "$DUMPCAP" 2>/dev/null || echo "$DUMPCAP")"
+    if command -v setcap >/dev/null 2>&1; then
+        [ -u "$DUMPCAP" ] && chmod u-s "$DUMPCAP" 2>/dev/null || true
+        setcap cap_net_raw,cap_net_admin=eip "$DUMPCAP" 2>/dev/null || true
+    fi
+    getent group wireshark >/dev/null 2>&1 && usermod -aG wireshark "$SERVICE_USER" 2>/dev/null || true
 fi
 # Persistent capture dir: /var/lib/rpi-engineer/captures
 DATA_DIR="${RPI_ENGINEER_DATA_DIR:-/var/lib/rpi-engineer}"
