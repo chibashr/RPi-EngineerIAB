@@ -99,46 +99,31 @@
             </div>
           </div>
         </div>
-        <div class="status-summary" id="network-summary">
-          Checking network status...
-        </div>
-        <details class="status-details">
-          <summary>Details</summary>
-          <div class="detail-grid">
-            <div>
-              <div class="detail-label">Interfaces</div>
-              <ul class="detail-list" id="interface-list">
-                <li>Loading interfaces...</li>
-              </ul>
-            </div>
-            <div>
-              <div class="detail-label">Services</div>
-              <ul class="detail-list detail-list-scroll" id="service-list">
-                <li>Loading services...</li>
-              </ul>
-            </div>
-            <div>
-              <div class="detail-label">Recent Alerts</div>
-              <ul class="detail-list" id="alert-list">
-                <li>No alerts yet.</li>
-              </ul>
-            </div>
-          </div>
-        </details>
       </section>
 
-      <section class="card network-interfaces-card" aria-live="polite">
-        <div class="card-header">
-          <h2>Network Interfaces</h2>
-          <span class="status-pill status-pill-info" id="wan-status-badge">Checking…</span>
-        </div>
-        <div class="network-wan-summary" id="wan-summary">
-          Checking WAN connection…
-        </div>
-        <ul class="network-interface-list" id="network-interface-list" aria-label="Network interfaces and addresses">
-          <li class="network-interface-loading">Loading interfaces…</li>
-        </ul>
-      </section>
+      <div class="cards-row">
+        <section class="card network-interfaces-card" aria-live="polite">
+          <div class="card-header">
+            <h2>Network Interfaces</h2>
+            <span class="status-pill status-pill-info" id="wan-status-badge">Checking…</span>
+          </div>
+          <div class="network-wan-summary" id="wan-summary">
+            Checking WAN connection…
+          </div>
+          <ul class="network-interface-list" id="network-interface-list" aria-label="Network interfaces and addresses">
+            <li class="network-interface-loading">Loading interfaces…</li>
+          </ul>
+        </section>
+
+        <section class="card alerts-card" aria-live="polite">
+          <div class="card-header">
+            <h2>Recent Alerts</h2>
+          </div>
+          <ul class="alerts-list" id="alerts-list" aria-label="Recent alerts">
+            <li class="alerts-empty">Loading…</li>
+          </ul>
+        </section>
+      </div>
 
       <section class="card connection-card" id="connection-card">
         <div class="card-header">

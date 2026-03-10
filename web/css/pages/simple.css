@@ -75,136 +75,16 @@
   margin: 0.25rem 0 0.5rem;
 }
 
-.status-summary {
-  margin-top: 1rem;
-  color: var(--color-muted);
-}
-
-.status-details {
-  margin-top: 1rem;
-}
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 1rem;
-  margin-top: 0.75rem;
-}
-
-.detail-label {
-  font-weight: 600;
-  margin-bottom: 0.35rem;
-}
-
-.detail-list {
-  list-style: none;
-  padding-left: 0;
-  margin: 0;
-  display: grid;
-  gap: 0.35rem;
-  color: var(--color-muted);
-  font-size: 0.9rem;
-}
-
-.detail-list.detail-list-scroll {
-  max-height: 12rem;
-  overflow-y: auto;
-}
-
-.detail-empty {
-  color: var(--color-muted);
-  font-style: italic;
-}
-
-/* Interface rows: name, status, IP */
-.detail-iface-row {
+/* Cards row: Network Interfaces + Recent Alerts side-by-side on desktop */
+.cards-row {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.35rem;
+  flex-direction: column;
+  gap: 2rem;
+  margin-top: 2rem;
 }
 
-.detail-iface-name {
-  font-weight: 600;
-  color: var(--color-fg);
-  min-width: 3rem;
-}
-
-.detail-iface-ip {
-  font-family: ui-monospace, monospace;
-  font-size: 0.85em;
-}
-
-.detail-status {
-  font-size: 0.8em;
-  font-weight: 600;
-  text-transform: lowercase;
-}
-
-.detail-status-up {
-  color: var(--color-success);
-}
-
-.detail-status-down {
-  color: var(--color-danger);
-}
-
-.detail-status-running {
-  color: var(--color-success);
-}
-
-.detail-status-stopped {
-  color: var(--color-muted);
-}
-
-.detail-status-transition {
-  color: var(--color-warning);
-}
-
-.detail-status-unknown {
-  color: var(--color-muted);
-}
-
-/* Service rows: name, status */
-.detail-svc-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.35rem;
-}
-
-.detail-svc-name {
-  min-width: 4rem;
-  color: var(--color-fg);
-}
-
-/* Alerts */
-.detail-alerts-empty .detail-empty {
-  font-style: italic;
-}
-
-.detail-alert-item {
-  border-left: 3px solid var(--color-muted);
-  padding-left: 0.5rem;
-  margin-left: 0.25rem;
-}
-
-.detail-alert-item.detail-alert-error {
-  border-left-color: var(--color-danger);
-}
-
-.detail-alert-item.detail-alert-warning {
-  border-left-color: var(--color-warning);
-}
-
-.detail-alert-time {
-  color: var(--color-muted);
-  font-size: 0.85em;
-  margin-right: 0.35rem;
-}
-
-.detail-alert-msg {
-  color: var(--color-fg);
+.cards-row .card {
+  margin-top: 0;
 }
 
 /* Network Interfaces card */
@@ -262,6 +142,27 @@
   font-size: 0.9em;
 }
 
+.network-iface-header {
+  margin: 0;
+}
+
+.network-iface-share-row {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--color-border);
+}
+
+.network-iface-share-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.network-iface-share-label {
+  font-size: 0.9em;
+  color: var(--color-muted);
+}
+
 .network-iface-note {
   margin: 0.5rem 0 0;
   padding-top: 0.5rem;
@@ -276,6 +177,58 @@
   color: var(--color-muted);
   font-style: italic;
   list-style: none;
+}
+
+/* Recent Alerts card */
+.alerts-card .card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.alerts-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.alerts-empty,
+.alerts-empty-state .alerts-empty {
+  color: var(--color-muted);
+  font-style: italic;
+  list-style: none;
+}
+
+.alerts-item {
+  border-left: 3px solid var(--color-muted);
+  padding-left: 0.5rem;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.alerts-item--error {
+  border-left-color: var(--color-danger);
+}
+
+.alerts-item--warning {
+  border-left-color: var(--color-warning);
+}
+
+.alerts-time {
+  color: var(--color-muted);
+  font-size: 0.85em;
+  margin-right: 0.35rem;
+}
+
+.alerts-msg {
+  color: var(--color-fg);
 }
 
 .connection-card .card-header {
@@ -439,6 +392,16 @@
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
+  }
+
+  .cards-row {
+    flex-direction: row;
+    gap: 2rem;
+  }
+
+  .cards-row .card {
+    flex: 1;
+    min-width: 0;
   }
 
   .connection-grid {

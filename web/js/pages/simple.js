@@ -1,4 +1,4 @@
-import { apiGet, apiPost, extractData } from "../api.js";
+import { apiGet, apiPost, apiPut, extractData } from "../api.js";
 import { copyTextToClipboard } from "../components.js";
 import { modalPrompt } from "../modal.js";
 import { applyStoredTheme, initThemeSelector } from "../theme.js";
@@ -7,13 +7,10 @@ import { createWebSocketClient } from "../websocket.js";
 
 const elements = {
   health: document.getElementById("system-health"),
-  networkSummary: document.getElementById("network-summary"),
-  interfaceList: document.getElementById("interface-list"),
   networkInterfaceList: document.getElementById("network-interface-list"),
   wanSummary: document.getElementById("wan-summary"),
   wanStatusBadge: document.getElementById("wan-status-badge"),
-  serviceList: document.getElementById("service-list"),
-  alertList: document.getElementById("alert-list"),
+  alertsList: document.getElementById("alerts-list"),
   metrics: {
     cpu: document.getElementById("metric-cpu"),
     memory: document.getElementById("metric-memory"),
@@ -84,60 +81,6 @@ function setMetric(id, value, unit, meterEl) {
     percentValue === null ? "0%" : `${percentValue}%`;
 }
 
-function renderInterfaces(interfaces) {
-  elements.interfaceList.textContent = "";
-  if (!interfaces.length) {
-    const item = document.createElement("li");
-    item.className = "detail-empty";
-    item.textContent = "No interfaces detected.";
-    elements.interfaceList.appendChild(item);
-    return;
-  }
-
-  interfaces.forEach((iface) => {
-    const item = document.createElement("li");
-    item.className = "detail-iface-row";
-    const name = iface.name || iface.id || "—";
-    const status = (iface.status || "unknown").toLowerCase();
-    const ip = iface.ip_address || "no IP";
-    const statusClass =
-      status === "up"
-        ? "detail-status detail-status-up"
-        : status === "down"
-          ? "detail-status detail-status-down"
-          : "detail-status detail-status-unknown";
-    item.innerHTML = `<span class="detail-iface-name">${escapeHtml(name)}</span> <span class="${statusClass}" aria-label="status ${status}">${status}</span> <span class="detail-iface-ip">${escapeHtml(ip)}</span>`;
-    elements.interfaceList.appendChild(item);
-  });
-}
-
-function renderServices(services) {
-  elements.serviceList.textContent = "";
-  if (!services || Object.keys(services).length === 0) {
-    const item = document.createElement("li");
-    item.className = "detail-empty";
-    item.textContent = "No service data.";
-    elements.serviceList.appendChild(item);
-    return;
-  }
-
-  Object.entries(services).forEach(([name, status]) => {
-    const item = document.createElement("li");
-    item.className = "detail-svc-row";
-    const raw = (status || "").toLowerCase();
-    const statusClass =
-      raw === "running"
-        ? "detail-status detail-status-running"
-        : raw === "stopped"
-          ? "detail-status detail-status-stopped"
-          : raw === "starting" || raw === "stopping"
-            ? "detail-status detail-status-transition"
-            : "detail-status detail-status-unknown";
-    item.innerHTML = `<span class="detail-svc-name">${escapeHtml(name)}</span> <span class="${statusClass}" aria-label="service ${raw}">${status}</span>`;
-    elements.serviceList.appendChild(item);
-  });
-}
-
 function getInterfaceDescription(iface) {
   const id = (iface.id || iface.name || "").toLowerCase();
   if (id.startsWith("eth")) return "Wired";
@@ -149,6 +92,21 @@ function getInterfaceDescription(iface) {
 function isHotspotInterface(iface) {
   const id = (iface.id || iface.name || "").toLowerCase();
   return id.startsWith("wlan");
+}
+
+async function toggleShareWithHotspot(checkbox) {
+  const interfaceId = checkbox.dataset.interfaceId;
+  if (!interfaceId) return;
+  const enabled = checkbox.checked;
+  try {
+    await apiPut(`/api/v1/network/interfaces/${encodeURIComponent(interfaceId)}/share-with-hotspot`, {
+      enabled,
+    });
+    showToast(enabled ? `Sharing ${interfaceId} with hotspot.` : `Stopped sharing ${interfaceId}.`, "success");
+  } catch (error) {
+    checkbox.checked = !enabled;
+    showToast("Unable to update connection share.", "error");
+  }
 }
 
 function renderNetworkInterfacesCard(interfaces, networkStatus) {
@@ -201,29 +159,47 @@ function renderNetworkInterfacesCard(interfaces, networkStatus) {
     const statusClass =
       status === "up" ? "network-iface-up" : "network-iface-down";
 
-    let content = `<span class="network-iface-label">${escapeHtml(label)}</span> <span class="network-iface-status ${statusClass}">${status}</span> — <span class="network-iface-ip">${escapeHtml(ip)}</span>`;
+    const header = document.createElement("div");
+    header.className = "network-iface-header";
+    header.innerHTML = `<span class="network-iface-label">${escapeHtml(label)}</span> <span class="network-iface-status ${statusClass}">${status}</span> — <span class="network-iface-ip">${escapeHtml(ip)}</span>`;
+    li.appendChild(header);
+
     if (isHotspotInterface(iface) && hotspotStatus === "active") {
-      content += `<p class="network-iface-note">The wireless hotspot runs on this interface.</p>`;
+      const note = document.createElement("p");
+      note.className = "network-iface-note";
+      note.textContent = "The wireless hotspot runs on this interface.";
+      li.appendChild(note);
+    } else if (!isHotspotInterface(iface)) {
+      const shareRow = document.createElement("div");
+      shareRow.className = "network-iface-share-row";
+      const shareLabel = document.createElement("label");
+      shareLabel.className = "toggle network-iface-share-toggle";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = iface.share_with_hotspot === true;
+      checkbox.setAttribute("aria-label", `Share ${name} with hotspot`);
+      checkbox.dataset.interfaceId = name;
+      checkbox.addEventListener("change", () => toggleShareWithHotspot(checkbox));
+      shareLabel.appendChild(checkbox);
+      const shareText = document.createElement("span");
+      shareText.className = "network-iface-share-label";
+      shareText.textContent = "Share with Hotspot";
+      shareLabel.appendChild(shareText);
+      shareRow.appendChild(shareLabel);
+      li.appendChild(shareRow);
     }
-    li.innerHTML = content;
+
     listEl.appendChild(li);
   });
 }
 
 function updateNetworkSummary(interfaces) {
-  const wan = interfaces.find(
-    (iface) => iface.role === "wan" && iface.status === "up"
-  );
-  if (wan) {
-    elements.networkSummary.textContent = `WAN Connected via ${wan.name}`;
-  } else {
-    elements.networkSummary.textContent = "No WAN Connection detected.";
-  }
-
   const hasInterfaces = interfaces.length > 0;
-  elements.quick.capture.textContent = hasInterfaces
-    ? "Ready to capture"
-    : "No interfaces available";
+  if (elements.quick.capture) {
+    elements.quick.capture.textContent = hasInterfaces
+      ? "Ready to capture"
+      : "No interfaces available";
+  }
 }
 
 const REMOTE_TOOL_DISPLAY = {
@@ -344,23 +320,21 @@ function updateQuickActions(serialCount) {
 }
 
 function renderAlerts(alerts) {
-  if (!elements.alertList) {
-    return;
-  }
-  elements.alertList.textContent = "";
-  elements.alertList.classList.remove("detail-alerts-empty");
+  if (!elements.alertsList) return;
+  elements.alertsList.textContent = "";
+  elements.alertsList.classList.remove("alerts-empty-state");
   const list = alerts && Array.isArray(alerts) ? alerts : [];
   if (list.length === 0) {
-    elements.alertList.classList.add("detail-alerts-empty");
+    elements.alertsList.classList.add("alerts-empty-state");
     const item = document.createElement("li");
-    item.className = "detail-empty";
+    item.className = "alerts-empty";
     item.textContent = "No alerts yet.";
-    elements.alertList.appendChild(item);
+    elements.alertsList.appendChild(item);
     return;
   }
   list.slice(0, 5).forEach((alert) => {
     const item = document.createElement("li");
-    item.className = "detail-alert-item";
+    item.className = "alerts-item";
     const msg = alert.message || alert.summary || "Alert";
     const ts = alert.timestamp;
     let timeStr = "";
@@ -375,15 +349,13 @@ function renderAlerts(alerts) {
       }
     }
     const severity = (alert.severity || alert.level || "").toLowerCase();
-    if (severity) {
-      item.classList.add(`detail-alert-${severity}`);
-    }
+    if (severity) item.classList.add(`alerts-item--${severity}`);
     if (timeStr) {
-      item.innerHTML = `<span class="detail-alert-time">${escapeHtml(timeStr)}</span> <span class="detail-alert-msg">${escapeHtml(msg)}</span>`;
+      item.innerHTML = `<span class="alerts-time">${escapeHtml(timeStr)}</span> <span class="alerts-msg">${escapeHtml(msg)}</span>`;
     } else {
       item.textContent = msg;
     }
-    elements.alertList.appendChild(item);
+    elements.alertsList.appendChild(item);
   });
 }
 
@@ -440,7 +412,6 @@ async function loadSystemStatusWithOptions(options) {
       "%",
       elements.meters.storage
     );
-    renderServices(data.services);
     renderAlerts(data.alerts ?? data.monitor?.alerts);
     updateFooter(info);
   } catch (error) {
@@ -467,16 +438,10 @@ async function loadNetworkInfoWithOptions(options) {
     clearApiConnectionError();
     const interfaces = data.interfaces || [];
     lastNetworkInterfaces = interfaces;
-    renderInterfaces(interfaces);
     renderNetworkInterfacesCard(interfaces, networkStatus);
     updateNetworkSummary(interfaces);
     updateWifiInfo(interfaces);
   } catch (error) {
-    elements.interfaceList.textContent = "";
-    const item = document.createElement("li");
-    item.textContent = "Unable to load interfaces.";
-    elements.interfaceList.appendChild(item);
-    elements.networkSummary.textContent = "Network status unavailable.";
     if (elements.networkInterfaceList && elements.wanSummary && elements.wanStatusBadge) {
       elements.wanSummary.textContent = "Network status unavailable.";
       elements.wanStatusBadge.textContent = "Unavailable";
@@ -727,7 +692,7 @@ function initStatusWebSocket() {
   });
   statusWs.on("system_metrics", (message) => {
     const data = message.data || {};
-    setStatusIndicator(data.status);
+    setStatusIndicator(data.health ?? data.status);
     setMetric("cpu", data.resources?.cpu_percent, "%", elements.meters.cpu);
     setMetric("memory", data.resources?.memory_percent, "%", elements.meters.memory);
     setMetric("temp", data.resources?.temperature_c, " C", elements.meters.temp);
@@ -737,15 +702,10 @@ function initStatusWebSocket() {
       "%",
       elements.meters.storage
     );
-    renderServices(data.services);
+    renderAlerts(data.alerts ?? data.monitor?.alerts);
   });
   statusWs.on("network_status", (message) => {
     const data = message.data || {};
-    if (data.wan_status === "connected" && data.wan_interface) {
-      elements.networkSummary.textContent = `WAN Connected via ${data.wan_interface}`;
-    } else {
-      elements.networkSummary.textContent = "No WAN Connection detected.";
-    }
     if (elements.networkInterfaceList) {
       renderNetworkInterfacesCard(lastNetworkInterfaces, data);
     }
@@ -754,7 +714,6 @@ function initStatusWebSocket() {
     const data = message.data || {};
     const interfaces = data.interfaces || [];
     lastNetworkInterfaces = interfaces;
-    renderInterfaces(interfaces);
     const derivedStatus = {
       wan_interface: interfaces.find((i) => i.role === "wan" && i.status === "up")?.name || "",
       wan_status: interfaces.some((i) => i.role === "wan" && i.status === "up") ? "connected" : "disconnected",
