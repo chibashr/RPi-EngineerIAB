@@ -927,20 +927,41 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   state.xtermInstance = term;
   term.open(container);
 
+  const containerDiv = container;
   const resizeObserver = new ResizeObserver(() => {
-    const dims = term._core._renderService.dimensions;
-    if (!dims) return;
-    const cellWidth = dims.actualCellWidth || dims.css?.cell?.width;
-    const cellHeight = dims.actualCellHeight || dims.css?.cell?.height;
-    if (!cellWidth || !cellHeight) return;
-    const cols = Math.floor(container.clientWidth / cellWidth);
-    const rows = Math.floor(container.clientHeight / cellHeight);
-    if (cols > 0 && rows > 0) {
+    if (!term._core) return;
+    const screen = containerDiv.querySelector(".xterm-screen");
+    const viewport = containerDiv.querySelector(".xterm-viewport");
+    if (!screen) return;
+
+    const dims = term._core._renderService?.dimensions;
+    const cellW = dims?.actualCellWidth || dims?.css?.cell?.width;
+    const cellH = dims?.actualCellHeight || dims?.css?.cell?.height;
+    if (!cellW || !cellH) return;
+
+    const availW =
+      containerDiv.clientWidth -
+      (viewport
+        ? (parseInt(getComputedStyle(viewport).paddingLeft) || 0) +
+          (parseInt(getComputedStyle(viewport).paddingRight) || 0)
+        : 0) -
+      16;
+    const availH = containerDiv.clientHeight;
+
+    const cols = Math.max(1, Math.floor(availW / cellW));
+    const rows = Math.max(1, Math.floor(availH / cellH));
+
+    if (cols !== term.cols || rows !== term.rows) {
       term.resize(cols, rows);
     }
   });
-  resizeObserver.observe(container);
+  resizeObserver.observe(containerDiv);
   state.resizeObserver = resizeObserver;
+
+  setTimeout(() => {
+    resizeObserver.disconnect();
+    resizeObserver.observe(containerDiv);
+  }, 50);
 
   applyWrapMode(wrapCheckbox.checked);
 
