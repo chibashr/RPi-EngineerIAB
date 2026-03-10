@@ -803,27 +803,22 @@ wpa_key_mgmt=WPA-PSK
         """Apply ip_forward and iptables rules for interfaces sharing with hotspot."""
         if not _which("iptables"):
             return
-        # Enable IPv4 forwarding (requires root when API runs as service user)
         sysctl_path = _which("sysctl") or "/usr/sbin/sysctl"
         if sysctl_path:
             r = _run_priv([sysctl_path, "-w", "net.ipv4.ip_forward=1"])
             if r.returncode != 0:
                 logger.warning("Could not enable ip_forward: %s", r.stderr or r.stdout)
+
+        # Flush ALL rpi-engineer-share rules before re-applying to avoid stale rules
+        # that were added without a comment and cannot be matched by exact delete
+        _iptables_flush_share_rules()
+
         interfaces = self._get_share_interfaces()
         if not interfaces:
-            # No share interfaces; still ensure ESTABLISHED,RELATED for any install rules
             _iptables_ensure_established_related()
             return
-        # Ensure ESTABLISHED,RELATED is first so return traffic is allowed (required for NAT)
+
         _iptables_ensure_established_related()
-        # Remove stale rules for interfaces no longer in config
-        for iface in self._interface_names():
-            if iface.startswith("wlan"):
-                continue
-            comment = f"rpi-engineer-share:{iface}"
-            _iptables_delete(None, "FORWARD", ["-i", "wlan0", "-o", iface, "-j", "ACCEPT"], comment)
-            _iptables_delete("nat", "POSTROUTING", ["-o", iface, "-j", "MASQUERADE"], comment)
-        # Add rules for configured share interfaces
         for iface in interfaces:
             if iface not in self._interface_names():
                 continue
@@ -934,6 +929,26 @@ def _iptables_delete(table: Optional[str], chain: str, rule_args: List[str], com
     base = [ipt] + (["-t", table] if table else [])
     cmd = base + ["-D", chain] + rule_args + ["-m", "comment", "--comment", comment]
     _run_priv(cmd)
+
+
+def _iptables_flush_share_rules() -> None:
+    """Remove all iptables rules containing rpi-engineer-share: in their comment, across filter FORWARD and nat POSTROUTING."""
+    ipt = _which("iptables") or "/usr/sbin/iptables"
+    for table, chain in [(None, "FORWARD"), ("nat", "POSTROUTING")]:
+        base = [ipt] + (["-t", table] if table else [])
+        result = _run_priv(base + ["-S", chain])
+        if result.returncode != 0:
+            continue
+        for line in result.stdout.splitlines():
+            if "rpi-engineer-share:" not in line:
+                continue
+            if not line.startswith("-A "):
+                continue
+            # Strip "-A " prefix; rule_parts[0] is chain name, rest is rule args
+            rule_parts = line[3:].split()
+            if not rule_parts:
+                continue
+            _run_priv(base + ["-D"] + rule_parts)
 
 
 def _looks_like_mac(value: str) -> bool:

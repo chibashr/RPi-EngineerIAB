@@ -1,19 +1,18 @@
 # Codemap diff report
-# Generated: 2026-03-09
+# Generated: 2026-03-10
 
 ## Scan type
-Documentation sync: update-docs + update-codemaps. Codemaps refreshed in place (metadata only; structure unchanged).
+Documentation sync: update-docs + update-codemaps. Codemaps refreshed in place (freshness metadata only; structure unchanged since 2026-03-09).
 
 ## Codemaps updated
-- docs/CODEMAPS/architecture.md
-- docs/CODEMAPS/backend.md
-- docs/CODEMAPS/frontend.md
-- docs/CODEMAPS/data.md
-- docs/CODEMAPS/dependencies.md
+- docs/CODEMAPS/architecture.md — header updated (Generated date, files scanned 180+)
+- docs/CODEMAPS/backend.md — header updated (Generated date, files scanned 180+)
+- docs/CODEMAPS/frontend.md — header updated (Generated date, files scanned 180+)
+- docs/CODEMAPS/data.md — header updated (Generated date, files scanned 180+)
+- docs/CODEMAPS/dependencies.md — header updated (Generated date)
 
 ## Documentation updated
-- docs/ENV.md — added env vars from codebase (RPI_ENGINEER_DATA_DIR, CONFIG_DIR, MODULES_DIR, WS_BASE, UPDATE_*, API_BASE, LOG_* rotation/export, WAN_CHECK_INTERVAL)
-- docs/CONTRIBUTING.md — scripts section: Python commands, bin scripts reference
+- None in this run. docs/CONTRIBUTING.md, docs/ENV.md, and docs/RUNBOOK.md already in sync with package.json and codebase.
 
 ## Architecture summary (unchanged)
 - Project type: Single app (FastAPI + static web)
@@ -22,8 +21,8 @@ Documentation sync: update-docs + update-codemaps. Codemaps refreshed in place (
 - API prefix: /api/v1/*; WebSockets: /ws/*
 
 ## New dependencies noted
-- requirements-dev.txt: beautifulsoup4, pytest-timeout (documented in dependencies.md)
+- None since previous scan on 2026-03-09. See dependencies codemap for current list.
 
 ## Staleness
 - No .env.example or openapi.yaml in repo; ENV.md and API reference remain source of truth.
-- Codemaps refreshed 2026-03-09. Re-run after major route or module changes.
+- Codemaps refreshed 2026-03-10. Re-run after major route or module changes or dependency updates.

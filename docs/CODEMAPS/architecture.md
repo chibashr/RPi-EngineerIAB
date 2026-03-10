@@ -1,6 +1,6 @@
 # Architecture
 
-<!-- Generated: 2026-03-09 | Files scanned: 140+ | Token estimate: ~600 -->
+<!-- Generated: 2026-03-10 | Files scanned: 180+ | Token estimate: ~600 -->
 
 ## Project Type
 
