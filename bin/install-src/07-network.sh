@@ -209,6 +209,11 @@ configure_firewall() {
         log_warn "Container detected; skipping firewall configuration."
         return 0
     fi
+    # Enable IPv4 forwarding for hotspot->WAN sharing (persists across reboot)
+    if [ -d /etc/sysctl.d ]; then
+        echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-rpi-engineer.conf
+        sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
+    fi
     if ! command -v iptables >/dev/null 2>&1; then
         log_warn "iptables not available; skipping firewall configuration."
         return 0

@@ -804,10 +804,12 @@ wpa_key_mgmt=WPA-PSK
         """Apply ip_forward and iptables rules for interfaces sharing with hotspot."""
         if not _which("iptables"):
             return
-        try:
-            Path("/proc/sys/net/ipv4/ip_forward").write_text("1")
-        except OSError:
-            logger.warning("Could not enable ip_forward")
+        # Enable IPv4 forwarding (requires root when API runs as service user)
+        sysctl_path = _which("sysctl") or "/usr/sbin/sysctl"
+        if sysctl_path:
+            r = _run_priv([sysctl_path, "-w", "net.ipv4.ip_forward=1"])
+            if r.returncode != 0:
+                logger.warning("Could not enable ip_forward: %s", r.stderr or r.stdout)
         interfaces = self._get_share_interfaces()
         if not interfaces:
             # No share interfaces; still ensure ESTABLISHED,RELATED for any install rules
@@ -863,6 +865,19 @@ def _which(binary: str) -> Optional[str]:
     return shutil.which(binary)
 
 
+def _run_priv(cmd: List[str]) -> subprocess.CompletedProcess:
+    """Run command; use sudo when not root (API runs as service user)."""
+    try:
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            return subprocess.run(cmd, capture_output=True, text=True)
+    except (AttributeError, OSError):
+        pass
+    sudo = _which("sudo")
+    if sudo:
+        return subprocess.run([sudo] + cmd, capture_output=True, text=True)
+    return subprocess.run(cmd, capture_output=True, text=True)
+
+
 def _parse_hostapd_all_sta(output: str) -> Dict[str, Dict[str, object]]:
     stations: Dict[str, Dict[str, object]] = {}
     current = None
@@ -894,29 +909,32 @@ def _iptables_ensure_established_related() -> None:
     """Ensure FORWARD allows ESTABLISHED,RELATED (return traffic for NAT). Required for hotspot share."""
     if not _which("iptables"):
         return
+    ipt = _which("iptables") or "/usr/sbin/iptables"
     rule = ["-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"]
     comment = "rpi-engineer-share:established"
-    check = ["iptables", "-C", "FORWARD"] + rule + ["-m", "comment", "--comment", comment]
-    append = ["iptables", "-I", "FORWARD", "1"] + rule + ["-m", "comment", "--comment", comment]
-    if subprocess.run(check, capture_output=True).returncode != 0:
-        subprocess.run(append, check=False)
+    check = [ipt, "-C", "FORWARD"] + rule + ["-m", "comment", "--comment", comment]
+    append = [ipt, "-I", "FORWARD", "1"] + rule + ["-m", "comment", "--comment", comment]
+    if _run_priv(check).returncode != 0:
+        _run_priv(append)
 
 
 def _iptables_append(table: Optional[str], chain: str, rule_args: List[str], comment: str) -> None:
     """Append iptables rule if not already present."""
-    base = ["iptables"] + (["-t", table] if table else [])
+    ipt = _which("iptables") or "/usr/sbin/iptables"
+    base = [ipt] + (["-t", table] if table else [])
     rule = rule_args + ["-m", "comment", "--comment", comment]
     check = base + ["-C", chain] + rule
     append = base + ["-A", chain] + rule
-    if subprocess.run(check, capture_output=True).returncode != 0:
-        subprocess.run(append, check=False)
+    if _run_priv(check).returncode != 0:
+        _run_priv(append)
 
 
 def _iptables_delete(table: Optional[str], chain: str, rule_args: List[str], comment: str) -> None:
     """Delete iptables rule if present."""
-    base = ["iptables"] + (["-t", table] if table else [])
+    ipt = _which("iptables") or "/usr/sbin/iptables"
+    base = [ipt] + (["-t", table] if table else [])
     cmd = base + ["-D", chain] + rule_args + ["-m", "comment", "--comment", comment]
-    subprocess.run(cmd, capture_output=True)
+    _run_priv(cmd)
 
 
 def _looks_like_mac(value: str) -> bool:

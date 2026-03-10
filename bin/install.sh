@@ -1393,6 +1393,8 @@ Environment=RPI_ENGINEER_DRY_RUN=0"
 $SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/tcpdump
 $SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/ip
 $SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/ethtool
+$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/iptables
+$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/sysctl -w net.ipv4.ip_forward=*
 $SERVICE_USER ALL=(root) NOPASSWD: /bin/systemctl restart rpi-engineer*
 EOFS
     chmod 440 /etc/sudoers.d/rpi-engineer
@@ -1713,6 +1715,11 @@ configure_firewall() {
     if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
         log_warn "Container detected; skipping firewall configuration."
         return 0
+    fi
+    # Enable IPv4 forwarding for hotspot->WAN sharing (persists across reboot)
+    if [ -d /etc/sysctl.d ]; then
+        echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-rpi-engineer.conf
+        sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
     fi
     if ! command -v iptables >/dev/null 2>&1; then
         log_warn "iptables not available; skipping firewall configuration."

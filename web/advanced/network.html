@@ -177,6 +177,15 @@
                         <input type="checkbox" id="interface-dhcp-toggle" aria-label="DHCP mode">
                       </label>
                     </div>
+                    <div class="interface-share-row" id="interface-share-row" hidden>
+                      <div>
+                        <span class="field-label">Share with Hotspot</span>
+                        <p class="field-desc">Bridge this interface's connection to the WiFi hotspot</p>
+                      </div>
+                      <label class="toggle">
+                        <input type="checkbox" id="interface-share-hotspot-toggle" aria-label="Share with hotspot" data-interface-id="">
+                      </label>
+                    </div>
                     <div class="interface-form-grid" id="interface-form-grid"></div>
                   </div>
                   <footer class="interface-detail-footer">
@@ -268,6 +277,9 @@
               <button class="btn btn-secondary" id="configure-hotspot">
                 Configure
               </button>
+            </div>
+            <div class="hotspot-warning" role="alert">
+              Do not change WiFi hotspot settings unless you completely know what you are doing.
             </div>
             <div class="info-grid">
               <div>

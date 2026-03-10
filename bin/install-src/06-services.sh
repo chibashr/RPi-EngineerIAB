@@ -202,6 +202,8 @@ Environment=RPI_ENGINEER_DRY_RUN=0"
 $SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/tcpdump
 $SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/ip
 $SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/ethtool
+$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/iptables
+$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/sysctl -w net.ipv4.ip_forward=*
 $SERVICE_USER ALL=(root) NOPASSWD: /bin/systemctl restart rpi-engineer*
 EOFS
     chmod 440 /etc/sudoers.d/rpi-engineer

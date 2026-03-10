@@ -10,6 +10,8 @@ const elements = {
   interfaceInfoStrip: document.getElementById("interface-info-strip"),
   interfaceConfigTitle: document.getElementById("interface-config-title"),
   interfaceDhcpToggle: document.getElementById("interface-dhcp-toggle"),
+  interfaceShareRow: document.getElementById("interface-share-row"),
+  interfaceShareHotspotToggle: document.getElementById("interface-share-hotspot-toggle"),
   interfaceFormGrid: document.getElementById("interface-form-grid"),
   interfaceToggleUpDown: document.getElementById("interface-toggle-updown"),
   interfaceToggleUpDownLabel: document.getElementById("interface-toggle-updown-label"),
@@ -471,6 +473,13 @@ async function addVlan() {
 async function configureHotspot() {
   const form = await modalForm(
     [
+      {
+        name: "warning",
+        label: "",
+        type: "display",
+        default:
+          "Do not change WiFi hotspot settings unless you completely know what you are doing.",
+      },
       { name: "ssid", label: "SSID", default: "" },
       { name: "password", label: "Password (optional)", default: "" },
       { name: "channel", label: "Channel (1-11, default 6)", default: "6" },
@@ -643,6 +652,19 @@ function populateDetailPanel() {
       setStaticFieldsDisabled(elements.interfaceDhcpToggle.checked);
     };
     setStaticFieldsDisabled(interfaceDraft.mode === "dhcp");
+  }
+
+  const isWlan = String(id || "").toLowerCase().startsWith("wlan");
+  if (elements.interfaceShareRow && elements.interfaceShareHotspotToggle) {
+    if (isWlan) {
+      elements.interfaceShareRow.hidden = true;
+    } else {
+      elements.interfaceShareRow.hidden = false;
+      elements.interfaceShareHotspotToggle.dataset.interfaceId = id;
+      elements.interfaceShareHotspotToggle.checked = iface.share_with_hotspot === true;
+      elements.interfaceShareHotspotToggle.onchange = () =>
+        toggleShareWithHotspot(elements.interfaceShareHotspotToggle);
+    }
   }
 
   if (elements.interfaceFormGrid) {
