@@ -31,6 +31,14 @@
   color: var(--color-muted);
 }
 
+.btn-danger-ghost {
+  color: var(--color-danger);
+}
+
+.btn-danger-ghost:hover {
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+}
+
 .btn-sm {
   padding: 0.35rem 0.75rem;
   min-height: 0;

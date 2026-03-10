@@ -18,14 +18,14 @@
 }
 
 .serial-list-panel {
-  border-right: 1px solid var(--color-border);
+  border-right: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
   overflow-y: auto;
 }
 
 @media (max-width: 700px) {
   .serial-list-panel {
     border-right: none;
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
     max-height: 200px;
   }
 }
@@ -54,7 +54,7 @@
   cursor: pointer;
   font: inherit;
   color: var(--color-fg);
-  border-right: 3px solid transparent;
+  border-left: 2px solid transparent;
   transition: background 0.15s ease;
 }
 
@@ -64,7 +64,7 @@
 
 .serial-list-item.is-active {
   background: color-mix(in srgb, var(--color-accent) 8%, transparent);
-  border-right-color: var(--color-accent);
+  border-left-color: var(--color-accent);
 }
 
 .serial-list-item-dot {
@@ -137,13 +137,11 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-left: 3px solid var(--color-border);
-  padding-left: 1.25rem;
+  padding-left: 1rem;
 }
 
 @media (max-width: 700px) {
   .serial-detail-content {
-    border-left: none;
     padding-left: 0;
   }
 }
@@ -298,10 +296,11 @@
   min-height: 0;
 }
 
-/* Wider console: full-width, taller viewport */
+/* Wider console: full-width, taller viewport, softer border */
 .serial-card .console-window-wrapper {
   max-height: 36em;
   width: 100%;
+  border-color: color-mix(in srgb, var(--color-border) 50%, transparent);
 }
 
 /* Fixed line count: no min/max so inline height controls viewport size */
@@ -325,7 +324,7 @@
 
 .console-settings {
   margin: 0;
-  border: 1px solid var(--color-border);
+  border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
   border-radius: 10px;
   padding: 0.5rem 0.75rem;
   background: rgba(90, 100, 114, 0.04);

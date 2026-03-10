@@ -455,7 +455,12 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   saveBtn.className = "btn btn-secondary btn-sm";
   saveBtn.textContent = "Save Log";
   saveBtn.addEventListener("click", () => saveSerialLogForSession(sessionId));
-  toolbar.append(clearBtn, breakBtn, saveBtn);
+  const disconnectBtn = document.createElement("button");
+  disconnectBtn.className = "btn btn-ghost btn-danger-ghost btn-sm";
+  disconnectBtn.textContent = "Disconnect";
+  disconnectBtn.title = "Close this session";
+  disconnectBtn.addEventListener("click", () => disconnectDevice(sessionId));
+  toolbar.append(clearBtn, breakBtn, saveBtn, disconnectBtn);
 
   const details = document.createElement("details");
   details.className = "console-settings";
