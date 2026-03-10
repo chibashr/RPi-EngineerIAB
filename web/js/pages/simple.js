@@ -1,4 +1,4 @@
-import { apiGet, extractData } from "../api.js";
+import { apiGet, apiPost, extractData } from "../api.js";
 import { copyTextToClipboard } from "../components.js";
 import { applyStoredTheme, initThemeSelector } from "../theme.js";
 import { confirmModeSwitch, ensureSimpleMode, setMode } from "../mode.js";
@@ -155,6 +155,8 @@ const REMOTE_TOOL_DISPLAY = {
   vnc: "VNC",
   rpi_connect: "Raspberry Pi Connect",
 };
+const REMOTE_PASSWORD_TOOLS = ["anydesk", "teamviewer"];
+let remotePasswordCache = {};
 
 /** Show only tools that are enabled/available (have connection info or are running). */
 function getEnabledRemoteTools(tools) {
@@ -191,11 +193,27 @@ function updateRemoteStatus(tools) {
     enabled.length === 1 ? "1 tool" : `${enabled.length} tools`;
   elements.remote.status.className = "status-pill status-pill-success";
   listEl.textContent = "";
+  remotePasswordCache = {};
 
   enabled.forEach((tool) => {
     const label = REMOTE_TOOL_DISPLAY[tool.name] || tool.name || "Remote";
     const connectionId = tool.connection_id || "--";
     const idAttr = `remote-id-${tool.name}`;
+    const hasPassword = REMOTE_PASSWORD_TOOLS.includes(tool.name);
+    const password = hasPassword && tool.password ? String(tool.password) : "";
+    if (hasPassword) remotePasswordCache[tool.name] = password;
+    const passwordRow = hasPassword
+      ? `
+      <div class="connection-row">
+        <span class="connection-label">Password</span>
+        <span class="connection-value" id="remote-pw-value-${tool.name}" data-reveal="false">${password ? "••••••••" : "—"}</span>
+        <span class="remote-pw-actions">
+          ${password ? `<button class="btn btn-ghost btn-copy" type="button" data-remote-reveal="${tool.name}">Show</button>` : ""}
+          ${password ? `<button class="btn btn-ghost btn-copy" type="button" data-copy-password="${tool.name}">Copy</button>` : ""}
+          <button class="btn btn-ghost btn-copy" type="button" data-remote-reset-password="${tool.name}">Reset</button>
+        </span>
+      </div>`
+      : "";
     const entry = document.createElement("div");
     entry.className = "remote-tool-entry";
     entry.innerHTML = `
@@ -208,6 +226,7 @@ function updateRemoteStatus(tools) {
         <span class="connection-value" id="${idAttr}">${escapeHtml(connectionId)}</span>
         <button class="btn btn-ghost btn-copy" type="button" data-copy-target="${idAttr}">Copy</button>
       </div>
+      ${passwordRow}
     `;
     listEl.appendChild(entry);
   });
@@ -475,6 +494,52 @@ function setupCopyButtons() {
   });
 }
 
+function setupRemotePasswordDelegation() {
+  document.body.addEventListener("click", async (e) => {
+    const revealBtn = e.target.closest("[data-remote-reveal]");
+    const copyPwBtn = e.target.closest("[data-copy-password]");
+    const resetBtn = e.target.closest("[data-remote-reset-password]");
+    const button = revealBtn || copyPwBtn || resetBtn;
+    if (!button || !elements.remote.list?.contains(button)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const tool = button.dataset.remoteReveal || button.dataset.copyPassword || button.dataset.remoteResetPassword;
+    if (!tool) return;
+
+    if (revealBtn) {
+      const valueEl = document.getElementById(`remote-pw-value-${tool}`);
+      if (!valueEl) return;
+      const revealed = valueEl.dataset.reveal === "true";
+      valueEl.dataset.reveal = revealed ? "false" : "true";
+      valueEl.textContent = revealed ? "••••••••" : (remotePasswordCache[tool] || "—");
+      revealBtn.textContent = revealed ? "Show" : "Hide";
+    } else if (copyPwBtn) {
+      const pw = remotePasswordCache[tool] || "";
+      const ok = pw ? await copyTextToClipboard(pw) : false;
+      showToast(ok ? "Password copied." : "Nothing to copy.", ok ? "success" : "error");
+    } else if (resetBtn) {
+      const newPassword = window.prompt("Enter new unattended access password:");
+      if (newPassword == null) return;
+      if (!newPassword.trim()) {
+        showToast("Password cannot be empty.", "error");
+        return;
+      }
+      resetBtn.disabled = true;
+      resetBtn.textContent = "…";
+      try {
+        await apiPost("/api/v1/remote/password", { tool, password: newPassword });
+        showToast("Password updated. Reloading…", "success");
+        loadRemoteStatusWithOptions({ suppressError: true });
+      } catch (err) {
+        showToast(err?.message || "Failed to set password.", "error");
+      } finally {
+        resetBtn.disabled = false;
+        resetBtn.textContent = "Reset";
+      }
+    }
+  });
+}
+
 function updateBanner(message, isVisible = true) {
   if (!elements.banner) {
     return;
@@ -622,6 +687,7 @@ function init() {
   setupConnectionPrivacy();
   setupWifiPasswordToggle();
   setupCopyButtons();
+  setupRemotePasswordDelegation();
   loadSystemStatus();
   loadNetworkInfo();
   loadRemoteStatus();

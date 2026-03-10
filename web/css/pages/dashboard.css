@@ -1,3 +1,52 @@
+.dashboard-widget-hidden {
+  display: none !important;
+}
+
+.dashboard-widget-prefs {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-card-border, var(--color-border));
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.dashboard-widget-prefs-title {
+  margin: 0 0 0.75rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.dashboard-widget-prefs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.5rem 1.25rem;
+}
+
+.dashboard-widget-prefs-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.dashboard-widget-prefs-label input {
+  flex-shrink: 0;
+}
+
+/* Dashboard page header: title and Customize button on one row */
+.page-header:has(#dashboard-customize-btn) {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.page-header:has(#dashboard-customize-btn) .btn {
+  flex-shrink: 0;
+}
+
 .metrics-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -245,4 +294,11 @@
 .remote-connection-row .btn {
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+.remote-pw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
 }

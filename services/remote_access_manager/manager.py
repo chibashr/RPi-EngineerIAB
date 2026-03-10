@@ -58,14 +58,19 @@ class RemoteAccessManager:
         connection_id = ""
         ready = False
         status = "stopped"
+        password = ""
         if tool == "anydesk":
             connection_id = self._anydesk_id() or ""
             status = "running" if self._process_running("anydesk") else "stopped"
             ready = bool(connection_id)
+            config = self._get_remote_access_config()
+            password = (config.get("anydesk") or {}).get("password") or ""
         elif tool == "teamviewer":
             connection_id = self._teamviewer_id() or ""
             status = "running" if self._process_running("teamviewerd") else "stopped"
             ready = bool(connection_id)
+            config = self._get_remote_access_config()
+            password = (config.get("teamviewer") or {}).get("password") or ""
         elif tool == "vnc":
             connection_id = self._vnc_connection_id() or ""
             status = "running" if self._process_running("x11vnc") else "stopped"
@@ -74,12 +79,15 @@ class RemoteAccessManager:
             connection_id = self._rpi_connect_id() or ""
             status = "running" if self._rpi_connect_running() else "stopped"
             ready = bool(connection_id)
-        return {
+        out: Dict[str, object] = {
             "name": tool,
             "status": status,
             "connection_id": connection_id,
             "ready": ready,
         }
+        if tool in ("anydesk", "teamviewer") and isinstance(password, str):
+            out["password"] = password
+        return out
 
     def _get_remote_access_config(self) -> Dict[str, Any]:
         """Read remote_access.conf; return parsed JSON or empty dict."""
@@ -245,6 +253,32 @@ class RemoteAccessManager:
             )
             return result.returncode == 0
         return False
+
+    def set_password(self, tool: str, password: str) -> Optional[str]:
+        """Set unattended password for anydesk or teamviewer. Returns None on success, error message on failure."""
+        if tool not in ("anydesk", "teamviewer"):
+            return f"Unsupported tool: {tool}"
+        if not password:
+            return "Password is required"
+        root = Path(os.getenv("RPI_ENGINEER_ROOT", "/opt/rpi-engineer"))
+        script = root / "bin" / "set-remote-password.sh"
+        if not script.is_file():
+            return "Password reset script not found"
+        try:
+            result = subprocess.run(
+                ["sudo", str(script), tool],
+                input=password.encode("utf-8"),
+                capture_output=True,
+                timeout=15,
+                check=False,
+            )
+            if result.returncode != 0:
+                err = (result.stderr or result.stdout or b"").decode("utf-8", errors="replace").strip()
+                return err or "Failed to set password"
+            return None
+        except (OSError, subprocess.TimeoutExpired) as e:
+            logger.warning("set_password failed for %s: %s", tool, e)
+            return str(e)
 
 
 def _format_id(raw: str) -> str:

@@ -127,31 +127,34 @@
                 System health, network status, and active tasks at a glance.
               </p>
             </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="dashboard-customize-btn" aria-expanded="false" aria-controls="dashboard-widget-prefs">
+              Customize widgets
+            </button>
           </div>
 
           <section class="metrics-row">
-            <div class="metric-card">
+            <div class="metric-card" data-widget-id="metrics-cpu">
               <div class="metric-label">CPU</div>
               <div class="metric-value" id="dash-cpu-value">--%</div>
               <div class="meter">
                 <div class="meter-fill" id="dash-cpu-meter"></div>
               </div>
             </div>
-            <div class="metric-card">
+            <div class="metric-card" data-widget-id="metrics-memory">
               <div class="metric-label">Memory</div>
               <div class="metric-value" id="dash-memory-value">--%</div>
               <div class="meter">
                 <div class="meter-fill" id="dash-memory-meter"></div>
               </div>
             </div>
-            <div class="metric-card">
+            <div class="metric-card" data-widget-id="metrics-temp">
               <div class="metric-label">Temperature</div>
               <div class="metric-value" id="dash-temp-value">-- C</div>
               <div class="meter">
                 <div class="meter-fill" id="dash-temp-meter"></div>
               </div>
             </div>
-            <div class="metric-card">
+            <div class="metric-card" data-widget-id="metrics-storage">
               <div class="metric-label">Storage</div>
               <div class="metric-value" id="dash-storage-value">--%</div>
               <div class="meter">
@@ -160,8 +163,12 @@
             </div>
           </section>
 
+          <div class="dashboard-widget-prefs" id="dashboard-widget-prefs" hidden aria-label="Dashboard widget visibility">
+            <p class="dashboard-widget-prefs-title">Show or hide widgets</p>
+            <div class="dashboard-widget-prefs-grid" id="dashboard-widget-prefs-grid"></div>
+          </div>
           <section class="dashboard-grid">
-            <a class="panel panel-link" href="/advanced/network.html" data-panel="network">
+            <a class="panel panel-link" href="/advanced/network.html" data-panel="network" data-widget-id="panel-network">
               <div class="panel-header">
                 <h2>Network Status</h2>
                 <span class="panel-meta" id="network-summary">Loading...</span>
@@ -185,7 +192,7 @@
               </div>
             </a>
 
-            <a class="panel panel-link" href="/advanced/system.html" data-panel="services">
+            <a class="panel panel-link" href="/advanced/system.html" data-panel="services" data-widget-id="panel-services">
               <div class="panel-header">
                 <h2>Service Status</h2>
                 <span class="panel-meta" id="service-summary">Loading...</span>
@@ -195,7 +202,7 @@
               </div>
             </a>
 
-            <div class="panel" data-panel="captures">
+            <div class="panel" data-panel="captures" data-widget-id="panel-captures">
               <div class="panel-header">
                 <h2>Active Captures</h2>
                 <span class="panel-meta" id="capture-summary">Loading...</span>
@@ -209,7 +216,7 @@
               </div>
             </div>
 
-            <div class="panel" data-panel="logs">
+            <div class="panel" data-panel="logs" data-widget-id="panel-logs">
               <div class="panel-header">
                 <h2>Logs</h2>
                 <span class="panel-meta" id="logs-summary">Log types</span>
@@ -223,7 +230,7 @@
               </div>
             </div>
 
-            <a class="panel panel-link" href="/advanced/serial.html" data-panel="serial">
+            <a class="panel panel-link" href="/advanced/serial.html" data-panel="serial" data-widget-id="panel-serial">
               <div class="panel-header">
                 <h2>Serial Devices</h2>
                 <span class="panel-meta" id="serial-summary">Loading...</span>
@@ -233,7 +240,7 @@
               </div>
             </a>
 
-            <a class="panel panel-link" href="/advanced/system.html" data-panel="remote">
+            <a class="panel panel-link" href="/advanced/system.html" data-panel="remote" data-widget-id="panel-remote">
               <div class="panel-header">
                 <h2>Remote Access</h2>
                 <span class="panel-meta" id="remote-summary">Loading...</span>

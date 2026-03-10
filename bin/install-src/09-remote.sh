@@ -184,18 +184,27 @@ write_remote_access_config() {
     if [ "${#REMOTE_ACCESS_TOOLS[@]}" -gt 0 ]; then
         tools_json=$(printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | jq -R . | jq -s .)
     fi
+    # Escape password for JSON: backslash and double-quote
+    anydesk_pass_esc="${REMOTE_ACCESS_PASSWORD:-}"
+    anydesk_pass_esc="${anydesk_pass_esc//\\/\\\\}"
+    anydesk_pass_esc="${anydesk_pass_esc//\"/\\\"}"
+    teamviewer_pass_esc="${REMOTE_ACCESS_PASSWORD:-}"
+    teamviewer_pass_esc="${teamviewer_pass_esc//\\/\\\\}"
+    teamviewer_pass_esc="${teamviewer_pass_esc//\"/\\\"}"
     cat > "$CONFIG_DIR/remote_access.conf" <<EOF
 {
   "tools_enabled": ${tools_json},
   "anydesk": {
     "enabled": $(printf '%s' "${REMOTE_ACCESS_TOOLS[*]}" | grep -q anydesk && echo true || echo false),
     "id": "${ANYDESK_ID:-}",
+    "password": "$anydesk_pass_esc",
     "service_status": "$(systemctl is-active anydesk 2>/dev/null || echo unknown)",
     "last_check": "$(date -Iseconds)"
   },
   "teamviewer": {
     "enabled": $(printf '%s' "${REMOTE_ACCESS_TOOLS[*]}" | grep -q teamviewer && echo true || echo false),
     "id": "${TEAMVIEWER_ID:-}",
+    "password": "$teamviewer_pass_esc",
     "service_status": "$(systemctl is-active teamviewerd 2>/dev/null || echo unknown)",
     "last_check": "$(date -Iseconds)"
   },

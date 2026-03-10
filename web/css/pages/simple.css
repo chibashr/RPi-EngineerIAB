@@ -298,6 +298,13 @@
   margin-top: 0.5rem;
 }
 
+.remote-pw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
 .connection-card.is-hidden .connection-grid {
   display: none;
 }

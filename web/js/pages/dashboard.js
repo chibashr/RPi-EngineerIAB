@@ -3,6 +3,88 @@ import { copyTextToClipboard } from "../components.js";
 import { createWebSocketClient } from "../websocket.js";
 import { setAlerts, formatAlertTimestamp } from "../notifications.js";
 
+const DASHBOARD_WIDGETS_STORAGE_KEY = "rpi-dashboard-widgets";
+
+const DASHBOARD_WIDGET_LIST = [
+  { id: "metrics-cpu", label: "CPU" },
+  { id: "metrics-memory", label: "Memory" },
+  { id: "metrics-temp", label: "Temperature" },
+  { id: "metrics-storage", label: "Storage" },
+  { id: "panel-network", label: "Network Status" },
+  { id: "panel-services", label: "Service Status" },
+  { id: "panel-captures", label: "Active Captures" },
+  { id: "panel-logs", label: "Logs" },
+  { id: "panel-serial", label: "Serial Devices" },
+  { id: "panel-remote", label: "Remote Access" },
+];
+
+function getWidgetVisibility() {
+  try {
+    const raw = localStorage.getItem(DASHBOARD_WIDGETS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed && typeof parsed === "object") {
+      const out = {};
+      DASHBOARD_WIDGET_LIST.forEach((w) => {
+        out[w.id] = parsed[w.id] !== false;
+      });
+      return out;
+    }
+  } catch (_) {
+    // Ignore
+  }
+  return Object.fromEntries(DASHBOARD_WIDGET_LIST.map((w) => [w.id, true]));
+}
+
+function setWidgetVisibility(prefs) {
+  try {
+    localStorage.setItem(DASHBOARD_WIDGETS_STORAGE_KEY, JSON.stringify(prefs));
+  } catch (_) {
+    // Ignore
+  }
+}
+
+function applyWidgetVisibility() {
+  const prefs = getWidgetVisibility();
+  DASHBOARD_WIDGET_LIST.forEach((w) => {
+    const el = document.querySelector(`[data-widget-id="${w.id}"]`);
+    if (el) {
+      el.classList.toggle("dashboard-widget-hidden", !prefs[w.id]);
+    }
+  });
+}
+
+function setupDashboardWidgetPrefs() {
+  const prefsPanel = document.getElementById("dashboard-widget-prefs");
+  const prefsGrid = document.getElementById("dashboard-widget-prefs-grid");
+  const customizeBtn = document.getElementById("dashboard-customize-btn");
+  if (!prefsPanel || !prefsGrid || !customizeBtn) {
+    return;
+  }
+  const prefs = getWidgetVisibility();
+  DASHBOARD_WIDGET_LIST.forEach((w) => {
+    const label = document.createElement("label");
+    label.className = "dashboard-widget-prefs-label";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = prefs[w.id];
+    input.dataset.widgetId = w.id;
+    input.addEventListener("change", () => {
+      const next = getWidgetVisibility();
+      next[w.id] = input.checked;
+      setWidgetVisibility(next);
+      applyWidgetVisibility();
+    });
+    label.appendChild(input);
+    label.appendChild(document.createTextNode(" " + w.label));
+    prefsGrid.appendChild(label);
+  });
+  customizeBtn.addEventListener("click", () => {
+    const isOpen = !prefsPanel.hidden;
+    prefsPanel.hidden = isOpen;
+    customizeBtn.setAttribute("aria-expanded", String(!isOpen));
+  });
+}
+
 const elements = {
   metrics: {
     cpu: {
@@ -238,6 +320,9 @@ const REMOTE_TOOL_DISPLAY = {
   rpi_connect: "Raspberry Pi Connect",
 };
 
+const REMOTE_PASSWORD_TOOLS = ["anydesk", "teamviewer"];
+let remotePasswordCache = {};
+
 function getEnabledRemoteTools(tools) {
   if (!tools || !Array.isArray(tools)) {
     return [];
@@ -273,10 +358,26 @@ function renderRemoteTools(tools) {
 
   elements.remote.summary.textContent =
     enabled.length === 1 ? "1 tool" : `${enabled.length} tools`;
+  remotePasswordCache = {};
   enabled.forEach((tool) => {
     const label = REMOTE_TOOL_DISPLAY[tool.name] || tool.name || "Remote";
     const connectionId = tool.connection_id || "--";
     const idAttr = `remote-id-${tool.name}`;
+    const hasPassword = REMOTE_PASSWORD_TOOLS.includes(tool.name);
+    const password = hasPassword && tool.password ? String(tool.password) : "";
+    if (hasPassword) remotePasswordCache[tool.name] = password;
+    const passwordRow = hasPassword
+      ? `
+      <div class="remote-connection-row">
+        <span class="connection-label">Password</span>
+        <span class="connection-value" id="remote-pw-value-${tool.name}" data-reveal="false">${password ? "••••••••" : "—"}</span>
+        <span class="remote-pw-actions">
+          ${password ? `<button class="btn btn-ghost btn-sm" type="button" data-remote-reveal="${tool.name}">Show</button>` : ""}
+          ${password ? `<button class="btn btn-secondary btn-sm" type="button" data-copy-password="${tool.name}">Copy</button>` : ""}
+          <button class="btn btn-secondary btn-sm" type="button" data-remote-reset-password="${tool.name}">Reset</button>
+        </span>
+      </div>`
+      : "";
     const entry = document.createElement("div");
     entry.className = "remote-tool-entry";
     entry.innerHTML = `
@@ -289,6 +390,7 @@ function renderRemoteTools(tools) {
         <span class="connection-value" id="${idAttr}">${escapeHtml(connectionId)}</span>
         <button class="btn btn-secondary btn-sm" type="button" data-copy-target="${idAttr}">Copy</button>
       </div>
+      ${passwordRow}
     `;
     elements.remote.list.appendChild(entry);
   });
@@ -317,6 +419,52 @@ function setupRemoteCopyDelegation() {
     if (!target) return;
     const ok = await copyTextToClipboard(target.textContent.trim());
     showToast(ok ? "Copied to clipboard." : "Copy failed. Select and copy manually.", ok ? "success" : "error");
+  });
+}
+
+function setupRemotePasswordDelegation() {
+  document.body.addEventListener("click", async (e) => {
+    const revealBtn = e.target.closest("[data-remote-reveal]");
+    const copyPwBtn = e.target.closest("[data-copy-password]");
+    const resetBtn = e.target.closest("[data-remote-reset-password]");
+    const button = revealBtn || copyPwBtn || resetBtn;
+    if (!button || !elements.remote.list?.contains(button)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const tool = button.dataset.remoteReveal || button.dataset.copyPassword || button.dataset.remoteResetPassword;
+    if (!tool) return;
+
+    if (revealBtn) {
+      const valueEl = document.getElementById(`remote-pw-value-${tool}`);
+      if (!valueEl) return;
+      const revealed = valueEl.dataset.reveal === "true";
+      valueEl.dataset.reveal = revealed ? "false" : "true";
+      valueEl.textContent = revealed ? "••••••••" : (remotePasswordCache[tool] || "—");
+      revealBtn.textContent = revealed ? "Show" : "Hide";
+    } else if (copyPwBtn) {
+      const pw = remotePasswordCache[tool] || "";
+      const ok = pw ? await copyTextToClipboard(pw) : false;
+      showToast(ok ? "Password copied." : "Nothing to copy.", ok ? "success" : "error");
+    } else if (resetBtn) {
+      const newPassword = window.prompt("Enter new unattended access password:");
+      if (newPassword == null) return;
+      if (!newPassword.trim()) {
+        showToast("Password cannot be empty.", "error");
+        return;
+      }
+      resetBtn.disabled = true;
+      resetBtn.textContent = "…";
+      try {
+        await apiPost("/api/v1/remote/password", { tool, password: newPassword });
+        showToast("Password updated. Reloading…", "success");
+        loadDashboard({ suppressError: true });
+      } catch (err) {
+        showToast(err?.message || "Failed to set password.", "error");
+      } finally {
+        resetBtn.disabled = false;
+        resetBtn.textContent = "Reset";
+      }
+    }
   });
 }
 
@@ -529,8 +677,11 @@ function initStatusWebSocket() {
 }
 
 function init() {
+  applyWidgetVisibility();
+  setupDashboardWidgetPrefs();
   setupPanelButtonDelegation();
   setupRemoteCopyDelegation();
+  setupRemotePasswordDelegation();
   setupCaptureStopDelegation();
   loadDashboard();
   initStatusWebSocket();
