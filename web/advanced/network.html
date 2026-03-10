@@ -180,11 +180,14 @@
                     <div class="interface-share-row" id="interface-share-row" hidden>
                       <div>
                         <span class="field-label">Share with Hotspot</span>
-                        <p class="field-desc">Bridge this interface's connection to the WiFi hotspot</p>
+                        <p class="field-desc">Bridge this interface's connection to the WiFi hotspot (one at a time)</p>
                       </div>
-                      <label class="toggle">
-                        <input type="checkbox" id="interface-share-hotspot-toggle" aria-label="Share with hotspot" data-interface-id="">
-                      </label>
+                      <div class="interface-share-toggle-wrap">
+                        <label class="toggle">
+                          <input type="checkbox" id="interface-share-hotspot-toggle" aria-label="Share with hotspot" data-interface-id="" class="share-with-hotspot-toggle">
+                        </label>
+                        <span class="interface-share-loading spinner" id="interface-share-loading" aria-hidden="true" hidden></span>
+                      </div>
                     </div>
                     <div class="interface-form-grid" id="interface-form-grid"></div>
                   </div>

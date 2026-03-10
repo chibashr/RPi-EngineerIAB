@@ -443,6 +443,22 @@
   margin: 0.15rem 0 0;
 }
 
+.interface-share-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.interface-share-toggle-wrap.is-loading .share-with-hotspot-toggle {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.interface-share-loading {
+  width: 18px;
+  height: 18px;
+}
+
 .interface-form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));

@@ -785,12 +785,11 @@ wpa_key_mgmt=WPA-PSK
         if interface_id.startswith("wlan"):
             raise ValueError("Cannot share wlan interface with hotspot (it is the hotspot)")
         dry_run = os.getenv("RPI_ENGINEER_DRY_RUN", "1") == "1"
-        current = self._get_share_interfaces()
+        # Only one interface can share at a time; enabling one replaces any other
         if enabled:
-            if interface_id not in current:
-                current = current + [interface_id]
+            current = [interface_id]
         else:
-            current = [n for n in current if n != interface_id]
+            current = []
         self._set_share_interfaces(current)
         if dry_run:
             return {"interface": interface_id, "share_with_hotspot": enabled, "applied": False}

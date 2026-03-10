@@ -98,14 +98,33 @@ async function toggleShareWithHotspot(checkbox) {
   const interfaceId = checkbox.dataset.interfaceId;
   if (!interfaceId) return;
   const enabled = checkbox.checked;
+  const wrap = checkbox.closest(".network-iface-share-toggle-wrap");
+  const loadingEl = wrap?.querySelector(".network-iface-share-loading");
+  const allToggles = document.querySelectorAll(".share-with-hotspot-toggle");
+  allToggles.forEach((t) => {
+    t.disabled = true;
+  });
+  if (wrap) wrap.classList.add("is-loading");
+  if (loadingEl) loadingEl.hidden = false;
   try {
     await apiPut(`/api/v1/network/interfaces/${encodeURIComponent(interfaceId)}/share-with-hotspot`, {
       enabled,
     });
     showToast(enabled ? `Sharing ${interfaceId} with hotspot.` : `Stopped sharing ${interfaceId}.`, "success");
+    await loadNetworkInfo();
   } catch (error) {
     checkbox.checked = !enabled;
     showToast("Unable to update connection share.", "error");
+  } finally {
+    allToggles.forEach((t) => {
+      t.disabled = false;
+    });
+    document.querySelectorAll(".network-iface-share-toggle-wrap.is-loading").forEach((w) => {
+      w.classList.remove("is-loading");
+    });
+    document.querySelectorAll(".network-iface-share-loading").forEach((el) => {
+      el.hidden = true;
+    });
   }
 }
 
@@ -172,10 +191,13 @@ function renderNetworkInterfacesCard(interfaces, networkStatus) {
     } else if (!isHotspotInterface(iface)) {
       const shareRow = document.createElement("div");
       shareRow.className = "network-iface-share-row";
+      const shareWrap = document.createElement("div");
+      shareWrap.className = "network-iface-share-toggle-wrap";
       const shareLabel = document.createElement("label");
       shareLabel.className = "toggle network-iface-share-toggle";
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
+      checkbox.className = "share-with-hotspot-toggle";
       checkbox.checked = iface.share_with_hotspot === true;
       checkbox.setAttribute("aria-label", `Share ${name} with hotspot`);
       checkbox.dataset.interfaceId = name;
@@ -185,7 +207,13 @@ function renderNetworkInterfacesCard(interfaces, networkStatus) {
       shareText.className = "network-iface-share-label";
       shareText.textContent = "Share with Hotspot";
       shareLabel.appendChild(shareText);
-      shareRow.appendChild(shareLabel);
+      shareWrap.appendChild(shareLabel);
+      const loadingSpan = document.createElement("span");
+      loadingSpan.className = "spinner network-iface-share-loading";
+      loadingSpan.setAttribute("aria-hidden", "true");
+      loadingSpan.hidden = true;
+      shareWrap.appendChild(loadingSpan);
+      shareRow.appendChild(shareWrap);
       li.appendChild(shareRow);
     }
 

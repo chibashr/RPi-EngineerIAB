@@ -152,6 +152,22 @@
   border-top: 1px dashed var(--color-border);
 }
 
+.network-iface-share-toggle-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.network-iface-share-toggle-wrap.is-loading .share-with-hotspot-toggle {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.network-iface-share-loading {
+  width: 18px;
+  height: 18px;
+}
+
 .network-iface-share-toggle {
   display: inline-flex;
   align-items: center;

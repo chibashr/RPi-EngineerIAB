@@ -173,18 +173,27 @@ function subnetFrom(ip, netmask) {
 
 async function toggleShareWithHotspot(checkbox) {
   const interfaceId = checkbox.dataset.interfaceId;
-  if (!interfaceId) {
-    return;
-  }
+  if (!interfaceId) return;
   const enabled = checkbox.checked;
+  const wrap = checkbox.closest(".interface-share-toggle-wrap");
+  const loadingEl = document.getElementById("interface-share-loading");
+  if (wrap) wrap.classList.add("is-loading");
+  if (loadingEl) loadingEl.hidden = false;
+  checkbox.disabled = true;
   try {
     await apiPut(`/api/v1/network/interfaces/${encodeURIComponent(interfaceId)}/share-with-hotspot`, {
       enabled,
     });
     showToast(enabled ? `Sharing ${interfaceId} with hotspot.` : `Stopped sharing ${interfaceId}.`, "success");
+    await loadNetworkData();
+    if (selectedInterfaceId) selectInterface(selectedInterfaceId);
   } catch (error) {
     checkbox.checked = !enabled;
     showToast("Unable to update connection share.", "error");
+  } finally {
+    checkbox.disabled = false;
+    if (wrap) wrap.classList.remove("is-loading");
+    if (loadingEl) loadingEl.hidden = true;
   }
 }
 
