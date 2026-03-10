@@ -114,6 +114,26 @@ WantedBy=multi-user.target
 EOF
 }
 
+_write_rpi_engineer_sudoers() {
+    # Controlled privileged operations: tcpdump, ip, ethtool, iptables, sysctl, systemctl (no password).
+    # Use detected paths for iptables/sysctl (may be in /usr/sbin or /sbin depending on distro).
+    local iptables_path sysctl_path
+    iptables_path="$(command -v iptables 2>/dev/null)"
+    [ -n "$iptables_path" ] || iptables_path="/usr/sbin/iptables"
+    sysctl_path="$(command -v sysctl 2>/dev/null)"
+    [ -n "$sysctl_path" ] || sysctl_path="/usr/sbin/sysctl"
+    mkdir -p /etc/sudoers.d
+    {
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/tcpdump"
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/ip"
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/ethtool"
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: $iptables_path"
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: $sysctl_path -w net.ipv4.ip_forward=1"
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: /bin/systemctl restart rpi-engineer*"
+    } > /etc/sudoers.d/rpi-engineer
+    chmod 440 /etc/sudoers.d/rpi-engineer
+}
+
 create_service_unit() {
     local name="$1"
     local description="$2"
@@ -150,7 +170,7 @@ EOF
 configure_services() {
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "services"; then
         log_info "Step 'services' already completed; skipping."
-        # Always ensure newer sudoers rules exist (e.g. remote password reset) so upgrades get them
+        # Always ensure newer sudoers rules exist (e.g. remote password reset, iptables/sysctl) so upgrades get them
         add_sudoers_rule() {
             local script="$1" name="$2"
             [ -f "$script" ] || return 0
@@ -161,6 +181,8 @@ configure_services() {
         }
         add_sudoers_rule "$INSTALL_DIR/bin/read-remote-config.sh" "read-remote-config"
         add_sudoers_rule "$INSTALL_DIR/bin/set-remote-password.sh" "set-remote-password"
+        # Always refresh rpi-engineer sudoers (iptables, sysctl for hotspot share) so upgrades get new entries
+        _write_rpi_engineer_sudoers
         SERVICES_CONFIGURED="yes"
         return 0
     fi
@@ -196,17 +218,7 @@ Environment=RPI_ENGINEER_DRY_RUN=0"
     add_sudoers_rule "$INSTALL_DIR/bin/create-config-backup.sh" "create-config-backup"
     add_sudoers_rule "$INSTALL_DIR/bin/read-remote-config.sh" "read-remote-config"
     add_sudoers_rule "$INSTALL_DIR/bin/set-remote-password.sh" "set-remote-password"
-    # Controlled privileged operations: tcpdump, ip, ethtool, systemctl restart (no password)
-    mkdir -p /etc/sudoers.d
-    cat <<EOFS >/etc/sudoers.d/rpi-engineer
-$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/tcpdump
-$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/ip
-$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/ethtool
-$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/iptables
-$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/sysctl -w net.ipv4.ip_forward=*
-$SERVICE_USER ALL=(root) NOPASSWD: /bin/systemctl restart rpi-engineer*
-EOFS
-    chmod 440 /etc/sudoers.d/rpi-engineer
+    _write_rpi_engineer_sudoers
     log_info "Sudoers: $SERVICE_USER may run apply-update.sh, apply-web-permissions.sh, create-config-backup.sh, and privileged network commands as root (NOPASSWD)."
     if [ -x "$INSTALL_DIR/bin/verify-permissions.sh" ]; then
         log_info "Verifying permissions..."

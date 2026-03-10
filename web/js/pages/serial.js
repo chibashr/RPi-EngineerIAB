@@ -118,17 +118,29 @@ const SERIAL_API_TIMEOUT_MS = 60000;
 
 // Resolve from document on each access so tests (or DOM changes) always see current nodes.
 const elements = {
-  get deviceListBody() {
-    return document.getElementById("serial-device-list-body");
+  get deviceList() {
+    return document.getElementById("serial-device-list");
+  },
+  get listPlaceholder() {
+    return document.getElementById("serial-list-placeholder");
+  },
+  get detailEmpty() {
+    return document.getElementById("serial-detail-empty");
+  },
+  get detailContent() {
+    return document.getElementById("serial-detail-content");
+  },
+  get emptyConnectBtn() {
+    return document.getElementById("serial-empty-connect");
+  },
+  get emptyConfigureBtn() {
+    return document.getElementById("serial-empty-configure");
   },
   get consoleTabs() {
     return document.getElementById("serial-console-tabs");
   },
   get consolePanels() {
     return document.getElementById("serial-console-panels");
-  },
-  get consoleEmpty() {
-    return document.getElementById("serial-console-empty");
   },
   get logsTable() {
     return document.getElementById("serial-logs-table-body");
@@ -147,6 +159,7 @@ let connectingDeviceId = null;
 
 const sessionMap = new Map();
 let activeTabSessionId = null;
+let selectedDeviceId = null;
 
 function showToast(message, variant = "info") {
   const toastRegion = document.getElementById("toast-region");
@@ -181,95 +194,121 @@ function deviceDisplayName(device) {
 }
 
 function updateConsoleEmptyState() {
-  if (!elements.consoleEmpty) return;
-  const hasTabs = sessionMap.size > 0;
-  elements.consoleEmpty.classList.toggle("is-visible", !hasTabs);
-  if (elements.consolePanels) {
-    elements.consolePanels.style.display = hasTabs ? "block" : "none";
+  const hasSessions = sessionMap.size > 0;
+  const detailEmpty = elements.detailEmpty;
+  const detailContent = elements.detailContent;
+  const emptyConnectBtn = elements.emptyConnectBtn;
+  if (detailEmpty) {
+    detailEmpty.hidden = hasSessions;
+  }
+  if (detailContent) {
+    detailContent.hidden = !hasSessions;
+  }
+  if (emptyConnectBtn) {
+    const showConnect = !hasSessions && selectedDeviceId;
+    emptyConnectBtn.hidden = !showConnect;
+  }
+  const emptyConfigureBtn = elements.emptyConfigureBtn;
+  if (emptyConfigureBtn) {
+    emptyConfigureBtn.hidden = !selectedDeviceId;
+  }
+}
+
+function selectDevice(deviceId) {
+  selectedDeviceId = deviceId;
+  updateListSelection();
+  updateConsoleEmptyState();
+  setupEmptyStateButtons();
+  const session = deviceId ? getSessionForDevice(deviceId) : null;
+  if (session) {
+    switchTab(session.session_id);
+  }
+}
+
+function updateListSelection() {
+  const list = elements.deviceList;
+  if (!list) return;
+  list.querySelectorAll(".serial-list-item").forEach((li) => {
+    const id = li.dataset.deviceId;
+    li.classList.toggle("is-active", id === selectedDeviceId);
+    li.setAttribute("aria-selected", id === selectedDeviceId ? "true" : "false");
+  });
+}
+
+function setupEmptyStateButtons() {
+  const connectBtn = elements.emptyConnectBtn;
+  if (connectBtn) {
+    connectBtn.onclick = () => {
+      if (selectedDeviceId) connectDevice(selectedDeviceId);
+    };
+  }
+  const configureBtn = elements.emptyConfigureBtn;
+  if (configureBtn) {
+    configureBtn.onclick = () => {
+      if (selectedDeviceId) configureSerial(selectedDeviceId);
+    };
   }
 }
 
 function renderDevices(devices) {
-  if (!elements.deviceListBody) return;
+  const list = elements.deviceList;
+  const placeholder = elements.listPlaceholder;
+  if (!list) return;
   const validDevices = (devices || []).filter(
     (d) => d && (d.id || d.path) && String(d.id || d.path).trim()
   );
   deviceCache = validDevices;
-  elements.deviceListBody.textContent = "";
+
+  if (placeholder) placeholder.remove();
 
   if (!validDevices.length) {
-    const p = document.createElement("p");
-    p.className = "empty-state";
-    p.textContent = "No serial devices detected.";
-    elements.deviceListBody.appendChild(p);
+    const li = document.createElement("li");
+    li.className = "serial-list-placeholder";
+    li.textContent = "No serial devices detected.";
+    list.appendChild(li);
     return;
   }
 
   validDevices.forEach((device) => {
     const session = getSessionForDevice(device.id);
     const state = session ? sessionMap.get(session.session_id) : null;
-    const wsStatus = state?.wsStatus || "";
     const isWsConnected = session && isSessionWsConnected(session.session_id);
+    const isConnecting = state?.wsStatus === "connecting";
     const deviceStatus = device.status || "unknown";
-    const item = document.createElement("div");
-    item.className = "device-item";
-    const name = deviceDisplayName(device);
-    const chipset = device.chipset || "Unknown";
+    const item = document.createElement("li");
+    item.className = "serial-list-item";
+    item.dataset.deviceId = device.id;
+    item.setAttribute("role", "option");
+    item.setAttribute("aria-selected", device.id === selectedDeviceId ? "true" : "false");
+    if (device.id === selectedDeviceId) item.classList.add("is-active");
 
+    const dot = document.createElement("span");
+    dot.className = "serial-list-item-dot";
+    if (isWsConnected) dot.classList.add("is-connected");
+    else if (isConnecting) dot.classList.add("is-connecting");
+    item.appendChild(dot);
+
+    const info = document.createElement("div");
+    info.className = "serial-list-item-info";
     const nameEl = document.createElement("div");
-    nameEl.className = "device-name";
-    nameEl.textContent = name;
-    item.appendChild(nameEl);
-
-    const metaEl = document.createElement("div");
-    metaEl.className = "device-meta";
+    nameEl.className = "serial-list-item-name";
+    nameEl.textContent = deviceDisplayName(device);
+    const subtitleEl = document.createElement("div");
+    subtitleEl.className = "serial-list-item-subtitle";
     const path = device.path || device.id || "";
     const pathPart = path ? ` · ${path}` : "";
-    metaEl.textContent = `${chipset}${pathPart} · ${statusLabel(deviceStatus, !!session, isWsConnected, wsStatus)}`;
-    item.appendChild(metaEl);
+    subtitleEl.textContent = `${device.chipset || "Unknown"}${pathPart} · ${statusLabel(deviceStatus, !!session, isWsConnected, state?.wsStatus || "")}`;
+    info.append(nameEl, subtitleEl);
+    item.appendChild(info);
 
-    const actions = document.createElement("div");
-    actions.className = "device-actions";
-    const toggleBtn = document.createElement("button");
-    toggleBtn.type = "button";
-    if (session) {
-      if (isWsConnected) {
-        toggleBtn.className = "btn btn-secondary btn-sm";
-        toggleBtn.textContent = "Disconnect";
-        toggleBtn.addEventListener("click", () => disconnectDevice(session.session_id));
-      } else {
-        toggleBtn.className = "btn btn-primary btn-sm";
-        toggleBtn.textContent = "Reconnect";
-        toggleBtn.addEventListener("click", () => reconnectSession(session.session_id));
-        const disconnectBtn = document.createElement("button");
-        disconnectBtn.className = "btn btn-secondary btn-sm";
-        disconnectBtn.textContent = "Disconnect";
-        disconnectBtn.type = "button";
-        disconnectBtn.addEventListener("click", () => disconnectDevice(session.session_id));
-        actions.append(toggleBtn, disconnectBtn);
-      }
-    } else {
-      const isConnecting = connectingDeviceId === device.id;
-      toggleBtn.className = "btn btn-primary btn-sm";
-      toggleBtn.textContent = isConnecting ? "Connecting…" : "Connect";
-      toggleBtn.disabled = deviceStatus === "in_use" || isConnecting;
-      if (!isConnecting) {
-        toggleBtn.addEventListener("click", () => connectDevice(device.id));
-      }
-    }
-    const configBtn = document.createElement("button");
-    configBtn.className = "btn btn-ghost btn-sm";
-    configBtn.textContent = "Configure";
-    configBtn.type = "button";
-    configBtn.addEventListener("click", () => configureSerial(device.id));
-    if (session && !isWsConnected) {
-      actions.append(configBtn);
-    } else {
-      actions.append(toggleBtn, configBtn);
-    }
-    item.appendChild(actions);
-    elements.deviceListBody.appendChild(item);
+    item.addEventListener("click", (e) => {
+      if (e.target.closest("button")) return;
+      selectDevice(device.id);
+    });
+
+    list.appendChild(item);
   });
+  setupEmptyStateButtons();
 }
 
 function statusLabel(deviceStatus, hasSession, isWsConnected, wsStatus) {
@@ -646,13 +685,15 @@ function setupTerminalInputForSession(state) {
 
 function switchTab(sessionId) {
   activeTabSessionId = sessionId;
-  sessionMap.forEach((state, sid) => {
-    const isActive = sid === sessionId;
-    state.tabEl?.classList.toggle("tab-button-active", isActive);
-    state.tabEl?.setAttribute("aria-selected", isActive ? "true" : "false");
-    state.tabPanelEl?.classList.toggle("is-active", isActive);
-  });
   const state = sessionMap.get(sessionId);
+  if (state?.deviceId) selectedDeviceId = state.deviceId;
+  sessionMap.forEach((s, sid) => {
+    const isActive = sid === sessionId;
+    s.tabEl?.classList.toggle("tab-button-active", isActive);
+    s.tabEl?.setAttribute("aria-selected", isActive ? "true" : "false");
+    s.tabPanelEl?.classList.toggle("is-active", isActive);
+  });
+  updateListSelection();
   state?.inputEl?.focus();
 }
 
@@ -1288,6 +1329,7 @@ function resetStateForTest() {
   activeSessions.length = 0;
   connectingDeviceId = null;
   activeTabSessionId = null;
+  selectedDeviceId = null;
   deviceCache.length = 0;
 }
 

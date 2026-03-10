@@ -19,11 +19,17 @@ import { jest } from "@jest/globals";
 function createSerialDom() {
   document.body.innerHTML = `
     <div id="toast-region"></div>
-    <div id="serial-device-list-body"></div>
-    <div id="serial-console-tabs"></div>
-    <div id="serial-console-panels"></div>
-    <div id="serial-console-empty"></div>
-    <div id="serial-connection-banner"></div>
+    <ul id="serial-device-list">
+      <li id="serial-list-placeholder" class="serial-list-placeholder">Loading devices...</li>
+    </ul>
+    <div id="serial-detail-empty">
+      <button id="serial-empty-connect" hidden>Connect</button>
+      <button id="serial-empty-configure" hidden>Configure</button>
+    </div>
+    <div id="serial-detail-content" hidden>
+      <div id="serial-console-tabs"></div>
+      <div id="serial-console-panels"></div>
+    </div>
     <table>
       <tbody id="serial-logs-table-body"></tbody>
     </table>
@@ -141,7 +147,7 @@ describe("serial.js fast JS-level behavior", () => {
 
     await loadDevices();
     await loadSessions();
-    const deviceList = document.getElementById("serial-device-list-body");
+    const deviceList = document.getElementById("serial-device-list");
     expect(deviceList).toBeTruthy();
 
     // Render devices then simulate clicking connect via direct call.
@@ -153,7 +159,7 @@ describe("serial.js fast JS-level behavior", () => {
     expect(state.connectingDeviceId).toBeNull();
     expect(state.activeSessions.length).toBeGreaterThanOrEqual(1);
 
-    const tabs = document.querySelectorAll(".console-tab");
+    const tabs = document.querySelectorAll(".tab-button");
     expect(tabs.length).toBe(1);
     expect(tabs[0].textContent).toContain("Test Dev 1");
   });
@@ -183,7 +189,7 @@ describe("serial.js fast JS-level behavior", () => {
     expect(sessions.some((s) => s.device_id === "dev1")).toBe(true);
     expect(sessions.some((s) => s.device_id === "dev2")).toBe(true);
 
-    const tabs = document.querySelectorAll(".console-tab");
+    const tabs = document.querySelectorAll(".tab-button");
     expect(tabs.length).toBe(2);
   });
 
