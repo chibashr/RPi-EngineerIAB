@@ -809,6 +809,12 @@ wpa_key_mgmt=WPA-PSK
         except OSError:
             logger.warning("Could not enable ip_forward")
         interfaces = self._get_share_interfaces()
+        if not interfaces:
+            # No share interfaces; still ensure ESTABLISHED,RELATED for any install rules
+            _iptables_ensure_established_related()
+            return
+        # Ensure ESTABLISHED,RELATED is first so return traffic is allowed (required for NAT)
+        _iptables_ensure_established_related()
         # Remove stale rules for interfaces no longer in config
         for iface in self._interface_names():
             if iface.startswith("wlan"):
@@ -882,6 +888,18 @@ def _parse_hostapd_all_sta(output: str) -> Dict[str, Dict[str, object]]:
             elif key == "connected_time" and value.isdigit():
                 stations[current]["connected_time"] = int(value)
     return stations
+
+
+def _iptables_ensure_established_related() -> None:
+    """Ensure FORWARD allows ESTABLISHED,RELATED (return traffic for NAT). Required for hotspot share."""
+    if not _which("iptables"):
+        return
+    rule = ["-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"]
+    comment = "rpi-engineer-share:established"
+    check = ["iptables", "-C", "FORWARD"] + rule + ["-m", "comment", "--comment", comment]
+    append = ["iptables", "-I", "FORWARD", "1"] + rule + ["-m", "comment", "--comment", comment]
+    if subprocess.run(check, capture_output=True).returncode != 0:
+        subprocess.run(append, check=False)
 
 
 def _iptables_append(table: Optional[str], chain: str, rule_args: List[str], comment: str) -> None:
