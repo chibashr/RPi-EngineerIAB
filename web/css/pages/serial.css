@@ -361,6 +361,7 @@
   border-radius: 10px;
   scrollbar-width: thin;
   scrollbar-color: #3a4049 #0d0e11;
+  overflow-x: auto;
 }
 
 .xterm-container .xterm-viewport::-webkit-scrollbar {

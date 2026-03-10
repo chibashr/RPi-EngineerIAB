@@ -167,6 +167,7 @@ function renderNetworkInterfacesCard(interfaces, networkStatus) {
     const desc = getInterfaceDescription(iface);
     const ip = iface.ip_address || "—";
     const status = (iface.status || "unknown").toLowerCase();
+     const role = (iface.role || "").toLowerCase();
 
     let label = desc;
     if (desc === "Wired" || desc === "USB") {
@@ -180,7 +181,26 @@ function renderNetworkInterfacesCard(interfaces, networkStatus) {
 
     const header = document.createElement("div");
     header.className = "network-iface-header";
-    header.innerHTML = `<span class="network-iface-label">${escapeHtml(label)}</span> <span class="network-iface-status ${statusClass}">${status}</span> — <span class="network-iface-ip">${escapeHtml(ip)}</span>`;
+    const roleLabel = role || "--";
+    const roleClass =
+      role === "lan" || role === "wan"
+        ? `network-iface-role-badge-${role}`
+        : "network-iface-role-badge-neutral";
+    header.innerHTML = `
+      <div class="network-iface-main">
+        <span class="network-iface-dot ${status === "up" ? "is-up" : ""}" aria-hidden="true"></span>
+        <div class="network-iface-text">
+          <span class="network-iface-label">${escapeHtml(label)}</span>
+          <span class="network-iface-ip">${escapeHtml(ip)}</span>
+        </div>
+      </div>
+      <div class="network-iface-meta">
+        <span class="network-iface-status ${statusClass}">${status}</span>
+        <span class="network-iface-role-badge ${roleClass}">${escapeHtml(
+          roleLabel.toUpperCase()
+        )}</span>
+      </div>
+    `;
     li.appendChild(header);
 
     if (isHotspotInterface(iface) && hotspotStatus === "active") {
@@ -777,12 +797,28 @@ function setupQuickActionLinks() {
   });
 }
 
+function setupNetworkCardLink() {
+  const card = document.getElementById("network-interfaces-card");
+  if (!card) {
+    return;
+  }
+  card.addEventListener("click", (e) => {
+    const interactive = e.target.closest("button, a, input, label");
+    if (interactive) {
+      return;
+    }
+    setMode("advanced");
+    window.location.assign("/advanced/network.html");
+  });
+}
+
 function init() {
   ensureSimpleMode();
   applyStoredTheme();
   initThemeSelector(document.getElementById("theme-select"));
   setupModeSwitch();
   setupQuickActionLinks();
+  setupNetworkCardLink();
   setupConnectionPrivacy();
   setupWifiPasswordToggle();
   setupCopyButtons();

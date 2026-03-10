@@ -865,31 +865,6 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   disconnectBtn.title = "Close this session";
   disconnectBtn.addEventListener("click", () => disconnectDevice(sessionId));
   toolbar.append(clearBtn, breakBtn, saveBtn, disconnectBtn);
-
-  const wrapLabel = document.createElement("label");
-  wrapLabel.className = "field console-wrap-toggle";
-  const wrapCheckbox = document.createElement("input");
-  wrapCheckbox.type = "checkbox";
-  wrapCheckbox.checked = loadWrapEnabled();
-  wrapCheckbox.setAttribute("aria-label", "Wrap long lines");
-  wrapLabel.appendChild(wrapCheckbox);
-  const wrapSpan = document.createElement("span");
-  wrapSpan.className = "field-label";
-  wrapSpan.textContent = "Wrap";
-  wrapLabel.appendChild(wrapSpan);
-
-  const applyWrapMode = (enabled) => {
-    if (!state.xtermInstance) return;
-    state.xtermInstance.write(enabled ? "\x1b[?7h" : "\x1b[?7l");
-  };
-
-  wrapCheckbox.addEventListener("change", () => {
-    const enabled = wrapCheckbox.checked;
-    saveWrapEnabled(enabled);
-    applyWrapMode(enabled);
-  });
-
-  toolbar.append(wrapLabel);
   toolbarRow.append(toolbar);
 
   const status = document.createElement("div");
@@ -962,8 +937,6 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
     resizeObserver.disconnect();
     resizeObserver.observe(containerDiv);
   }, 50);
-
-  applyWrapMode(wrapCheckbox.checked);
 
   const main = document.createElement("div");
   main.className = "console-panel-main";
