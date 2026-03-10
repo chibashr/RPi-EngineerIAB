@@ -197,6 +197,8 @@ WantedBy=multi-user.target
 
 ### TeamViewer Installation
 
+TeamViewer is installed for headless Linux (no GUI) per the [official headless install guide](https://www.teamviewer.com/en-us/global/support/knowledge-base/teamviewer-remote/download-and-installation/linux/install-teamviewer-classic-on-linux-without-graphical-user-interface/): apt install of the Host package, CLI-only configuration (`teamviewer passwd`, `teamviewer setup`, `teamviewer info`). When TeamViewer is the only remote tool, it uses the framebuffer console (`/dev/fb0`) without Xvfb; when used with AnyDesk, both share the virtual X11 display.
+
 **Installation Steps**:
 1. Download TeamViewer Host package (arm64)
 2. Install package with dependencies

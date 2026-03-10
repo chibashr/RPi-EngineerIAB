@@ -30,6 +30,7 @@ logger = get_service_logger(__name__)
 PROFILE_DIR = Path("/etc/rpi-engineer/network_profiles")
 CONFIG_DIR = Path("/etc/rpi-engineer/network_configs")
 HOTSPOT_SECRET_PATH = Path("/etc/rpi-engineer/hotspot.secret")
+HOTSPOT_SHARE_CONFIG = CONFIG_DIR / "hotspot_share.json"
 
 
 @dataclass
@@ -321,6 +322,7 @@ wpa_key_mgmt=WPA-PSK
             ssid, password = self._get_hotspot_credentials()
             out["ssid"] = ssid
             out["password"] = password
+        out["share_with_hotspot"] = name in self._get_share_interfaces()
         return out
 
     def _interface_addrs(self, name: str) -> Dict[str, Optional[str]]:
@@ -755,6 +757,73 @@ wpa_key_mgmt=WPA-PSK
         except OSError:
             return None
 
+    def _get_share_interfaces(self) -> List[str]:
+        """Return list of interface names configured to share with hotspot."""
+        if not HOTSPOT_SHARE_CONFIG.exists():
+            return []
+        try:
+            data = json.loads(HOTSPOT_SHARE_CONFIG.read_text())
+            names = data.get("interfaces", [])
+            return [n for n in names if isinstance(n, str)]
+        except (OSError, json.JSONDecodeError):
+            return []
+
+    def _set_share_interfaces(self, interfaces: List[str]) -> None:
+        """Persist interfaces that share with hotspot."""
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        data = {"interfaces": list(interfaces), "updated_at": _timestamp()}
+        HOTSPOT_SHARE_CONFIG.write_text(json.dumps(data, indent=2))
+
+    def set_interface_share_hotspot(self, interface_id: str, enabled: bool) -> Dict[str, object]:
+        """
+        Enable or disable sharing this interface's connection with the wireless hotspot.
+        When enabled, enables IPv4 forwarding and adds iptables FORWARD/MASQUERADE
+        so hotspot clients can reach the internet and other networks via this interface.
+        """
+        if interface_id not in self._interface_names():
+            raise KeyError("Interface not found")
+        if interface_id.startswith("wlan"):
+            raise ValueError("Cannot share wlan interface with hotspot (it is the hotspot)")
+        dry_run = os.getenv("RPI_ENGINEER_DRY_RUN", "1") == "1"
+        current = self._get_share_interfaces()
+        if enabled:
+            if interface_id not in current:
+                current = current + [interface_id]
+        else:
+            current = [n for n in current if n != interface_id]
+        self._set_share_interfaces(current)
+        if dry_run:
+            return {"interface": interface_id, "share_with_hotspot": enabled, "applied": False}
+        if platform.system().lower() == "windows":
+            return {"interface": interface_id, "share_with_hotspot": enabled, "applied": False}
+        self._apply_hotspot_share()
+        logger.info("Share with hotspot toggled iface=%s enabled=%s", interface_id, enabled)
+        return {"interface": interface_id, "share_with_hotspot": enabled, "applied": True}
+
+    def _apply_hotspot_share(self) -> None:
+        """Apply ip_forward and iptables rules for interfaces sharing with hotspot."""
+        if not _which("iptables"):
+            return
+        try:
+            Path("/proc/sys/net/ipv4/ip_forward").write_text("1")
+        except OSError:
+            logger.warning("Could not enable ip_forward")
+        interfaces = self._get_share_interfaces()
+        # Remove stale rules for interfaces no longer in config
+        for iface in self._interface_names():
+            if iface.startswith("wlan"):
+                continue
+            comment = f"rpi-engineer-share:{iface}"
+            _iptables_delete(None, "FORWARD", ["-i", "wlan0", "-o", iface, "-j", "ACCEPT"], comment)
+            _iptables_delete("nat", "POSTROUTING", ["-o", iface, "-j", "MASQUERADE"], comment)
+        # Add rules for configured share interfaces
+        for iface in interfaces:
+            if iface not in self._interface_names():
+                continue
+            comment = f"rpi-engineer-share:{iface}"
+            _iptables_append(None, "FORWARD", ["-i", "wlan0", "-o", iface, "-j", "ACCEPT"], comment)
+            _iptables_append("nat", "POSTROUTING", ["-o", iface, "-j", "MASQUERADE"], comment)
+
     def _restore_hotspot_config(self, config: Dict[str, object]) -> None:
         hostapd_config = Path("/etc/hostapd/hostapd.conf")
         hostapd_config.parent.mkdir(parents=True, exist_ok=True)
@@ -813,6 +882,23 @@ def _parse_hostapd_all_sta(output: str) -> Dict[str, Dict[str, object]]:
             elif key == "connected_time" and value.isdigit():
                 stations[current]["connected_time"] = int(value)
     return stations
+
+
+def _iptables_append(table: Optional[str], chain: str, rule_args: List[str], comment: str) -> None:
+    """Append iptables rule if not already present."""
+    base = ["iptables"] + (["-t", table] if table else [])
+    rule = rule_args + ["-m", "comment", "--comment", comment]
+    check = base + ["-C", chain] + rule
+    append = base + ["-A", chain] + rule
+    if subprocess.run(check, capture_output=True).returncode != 0:
+        subprocess.run(append, check=False)
+
+
+def _iptables_delete(table: Optional[str], chain: str, rule_args: List[str], comment: str) -> None:
+    """Delete iptables rule if present."""
+    base = ["iptables"] + (["-t", table] if table else [])
+    cmd = base + ["-D", chain] + rule_args + ["-m", "comment", "--comment", comment]
+    subprocess.run(cmd, capture_output=True)
 
 
 def _looks_like_mac(value: str) -> bool:

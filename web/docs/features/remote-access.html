@@ -1,13 +1,13 @@
 <h1>Remote access</h1>
 <p>
   Remote access tools provide off-site support when technicians are on location.
-  Supported options include AnyDesk, TeamViewer, VNC, and Raspberry Pi Connect.
+  Supported options include AnyDesk, TeamViewer, VNC, and Raspberry Pi Connect. TeamViewer is installed per the <a href="https://www.teamviewer.com/en-us/global/support/knowledge-base/teamviewer-remote/download-and-installation/linux/install-teamviewer-classic-on-linux-without-graphical-user-interface/">headless Linux guide</a> (CLI-only, framebuffer when used alone).
 </p>
 
 <h2>Before you start</h2>
 <ul>
   <li>Remote access tool installed during deployment.</li>
-  <li>When you select AnyDesk or TeamViewer, the installer configures a virtual display (Xvfb) so both work headless without a monitor.</li>
+  <li>When you select AnyDesk, the installer configures a virtual display (Xvfb) for headless use. TeamViewer-only installs use the framebuffer console without Xvfb.</li>
   <li>Device has WAN connectivity (USB or Ethernet).</li>
   <li>You have the remote access password.</li>
 </ul>

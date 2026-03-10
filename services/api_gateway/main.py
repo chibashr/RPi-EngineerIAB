@@ -29,6 +29,15 @@ from services.module_manager import module_manager  # noqa: E402
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Cleanup modules on shutdown. Route registration happens in create_app before mount."""
+    # Re-apply hotspot share rules on startup (persists across reboot; iptables rules are lost on reboot)
+    try:
+        from services.network_manager import NetworkManager
+
+        nm = NetworkManager()
+        if nm._get_share_interfaces():
+            nm._apply_hotspot_share()
+    except Exception:
+        pass
     yield
     module_manager.cleanup()
 

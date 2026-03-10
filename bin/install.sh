@@ -355,6 +355,8 @@ run_uninstall() {
     rm -f /etc/sudoers.d/rpi-engineer-apply-web-permissions
     rm -f /etc/sudoers.d/rpi-engineer-apply-update
     rm -f /etc/sudoers.d/rpi-engineer-create-config-backup
+    rm -f /etc/sudoers.d/rpi-engineer-read-remote-config
+    rm -f /etc/sudoers.d/rpi-engineer-set-remote-password
     rm -f /etc/sudoers.d/rpi-engineer
 
     # Remove NetworkManager config
@@ -1337,7 +1339,22 @@ EOF
 }
 
 configure_services() {
-    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "services"; then log_info "Step 'services' already completed; skipping."; SERVICES_CONFIGURED="yes"; return 0; fi
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "services"; then
+        log_info "Step 'services' already completed; skipping."
+        # Always ensure newer sudoers rules exist (e.g. remote password reset) so upgrades get them
+        add_sudoers_rule() {
+            local script="$1" name="$2"
+            [ -f "$script" ] || return 0
+            chmod 755 "$script"
+            mkdir -p /etc/sudoers.d
+            echo "$SERVICE_USER ALL=(root) NOPASSWD: $script" > "/etc/sudoers.d/rpi-engineer-$name"
+            chmod 440 "/etc/sudoers.d/rpi-engineer-$name"
+        }
+        add_sudoers_rule "$INSTALL_DIR/bin/read-remote-config.sh" "read-remote-config"
+        add_sudoers_rule "$INSTALL_DIR/bin/set-remote-password.sh" "set-remote-password"
+        SERVICES_CONFIGURED="yes"
+        return 0
+    fi
     log_step "Configuring systemd services"
     create_master_service
     local api_env="Environment=RPI_ENGINEER_ROOT=${INSTALL_DIR}
@@ -1368,6 +1385,8 @@ Environment=RPI_ENGINEER_DRY_RUN=0"
     add_sudoers_rule "$INSTALL_DIR/bin/apply-web-permissions.sh" "apply-web-permissions"
     add_sudoers_rule "$INSTALL_DIR/bin/apply-update.sh" "apply-update"
     add_sudoers_rule "$INSTALL_DIR/bin/create-config-backup.sh" "create-config-backup"
+    add_sudoers_rule "$INSTALL_DIR/bin/read-remote-config.sh" "read-remote-config"
+    add_sudoers_rule "$INSTALL_DIR/bin/set-remote-password.sh" "set-remote-password"
     # Controlled privileged operations: tcpdump, ip, ethtool, systemctl restart (no password)
     mkdir -p /etc/sudoers.d
     cat <<EOFS >/etc/sudoers.d/rpi-engineer
@@ -1932,6 +1951,8 @@ install_anydesk() {
     ANYDESK_ID="$(anydesk --get-id 2>/dev/null || true)"
 }
 
+# TeamViewer headless install per https://www.teamviewer.com/en-us/global/support/knowledge-base/teamviewer-remote/download-and-installation/linux/install-teamviewer-classic-on-linux-without-graphical-user-interface/
+# Uses apt install, CLI config (teamviewer passwd, teamviewer setup, teamviewer info). When TeamViewer-only, uses framebuffer (/dev/fb0); no Xvfb needed.
 install_teamviewer() {
     log_step "Installing TeamViewer"
     if dpkg -s teamviewer >/dev/null 2>&1; then
@@ -2020,18 +2041,27 @@ write_remote_access_config() {
     if [ "${#REMOTE_ACCESS_TOOLS[@]}" -gt 0 ]; then
         tools_json=$(printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | jq -R . | jq -s .)
     fi
+    # Escape password for JSON: backslash and double-quote
+    anydesk_pass_esc="${REMOTE_ACCESS_PASSWORD:-}"
+    anydesk_pass_esc="${anydesk_pass_esc//\\/\\\\}"
+    anydesk_pass_esc="${anydesk_pass_esc//\"/\\\"}"
+    teamviewer_pass_esc="${REMOTE_ACCESS_PASSWORD:-}"
+    teamviewer_pass_esc="${teamviewer_pass_esc//\\/\\\\}"
+    teamviewer_pass_esc="${teamviewer_pass_esc//\"/\\\"}"
     cat > "$CONFIG_DIR/remote_access.conf" <<EOF
 {
   "tools_enabled": ${tools_json},
   "anydesk": {
     "enabled": $(printf '%s' "${REMOTE_ACCESS_TOOLS[*]}" | grep -q anydesk && echo true || echo false),
     "id": "${ANYDESK_ID:-}",
+    "password": "$anydesk_pass_esc",
     "service_status": "$(systemctl is-active anydesk 2>/dev/null || echo unknown)",
     "last_check": "$(date -Iseconds)"
   },
   "teamviewer": {
     "enabled": $(printf '%s' "${REMOTE_ACCESS_TOOLS[*]}" | grep -q teamviewer && echo true || echo false),
     "id": "${TEAMVIEWER_ID:-}",
+    "password": "$teamviewer_pass_esc",
     "service_status": "$(systemctl is-active teamviewerd 2>/dev/null || echo unknown)",
     "last_check": "$(date -Iseconds)"
   },
@@ -2048,6 +2078,8 @@ write_remote_access_config() {
   }
 }
 EOF
+    chmod 640 "$CONFIG_DIR/remote_access.conf"
+    chgrp "$SERVICE_USER" "$CONFIG_DIR/remote_access.conf"
 }
 
 setup_remote_access() {
@@ -2057,9 +2089,9 @@ setup_remote_access() {
         return 0
     fi
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "remote_access"; then
-        log_info "Step 'remote_access' already completed; ensuring virtual display if needed."
+        log_info "Step 'remote_access' already completed; ensuring virtual display if needed (AnyDesk only; TeamViewer uses framebuffer when alone)."
         if [ -f "$CONFIG_DIR/remote_access.conf" ] && command -v jq >/dev/null 2>&1; then
-            if jq -e '(.anydesk.enabled == true) or (.teamviewer.enabled == true)' "$CONFIG_DIR/remote_access.conf" >/dev/null 2>&1; then
+            if jq -e '.anydesk.enabled == true' "$CONFIG_DIR/remote_access.conf" >/dev/null 2>&1; then
                 install_virtual_display
             fi
         fi
@@ -2076,10 +2108,19 @@ setup_remote_access() {
     if [ -z "$REMOTE_ACCESS_PASSWORD" ]; then
         REMOTE_ACCESS_PASSWORD="$HOTSPOT_PASSWORD"
     fi
-    need_display=$(printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -E '^(anydesk|teamviewer)$' | head -1)
-    if [ -n "$need_display" ]; then
+    # AnyDesk requires Xvfb on headless; TeamViewer can use framebuffer console (no Xorg) per headless docs.
+    need_xvfb=$(printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -q '^anydesk$' && echo 1)
+    if [ -n "$need_xvfb" ]; then
         install_virtual_display
         configure_lightdm_for_x11
+    else
+        if printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -q '^teamviewer$'; then
+            log_info "TeamViewer without AnyDesk: using framebuffer console per TeamViewer headless install docs (no Xvfb)."
+            # Remove Xvfb override so teamviewerd uses framebuffer (/dev/fb0)
+            rm -f /etc/systemd/system/teamviewerd.service.d/display.conf 2>/dev/null
+            rmdir /etc/systemd/system/teamviewerd.service.d 2>/dev/null
+            systemctl daemon-reload
+        fi
     fi
     for tool in "${REMOTE_ACCESS_TOOLS[@]}"; do
         echo "Installing remote access tool: $tool"

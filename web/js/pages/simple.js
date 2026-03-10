@@ -9,6 +9,9 @@ const elements = {
   health: document.getElementById("system-health"),
   networkSummary: document.getElementById("network-summary"),
   interfaceList: document.getElementById("interface-list"),
+  networkInterfaceList: document.getElementById("network-interface-list"),
+  wanSummary: document.getElementById("wan-summary"),
+  wanStatusBadge: document.getElementById("wan-status-badge"),
   serviceList: document.getElementById("service-list"),
   alertList: document.getElementById("alert-list"),
   metrics: {
@@ -48,6 +51,7 @@ let wifiPasswordCache = null;
 let pollId = null;
 let statusWs = null;
 let hasShownWsError = false;
+let lastNetworkInterfaces = [];
 const MAX_POLL_INTERVAL = 5000;
 
 function setStatusIndicator(status) {
@@ -131,6 +135,78 @@ function renderServices(services) {
             : "detail-status detail-status-unknown";
     item.innerHTML = `<span class="detail-svc-name">${escapeHtml(name)}</span> <span class="${statusClass}" aria-label="service ${raw}">${status}</span>`;
     elements.serviceList.appendChild(item);
+  });
+}
+
+function getInterfaceDescription(iface) {
+  const id = (iface.id || iface.name || "").toLowerCase();
+  if (id.startsWith("eth")) return "Wired";
+  if (id.startsWith("usb")) return "USB";
+  if (id.startsWith("wlan")) return "Hotspot";
+  return iface.friendly_name || id || "Interface";
+}
+
+function isHotspotInterface(iface) {
+  const id = (iface.id || iface.name || "").toLowerCase();
+  return id.startsWith("wlan");
+}
+
+function renderNetworkInterfacesCard(interfaces, networkStatus) {
+  const listEl = elements.networkInterfaceList;
+  const summaryEl = elements.wanSummary;
+  const badgeEl = elements.wanStatusBadge;
+
+  if (!listEl || !summaryEl || !badgeEl) return;
+
+  const wanInterface = networkStatus?.wan_interface || "";
+  const wanStatus = (networkStatus?.wan_status || "unknown").toLowerCase();
+  const hotspotStatus = (networkStatus?.hotspot_status || "inactive").toLowerCase();
+
+  if (wanStatus === "connected" && wanInterface) {
+    summaryEl.textContent = `WAN connected via ${wanInterface}`;
+    badgeEl.textContent = "Connected";
+    badgeEl.className = "status-pill status-pill-success";
+  } else {
+    summaryEl.textContent = wanInterface
+      ? `WAN interface: ${wanInterface} (no internet)`
+      : "No WAN connection";
+    badgeEl.textContent = "Disconnected";
+    badgeEl.className = "status-pill status-pill-warning";
+  }
+
+  listEl.textContent = "";
+  if (!interfaces || interfaces.length === 0) {
+    const li = document.createElement("li");
+    li.className = "network-interface-empty";
+    li.textContent = "No interfaces detected.";
+    listEl.appendChild(li);
+    return;
+  }
+
+  interfaces.forEach((iface) => {
+    const li = document.createElement("li");
+    li.className = "network-interface-item";
+    const name = iface.name || iface.id || "—";
+    const desc = getInterfaceDescription(iface);
+    const ip = iface.ip_address || "—";
+    const status = (iface.status || "unknown").toLowerCase();
+
+    let label = desc;
+    if (desc === "Wired" || desc === "USB") {
+      label = `${desc} (${name})`;
+    } else if (desc === "Hotspot") {
+      label = `Hotspot (${name})`;
+    }
+
+    const statusClass =
+      status === "up" ? "network-iface-up" : "network-iface-down";
+
+    let content = `<span class="network-iface-label">${escapeHtml(label)}</span> <span class="network-iface-status ${statusClass}">${status}</span> — <span class="network-iface-ip">${escapeHtml(ip)}</span>`;
+    if (isHotspotInterface(iface) && hotspotStatus === "active") {
+      content += `<p class="network-iface-note">The wireless hotspot runs on this interface.</p>`;
+    }
+    li.innerHTML = content;
+    listEl.appendChild(li);
   });
 }
 
@@ -382,11 +458,17 @@ async function loadNetworkInfo() {
 
 async function loadNetworkInfoWithOptions(options) {
   try {
-    const payload = await apiGet("/api/v1/network/interfaces");
-    const data = extractData(payload) || {};
+    const [ifacesPayload, statusPayload] = await Promise.all([
+      apiGet("/api/v1/network/interfaces"),
+      apiGet("/api/v1/network/status"),
+    ]);
+    const data = extractData(ifacesPayload) || {};
+    const networkStatus = extractData(statusPayload) || {};
     clearApiConnectionError();
     const interfaces = data.interfaces || [];
+    lastNetworkInterfaces = interfaces;
     renderInterfaces(interfaces);
+    renderNetworkInterfacesCard(interfaces, networkStatus);
     updateNetworkSummary(interfaces);
     updateWifiInfo(interfaces);
   } catch (error) {
@@ -395,6 +477,16 @@ async function loadNetworkInfoWithOptions(options) {
     item.textContent = "Unable to load interfaces.";
     elements.interfaceList.appendChild(item);
     elements.networkSummary.textContent = "Network status unavailable.";
+    if (elements.networkInterfaceList && elements.wanSummary && elements.wanStatusBadge) {
+      elements.wanSummary.textContent = "Network status unavailable.";
+      elements.wanStatusBadge.textContent = "Unavailable";
+      elements.wanStatusBadge.className = "status-pill status-pill-warning";
+      elements.networkInterfaceList.textContent = "";
+      const errLi = document.createElement("li");
+      errLi.className = "network-interface-empty";
+      errLi.textContent = "Unable to load interfaces.";
+      elements.networkInterfaceList.appendChild(errLi);
+    }
     if (!options.suppressError) {
       showToast("Unable to load network interfaces.", "error");
       showApiConnectionError();
@@ -654,11 +746,23 @@ function initStatusWebSocket() {
     } else {
       elements.networkSummary.textContent = "No WAN Connection detected.";
     }
+    if (elements.networkInterfaceList) {
+      renderNetworkInterfacesCard(lastNetworkInterfaces, data);
+    }
   });
   statusWs.on("network_interfaces", (message) => {
     const data = message.data || {};
     const interfaces = data.interfaces || [];
+    lastNetworkInterfaces = interfaces;
     renderInterfaces(interfaces);
+    const derivedStatus = {
+      wan_interface: interfaces.find((i) => i.role === "wan" && i.status === "up")?.name || "",
+      wan_status: interfaces.some((i) => i.role === "wan" && i.status === "up") ? "connected" : "disconnected",
+      hotspot_status: interfaces.some((i) => (i.id || i.name || "").startsWith("wlan") && i.status === "up")
+        ? "active"
+        : "inactive",
+    };
+    renderNetworkInterfacesCard(interfaces, derivedStatus);
     updateNetworkSummary(interfaces);
     updateWifiInfo(interfaces);
   });

@@ -207,6 +207,77 @@
   color: var(--color-fg);
 }
 
+/* Network Interfaces card */
+.network-interfaces-card .card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.network-wan-summary {
+  margin-top: 1rem;
+  color: var(--color-muted);
+  font-size: 0.95rem;
+}
+
+.network-interface-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.network-interface-item {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  background: rgba(90, 100, 114, 0.04);
+  font-size: 0.9rem;
+}
+
+.network-iface-label {
+  font-weight: 600;
+  color: var(--color-fg);
+}
+
+.network-iface-status {
+  font-size: 0.8em;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+.network-iface-up {
+  color: var(--color-success);
+}
+
+.network-iface-down {
+  color: var(--color-muted);
+}
+
+.network-iface-ip {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+}
+
+.network-iface-note {
+  margin: 0.5rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--color-border);
+  color: var(--color-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.network-interface-loading,
+.network-interface-empty {
+  color: var(--color-muted);
+  font-style: italic;
+  list-style: none;
+}
+
 .connection-card .card-header {
   display: flex;
   align-items: center;

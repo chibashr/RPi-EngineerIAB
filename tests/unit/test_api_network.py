@@ -158,6 +158,33 @@ class TestNetworkVlan:
         assert r.status_code == 400
 
 
+class TestNetworkShareWithHotspot:
+    """Tests for PUT /api/v1/network/interfaces/<id>/share-with-hotspot."""
+
+    def test_wlan_interface_returns_400(self, client):
+        from unittest.mock import patch
+
+        with patch("services.api_gateway.routes.network._network_manager") as mock_nm:
+            mock_nm.set_interface_share_hotspot.side_effect = ValueError(
+                "Cannot share wlan interface with hotspot (it is the hotspot)"
+            )
+            r = client.put("/api/v1/network/interfaces/wlan0/share-with-hotspot", json={"enabled": True})
+        assert r.status_code == 400
+
+    def test_returns_200_with_enabled(self, client):
+        from unittest.mock import patch
+
+        with patch("services.api_gateway.routes.network._network_manager") as mock_nm:
+            mock_nm.set_interface_share_hotspot.return_value = {
+                "interface": "eth0",
+                "share_with_hotspot": True,
+                "applied": False,
+            }
+            r = client.put("/api/v1/network/interfaces/eth0/share-with-hotspot", json={"enabled": True})
+        assert r.status_code == 200
+        assert r.json()["data"]["share_with_hotspot"] is True
+
+
 class TestNetworkHotspot:
     """Tests for POST /api/v1/network/hotspot."""
 

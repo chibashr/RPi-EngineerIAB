@@ -155,6 +155,23 @@ function subnetFrom(ip, netmask) {
   return intToIpv4(ipInt & maskInt);
 }
 
+async function toggleShareWithHotspot(checkbox) {
+  const interfaceId = checkbox.dataset.interfaceId;
+  if (!interfaceId) {
+    return;
+  }
+  const enabled = checkbox.checked;
+  try {
+    await apiPut(`/api/v1/network/interfaces/${encodeURIComponent(interfaceId)}/share-with-hotspot`, {
+      enabled,
+    });
+    showToast(enabled ? `Sharing ${interfaceId} with hotspot.` : `Stopped sharing ${interfaceId}.`, "success");
+  } catch (error) {
+    checkbox.checked = !enabled;
+    showToast("Unable to update connection share.", "error");
+  }
+}
+
 async function configureInterface() {
   if (!interfaceCache.length) {
     showToast("No interfaces available to configure.", "error");
@@ -476,7 +493,7 @@ function renderInterfaces(interfaces) {
   if (!interfaceCache.length) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 5;
+    cell.colSpan = 6;
     cell.textContent = "No interfaces detected.";
     row.appendChild(cell);
     elements.interfaceTable.appendChild(row);
@@ -491,6 +508,25 @@ function renderInterfaces(interfaces) {
       row.appendChild(cell);
     });
 
+    const shareCell = document.createElement("td");
+    const ifaceName = iface.name || iface.id || "";
+    const isHotspot = ifaceName.startsWith("wlan");
+    if (isHotspot) {
+      shareCell.textContent = "--";
+    } else {
+      const label = document.createElement("label");
+      label.className = "toggle";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = iface.share_with_hotspot === true;
+      checkbox.setAttribute("aria-label", `Share ${ifaceName} with hotspot`);
+      checkbox.dataset.interfaceId = ifaceName;
+      checkbox.addEventListener("change", () => toggleShareWithHotspot(checkbox));
+      label.appendChild(checkbox);
+      shareCell.appendChild(label);
+    }
+    row.appendChild(shareCell);
+
     const actionCell = document.createElement("td");
     const detailsButton = document.createElement("button");
     detailsButton.className = "btn btn-ghost";
@@ -504,7 +540,7 @@ function renderInterfaces(interfaces) {
     detailsRow.className = "details-row";
     detailsRow.hidden = true;
     const detailsCell = document.createElement("td");
-    detailsCell.colSpan = 5;
+    detailsCell.colSpan = 6;
     const subnet = subnetFrom(iface.ip_address, iface.netmask);
     const details = [
       { label: "IP address", value: iface.ip_address },

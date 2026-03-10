@@ -30,6 +30,24 @@ def get_interface(interface_id: str):
     return success_response(data)
 
 
+@network_router.put("/interfaces/{interface_id}/share-with-hotspot")
+def set_interface_share_hotspot(interface_id: str, payload: Optional[Dict[str, Any]] = Body(default=None)):
+    """Toggle whether this interface's connection is shared with the wireless hotspot (bridged routing)."""
+    data_in = payload or {}
+    enabled = data_in.get("enabled", True)
+    try:
+        data = _network_manager.set_interface_share_hotspot(interface_id, bool(enabled))
+        logger.info("Interface share-hotspot via API: %s enabled=%s", interface_id, enabled)
+    except KeyError as exc:
+        return error_response("NOT_FOUND", str(exc), status_code=404)
+    except ValueError as exc:
+        return error_response("VALIDATION_ERROR", str(exc), status_code=400)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Share-hotspot failed %s: %s", interface_id, exc)
+        return error_response("INTERNAL_ERROR", str(exc), status_code=500)
+    return success_response(data)
+
+
 @network_router.put("/interfaces/{interface_id}")
 def update_interface(interface_id: str, payload: Optional[Dict[str, Any]] = Body(default=None)):
     data_in = payload or {}

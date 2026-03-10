@@ -128,6 +128,8 @@ install_anydesk() {
     ANYDESK_ID="$(anydesk --get-id 2>/dev/null || true)"
 }
 
+# TeamViewer headless install per https://www.teamviewer.com/en-us/global/support/knowledge-base/teamviewer-remote/download-and-installation/linux/install-teamviewer-classic-on-linux-without-graphical-user-interface/
+# Uses apt install, CLI config (teamviewer passwd, teamviewer setup, teamviewer info). When TeamViewer-only, uses framebuffer (/dev/fb0); no Xvfb needed.
 install_teamviewer() {
     log_step "Installing TeamViewer"
     if dpkg -s teamviewer >/dev/null 2>&1; then
@@ -264,9 +266,9 @@ setup_remote_access() {
         return 0
     fi
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "remote_access"; then
-        log_info "Step 'remote_access' already completed; ensuring virtual display if needed."
+        log_info "Step 'remote_access' already completed; ensuring virtual display if needed (AnyDesk only; TeamViewer uses framebuffer when alone)."
         if [ -f "$CONFIG_DIR/remote_access.conf" ] && command -v jq >/dev/null 2>&1; then
-            if jq -e '(.anydesk.enabled == true) or (.teamviewer.enabled == true)' "$CONFIG_DIR/remote_access.conf" >/dev/null 2>&1; then
+            if jq -e '.anydesk.enabled == true' "$CONFIG_DIR/remote_access.conf" >/dev/null 2>&1; then
                 install_virtual_display
             fi
         fi
@@ -283,10 +285,19 @@ setup_remote_access() {
     if [ -z "$REMOTE_ACCESS_PASSWORD" ]; then
         REMOTE_ACCESS_PASSWORD="$HOTSPOT_PASSWORD"
     fi
-    need_display=$(printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -E '^(anydesk|teamviewer)$' | head -1)
-    if [ -n "$need_display" ]; then
+    # AnyDesk requires Xvfb on headless; TeamViewer can use framebuffer console (no Xorg) per headless docs.
+    need_xvfb=$(printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -q '^anydesk$' && echo 1)
+    if [ -n "$need_xvfb" ]; then
         install_virtual_display
         configure_lightdm_for_x11
+    else
+        if printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -q '^teamviewer$'; then
+            log_info "TeamViewer without AnyDesk: using framebuffer console per TeamViewer headless install docs (no Xvfb)."
+            # Remove Xvfb override so teamviewerd uses framebuffer (/dev/fb0)
+            rm -f /etc/systemd/system/teamviewerd.service.d/display.conf 2>/dev/null
+            rmdir /etc/systemd/system/teamviewerd.service.d 2>/dev/null
+            systemctl daemon-reload
+        fi
     fi
     for tool in "${REMOTE_ACCESS_TOOLS[@]}"; do
         echo "Installing remote access tool: $tool"
