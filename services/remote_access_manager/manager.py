@@ -305,6 +305,13 @@ class RemoteAccessManager:
             )
             if result.returncode != 0:
                 err = (result.stderr or result.stdout or b"").decode("utf-8", errors="replace").strip()
+                if "sudo" in err.lower() and ("terminal" in err.lower() or "password is required" in err.lower()):
+                    script_path = str(script)
+                    return (
+                        "Password reset requires passwordless sudo for the script. "
+                        f"On the device, run the installer again, or create /etc/sudoers.d/rpi-engineer-set-remote-password with: "
+                        f"rpi-engineer ALL=(root) NOPASSWD: {script_path}"
+                    )
                 return err or "Failed to set password"
             return None
         except (OSError, subprocess.TimeoutExpired) as e:

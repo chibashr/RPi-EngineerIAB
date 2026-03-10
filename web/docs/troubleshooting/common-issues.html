@@ -116,6 +116,16 @@ chmod o+x /opt /opt/rpi-engineer</pre>
 </ul>
 <p>See <a href="../features/remote-access.html">Remote access</a> for supported tools.</p>
 
+<h2 id="remote-password-reset-500-sudo">Reset remote access password returns 500 or "sudo: a password is required"</h2>
+<p><strong>Symptom:</strong> Clicking <strong>Reset</strong> next to AnyDesk or TeamViewer password shows a 500 error or a message like <code>sudo: a terminal is required to read the password; either use the -S option...</code> or <code>sudo: a password is required</code>.</p>
+<p><strong>Cause:</strong> The API runs as <code>rpi-engineer</code> and must run <code>sudo bin/set-remote-password.sh</code> without a password (NOPASSWD). If the sudoers rule was never added (e.g. install before this feature, or upgrade that did not re-run configure_services), sudo prompts for a password and fails because there is no terminal.</p>
+<p><strong>Resolution:</strong> On the device, add the sudoers rule so the API can reset passwords without a prompt:</p>
+<ol>
+  <li>Create <code>/etc/sudoers.d/rpi-engineer-set-remote-password</code> with one line: <code>rpi-engineer ALL=(root) NOPASSWD: /opt/rpi-engineer/bin/set-remote-password.sh</code></li>
+  <li>Set permissions: <code>sudo chmod 440 /etc/sudoers.d/rpi-engineer-set-remote-password</code></li>
+</ol>
+<p>Or re-run the installer (Upgrade, use existing configuration) so it adds this rule and <code>read-remote-config.sh</code> automatically.</p>
+
 <h2>Related</h2>
 <ul>
   <li><a href="install-issues.html">Installation issues</a></li>
