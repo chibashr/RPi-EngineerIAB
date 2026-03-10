@@ -252,14 +252,13 @@ function setupEmptyStateButtons() {
 
 function renderDevices(devices) {
   const list = elements.deviceList;
-  const placeholder = elements.listPlaceholder;
   if (!list) return;
   const validDevices = (devices || []).filter(
     (d) => d && (d.id || d.path) && String(d.id || d.path).trim()
   );
   deviceCache = validDevices;
 
-  if (placeholder) placeholder.remove();
+  list.innerHTML = "";
 
   if (!validDevices.length) {
     const li = document.createElement("li");

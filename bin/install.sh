@@ -354,7 +354,23 @@ run_uninstall() {
     fi
 
     if [ "${NONINTERACTIVE:-0}" != "1" ]; then
-        interactive_read -r -p "Remove data and logs too? (y/n) [n]: " remove_data
+        if [ "$USE_TUI" = "1" ]; then
+            whiptail --title "$WHIPTAIL_TITLE" --yesno "Remove data and logs too?
+
+Yes = Remove /var/lib/rpi-engineer and /var/log/rpi-engineer
+No = Keep data and logs" 10 70 3>&1 1>&2 2>&3
+            local ret=$?
+            if [ "$ret" = "0" ]; then
+                remove_data="y"
+            elif [ "$ret" = "255" ]; then
+                whiptail_check_cancel "$ret"
+            else
+                remove_data="n"
+            fi
+        else
+            interactive_read -r -p "Remove data and logs too? (y/n) [n]: " remove_data
+        fi
+        remove_data="${remove_data:-n}"
     elif [ "${RPI_ENGINEER_REMOVE_DATA:-0}" = "1" ]; then
         remove_data="y"
     else
@@ -788,6 +804,109 @@ prompt_hotspot_config() {
     fi
 }
 
+# Prompt for remote access password when AnyDesk, TeamViewer, or VNC is selected.
+# These tools need a password for unattended access. User can use hotspot password or set custom.
+# Env: RPI_ENGINEER_REMOTE_ACCESS_PASSWORD for non-interactive.
+prompt_remote_access_password() {
+    local needs_password=0
+    for t in anydesk teamviewer vnc; do
+        printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -q "^${t}$" && needs_password=1 && break
+    done
+    [ "$needs_password" = "0" ] && return 0
+
+    log_step "Remote access password"
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        if [ -n "${RPI_ENGINEER_REMOTE_ACCESS_PASSWORD:-}" ]; then
+            REMOTE_ACCESS_PASSWORD="$RPI_ENGINEER_REMOTE_ACCESS_PASSWORD"
+            log_info "Non-interactive: using RPI_ENGINEER_REMOTE_ACCESS_PASSWORD."
+        else
+            REMOTE_ACCESS_PASSWORD=""
+            log_info "Non-interactive: remote access password will use hotspot password."
+        fi
+        return 0
+    fi
+    if [ "$USE_TUI" = "1" ]; then
+        whiptail --title "$WHIPTAIL_TITLE" --yesno "AnyDesk, TeamViewer, and VNC need a password for unattended access.
+
+Use the same password as the WiFi hotspot, or set a different one?
+
+Yes = Use hotspot password
+No = Set a custom remote access password" 12 70 3>&1 1>&2 2>&3
+        local ret=$?
+        if [ "$ret" = "0" ]; then
+            REMOTE_ACCESS_PASSWORD=""
+            log_info "Using hotspot password for remote access."
+            return 0
+        fi
+        if [ "$ret" = "255" ]; then
+            whiptail_check_cancel "$ret"
+        fi
+        while true; do
+            REMOTE_ACCESS_PASSWORD=$(whiptail --title "$WHIPTAIL_TITLE" --passwordbox "Enter remote access password (8-63 characters, for AnyDesk/TeamViewer/VNC)" 8 70 3>&1 1>&2 2>&3)
+            whiptail_check_cancel $?
+            password_confirm=$(whiptail --title "$WHIPTAIL_TITLE" --passwordbox "Confirm remote access password" 8 70 3>&1 1>&2 2>&3)
+            whiptail_check_cancel $?
+            if [ "$REMOTE_ACCESS_PASSWORD" != "$password_confirm" ]; then
+                log_warn "Passwords do not match."
+                whiptail --title "$WHIPTAIL_TITLE" --msgbox "Passwords do not match. Please try again." 8 70 3>&1 1>&2 2>&3
+                whiptail_check_cancel $?
+                continue
+            fi
+            if [ "${#REMOTE_ACCESS_PASSWORD}" -ge 8 ] && [ "${#REMOTE_ACCESS_PASSWORD}" -le 63 ]; then
+                break
+            fi
+            log_warn "Remote access password must be 8-63 characters."
+            whiptail --title "$WHIPTAIL_TITLE" --msgbox "Password must be 8-63 characters. Please try again." 8 70 3>&1 1>&2 2>&3
+            whiptail_check_cancel $?
+        done
+        log_info "Using custom remote access password."
+    else
+        echo "Remote access tools (AnyDesk, TeamViewer, VNC) need a password for unattended access."
+        interactive_read -r -p "Use hotspot password or set custom? (h/c) [h]: " pass_choice
+        if [[ "${pass_choice:-h}" =~ ^[Cc]$ ]]; then
+            while true; do
+                interactive_read -r -s -p "Enter remote access password (8-63 characters): " REMOTE_ACCESS_PASSWORD
+                echo
+                interactive_read -r -s -p "Confirm password: " password_confirm
+                echo
+                if [ "$REMOTE_ACCESS_PASSWORD" != "$password_confirm" ]; then
+                    log_warn "Passwords do not match."
+                    continue
+                fi
+                if [ "${#REMOTE_ACCESS_PASSWORD}" -ge 8 ] && [ "${#REMOTE_ACCESS_PASSWORD}" -le 63 ]; then
+                    break
+                fi
+                log_warn "Remote access password must be 8-63 characters."
+            done
+            log_info "Using custom remote access password."
+        else
+            REMOTE_ACCESS_PASSWORD=""
+            log_info "Using hotspot password for remote access."
+        fi
+    fi
+}
+
+# Optional: restrict web/firewall access to a specific LAN subnet. Env: RPI_ENGINEER_LAN_SUBNET.
+prompt_lan_subnet() {
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        LAN_SUBNET="${RPI_ENGINEER_LAN_SUBNET:-}"
+        return 0
+    fi
+    if [ "$USE_TUI" = "1" ]; then
+        LAN_SUBNET=$(whiptail --title "$WHIPTAIL_TITLE" --inputbox "LAN subnet restriction (optional)
+
+Restrict web/firewall access to a specific subnet.
+Example: 192.168.1.0/24
+Leave blank for no restriction." 12 70 "${LAN_SUBNET:-}" 3>&1 1>&2 2>&3)
+        whiptail_check_cancel $?
+    else
+        echo "LAN subnet restriction (optional, e.g. 192.168.1.0/24, leave blank for none):"
+        interactive_read -r -p "Subnet: " LAN_SUBNET
+    fi
+    LAN_SUBNET="${LAN_SUBNET:-}"
+    [ -n "$LAN_SUBNET" ] && log_info "LAN subnet restriction: $LAN_SUBNET"
+}
+
 prompt_hostname() {
     log_step "Hostname configuration"
     local current_hostname
@@ -907,13 +1026,19 @@ confirm_summary() {
         return 0
     fi
     if [ "$USE_TUI" = "1" ]; then
-        local summary
+        local summary remote_pwd_info
+        remote_pwd_info=""
+        if printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -qE '^(anydesk|teamviewer|vnc)$'; then
+            remote_pwd_info=$([ -n "$REMOTE_ACCESS_PASSWORD" ] && echo "Remote access pwd: custom" || echo "Remote access pwd: same as hotspot")
+        fi
         summary="Installation Configuration:
 
 Remote Access: $([ "${#REMOTE_ACCESS_TOOLS[@]}" -eq 0 ] && echo "skip" || echo "${REMOTE_ACCESS_TOOLS[*]}")
+${remote_pwd_info}
 WiFi SSID: $HOTSPOT_SSID
 WiFi Password: ********
 Hostname: $TARGET_HOSTNAME
+LAN subnet: $([ -n "$LAN_SUBNET" ] && echo "$LAN_SUBNET" || echo "none")
 Modules: $([ "${#MODULE_SELECTIONS[@]}" -eq 0 ] && echo "none" || echo "${MODULE_SELECTIONS[*]}")
 
 Is this correct?"
@@ -927,10 +1052,14 @@ Is this correct?"
         echo "  Remote Access: skip"
     else
         echo "  Remote Access: ${REMOTE_ACCESS_TOOLS[*]}"
+        if printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -qE '^(anydesk|teamviewer|vnc)$'; then
+            [ -n "$REMOTE_ACCESS_PASSWORD" ] && echo "  Remote access pwd: custom" || echo "  Remote access pwd: same as hotspot"
+        fi
     fi
     echo "  WiFi SSID: $HOTSPOT_SSID"
     echo "  WiFi Password: ********"
     echo "  Hostname: $TARGET_HOSTNAME"
+    echo "  LAN subnet: ${LAN_SUBNET:-none}"
     if [ "${#MODULE_SELECTIONS[@]}" -eq 0 ]; then
         echo "  Modules: none"
     else
@@ -965,6 +1094,7 @@ tools=${REMOTE_ACCESS_TOOLS[*]:-}
 [network]
 hotspot_ssid=$HOTSPOT_SSID
 hotspot_password_hash=$password_hash
+lan_subnet=${LAN_SUBNET:-}
 
 [modules]
 enabled=${MODULE_SELECTIONS[*]:-}
@@ -980,6 +1110,7 @@ load_install_conf() {
     fi
     TARGET_HOSTNAME="$(awk -F= '/^hostname=/ {print $2; exit}' "$conf")"
     HOTSPOT_SSID="$(awk -F= '/^hotspot_ssid=/ {print $2; exit}' "$conf")"
+    LAN_SUBNET="$(awk -F= '/^lan_subnet=/ {print $2; exit}' "$conf")"
     local tools_line
     tools_line="$(awk -F= '/^tools=/ {print $2; exit}' "$conf")"
     REMOTE_ACCESS_TOOLS=()
@@ -2340,7 +2471,11 @@ setup_remote_access() {
         return 0
     fi
     if [ -z "$REMOTE_ACCESS_PASSWORD" ]; then
-        REMOTE_ACCESS_PASSWORD="$HOTSPOT_PASSWORD"
+        if [ "${NONINTERACTIVE:-0}" = "1" ] && [ -n "${RPI_ENGINEER_REMOTE_ACCESS_PASSWORD:-}" ]; then
+            REMOTE_ACCESS_PASSWORD="$RPI_ENGINEER_REMOTE_ACCESS_PASSWORD"
+        else
+            REMOTE_ACCESS_PASSWORD="$HOTSPOT_PASSWORD"
+        fi
     fi
     # AnyDesk requires Xvfb on headless; TeamViewer can use framebuffer console (no Xorg) per headless docs.
     need_xvfb=$(printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -q '^anydesk$' && echo 1)
@@ -2518,7 +2653,14 @@ reboot_system() {
         log_info "Non-interactive: skipping reboot. Run 'sudo reboot' manually if needed."
         return 0
     fi
-    interactive_read -r -p "Press Enter to reboot now, or Ctrl+C to reboot manually later..."
+    if [ "$USE_TUI" = "1" ]; then
+        whiptail --title "$WHIPTAIL_TITLE" --msgbox "Installation complete. Press OK to reboot now.
+
+Hotspot and network changes take effect after reboot." 8 70 3>&1 1>&2 2>&3
+        whiptail_check_cancel $?
+    else
+        interactive_read -r -p "Press Enter to reboot now, or Ctrl+C to reboot manually later..."
+    fi
     reboot
 }
 
@@ -2526,7 +2668,9 @@ run_wizard() {
     prompt_welcome
     prompt_remote_access
     prompt_hotspot_config
+    prompt_remote_access_password
     prompt_hostname
+    prompt_lan_subnet
     prompt_modules
     confirm_summary
     write_install_conf
@@ -2562,15 +2706,30 @@ main() {
         load_install_conf
         if [ "${NONINTERACTIVE:-0}" != "1" ] && ! step_already_done "hotspot"; then
             log_step "Hotspot password (for resume)"
-            echo "SSID from previous run: $HOTSPOT_SSID"
-            while true; do
-                interactive_read -r -s -p "Enter WiFi hotspot password (8-63 characters): " HOTSPOT_PASSWORD
-                echo
-                if [ "${#HOTSPOT_PASSWORD}" -ge 8 ] && [ "${#HOTSPOT_PASSWORD}" -le 63 ]; then
-                    break
-                fi
-                log_warn "Hotspot password must be 8-63 characters."
-            done
+            if [ "$USE_TUI" = "1" ]; then
+                while true; do
+                    HOTSPOT_PASSWORD=$(whiptail --title "$WHIPTAIL_TITLE" --passwordbox "SSID from previous run: $HOTSPOT_SSID
+
+Enter WiFi hotspot password (8-63 characters):" 10 70 3>&1 1>&2 2>&3)
+                    whiptail_check_cancel $?
+                    if [ "${#HOTSPOT_PASSWORD}" -ge 8 ] && [ "${#HOTSPOT_PASSWORD}" -le 63 ]; then
+                        break
+                    fi
+                    log_warn "Hotspot password must be 8-63 characters."
+                    whiptail --title "$WHIPTAIL_TITLE" --msgbox "Password must be 8-63 characters. Please try again." 8 70 3>&1 1>&2 2>&3
+                    whiptail_check_cancel $?
+                done
+            else
+                echo "SSID from previous run: $HOTSPOT_SSID"
+                while true; do
+                    interactive_read -r -s -p "Enter WiFi hotspot password (8-63 characters): " HOTSPOT_PASSWORD
+                    echo
+                    if [ "${#HOTSPOT_PASSWORD}" -ge 8 ] && [ "${#HOTSPOT_PASSWORD}" -le 63 ]; then
+                        break
+                    fi
+                    log_warn "Hotspot password must be 8-63 characters."
+                done
+            fi
         fi
     elif [ "$INSTALL_MODE" = "upgrade" ] && [ "$UPGRADE_SKIP_CONFIG" = "1" ]; then
         load_install_conf
