@@ -3,7 +3,19 @@ import { initTabs } from "../components.js";
 import { modalForm, modalConfirm } from "../modal.js";
 
 const elements = {
-  interfaceTable: document.getElementById("interface-table-body"),
+  interfaceList: document.getElementById("interface-list"),
+  interfaceListPlaceholder: document.getElementById("interface-list-placeholder"),
+  interfaceDetailEmpty: document.getElementById("interface-detail-empty"),
+  interfaceDetailContent: document.getElementById("interface-detail-content"),
+  interfaceInfoStrip: document.getElementById("interface-info-strip"),
+  interfaceConfigTitle: document.getElementById("interface-config-title"),
+  interfaceDhcpToggle: document.getElementById("interface-dhcp-toggle"),
+  interfaceFormGrid: document.getElementById("interface-form-grid"),
+  interfaceToggleUpDown: document.getElementById("interface-toggle-updown"),
+  interfaceToggleUpDownLabel: document.getElementById("interface-toggle-updown-label"),
+  interfaceSavedMsg: document.getElementById("interface-saved-msg"),
+  interfaceDiscard: document.getElementById("interface-discard"),
+  interfaceApply: document.getElementById("interface-apply"),
   routeTable: document.getElementById("route-table-body"),
   currentRouteTable: document.getElementById("current-route-table-body"),
   profileList: document.getElementById("profile-list"),
@@ -15,6 +27,8 @@ const elements = {
   },
 };
 let interfaceCache = [];
+let selectedInterfaceId = null;
+let interfaceDraft = null;
 
 function showToast(message, variant = "info") {
   const toastRegion = document.getElementById("toast-region");
@@ -30,7 +44,7 @@ function showToast(message, variant = "info") {
 
 function setupActions() {
   const actions = [
-    { id: "configure-interface", action: configureInterface },
+    { id: "add-interface", action: addInterface },
     { id: "add-vlan", action: addVlan },
     { id: "add-route", action: addRoute },
     { id: "save-profile", action: saveProfile },
@@ -172,7 +186,7 @@ async function toggleShareWithHotspot(checkbox) {
   }
 }
 
-async function configureInterface() {
+async function addInterface() {
   if (!interfaceCache.length) {
     showToast("No interfaces available to configure.", "error");
     return;
@@ -207,7 +221,7 @@ async function configureInterface() {
       { name: "netmask", label: "Netmask", default: defaultInterface?.netmask || "255.255.255.0" },
       { name: "gateway", label: "Gateway (optional)", default: defaultInterface?.gateway || "" },
     ],
-    "Configure interface",
+    "Add Interface",
     {
       onOpen: (overlay) => {
         const interfaceSelect = overlay.querySelector("#modal-form-interface_id");
@@ -485,100 +499,286 @@ async function configureHotspot() {
 }
 
 function renderInterfaces(interfaces) {
-  if (!elements.interfaceTable) {
-    return;
-  }
   interfaceCache = interfaces.filter((iface) => !isLoopbackInterface(iface));
-  elements.interfaceTable.textContent = "";
+
+  const listEl = elements.interfaceList;
+  const placeholderEl = elements.interfaceListPlaceholder;
+  if (!listEl) return;
+
+  listEl.textContent = "";
+
   if (!interfaceCache.length) {
-    const row = document.createElement("tr");
-    const cell = document.createElement("td");
-    cell.colSpan = 6;
-    cell.textContent = "No interfaces detected.";
-    row.appendChild(cell);
-    elements.interfaceTable.appendChild(row);
+    const li = document.createElement("li");
+    li.className = "interface-list-placeholder";
+    li.textContent = "No interfaces detected.";
+    listEl.appendChild(li);
+    selectInterface(null);
     return;
   }
 
   interfaceCache.forEach((iface) => {
-    const row = document.createElement("tr");
-    [iface.name || iface.id, iface.status, iface.ip_address, iface.role].forEach((value) => {
-      const cell = document.createElement("td");
-      cell.textContent = value || "--";
-      row.appendChild(cell);
-    });
+    const id = iface.id || iface.name;
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "interface-list-item" + (selectedInterfaceId === id ? " is-active" : "");
+    btn.setAttribute("role", "option");
+    btn.setAttribute("aria-selected", selectedInterfaceId === id ? "true" : "false");
+    btn.dataset.interfaceId = id;
 
-    const shareCell = document.createElement("td");
-    const ifaceName = iface.name || iface.id || "";
-    const isHotspot = ifaceName.startsWith("wlan");
-    if (isHotspot) {
-      shareCell.textContent = "--";
-    } else {
-      const label = document.createElement("label");
-      label.className = "toggle";
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.checked = iface.share_with_hotspot === true;
-      checkbox.setAttribute("aria-label", `Share ${ifaceName} with hotspot`);
-      checkbox.dataset.interfaceId = ifaceName;
-      checkbox.addEventListener("change", () => toggleShareWithHotspot(checkbox));
-      label.appendChild(checkbox);
-      shareCell.appendChild(label);
+    const dot = document.createElement("span");
+    dot.className = "interface-list-item-dot" + (String(iface.status || "").toLowerCase() === "up" ? " is-up" : "");
+
+    const info = document.createElement("div");
+    info.className = "interface-list-item-info";
+    const nameEl = document.createElement("div");
+    nameEl.className = "interface-list-item-name";
+    nameEl.textContent = iface.friendly_name || iface.name || id;
+    const subEl = document.createElement("div");
+    subEl.className = "interface-list-item-subtitle";
+    subEl.textContent = [iface.ip_address || "--", iface.driver || "--"].join(" · ");
+    info.appendChild(nameEl);
+    info.appendChild(subEl);
+
+    const badge = document.createElement("span");
+    const role = String(iface.role || "").toLowerCase();
+    badge.className = "interface-list-item-badge " + (role === "lan" || role === "wan" ? role : "");
+    badge.textContent = role || "--";
+
+    btn.appendChild(dot);
+    btn.appendChild(info);
+    btn.appendChild(badge);
+    btn.addEventListener("click", () => selectInterface(id));
+    li.appendChild(btn);
+    listEl.appendChild(li);
+  });
+
+  if (selectedInterfaceId && !interfaceCache.some((i) => (i.id || i.name) === selectedInterfaceId)) {
+    selectInterface(null);
+  } else if (selectedInterfaceId) {
+    syncDraftFromInterface(interfaceCache.find((i) => (i.id || i.name) === selectedInterfaceId));
+    populateDetailPanel();
+  }
+}
+
+function selectInterface(id) {
+  selectedInterfaceId = id;
+  if (id) {
+    syncDraftFromInterface(interfaceCache.find((i) => (i.id || i.name) === id));
+    if (elements.interfaceDetailEmpty) elements.interfaceDetailEmpty.hidden = true;
+    if (elements.interfaceDetailContent) {
+      elements.interfaceDetailContent.hidden = false;
+      populateDetailPanel();
     }
-    row.appendChild(shareCell);
+    document.querySelectorAll(".interface-list-item").forEach((el) => {
+      el.classList.toggle("is-active", el.dataset.interfaceId === id);
+      el.setAttribute("aria-selected", el.dataset.interfaceId === id ? "true" : "false");
+    });
+  } else {
+    if (elements.interfaceDetailEmpty) elements.interfaceDetailEmpty.hidden = false;
+    if (elements.interfaceDetailContent) elements.interfaceDetailContent.hidden = true;
+    interfaceDraft = null;
+  }
+}
 
-    const actionCell = document.createElement("td");
-    const detailsButton = document.createElement("button");
-    detailsButton.className = "btn btn-ghost";
-    detailsButton.type = "button";
-    detailsButton.textContent = "Details";
-    detailsButton.setAttribute("aria-expanded", "false");
-    actionCell.appendChild(detailsButton);
-    row.appendChild(actionCell);
+function syncDraftFromInterface(iface) {
+  if (!iface) {
+    interfaceDraft = null;
+    return;
+  }
+  const isDhcp = !iface.ip_address || String(iface.mode || "dhcp").toLowerCase() === "dhcp";
+  interfaceDraft = {
+    id: iface.id || iface.name,
+    mode: isDhcp ? "dhcp" : "static",
+    ip_address: iface.ip_address || "",
+    netmask: iface.netmask || "255.255.255.0",
+    gateway: iface.gateway || "",
+    role: String(iface.role || "lan").toLowerCase(),
+    mtu: String(iface.mtu ?? ""),
+    status: String(iface.status || "down").toLowerCase(),
+  };
+}
 
-    const detailsRow = document.createElement("tr");
-    detailsRow.className = "details-row";
-    detailsRow.hidden = true;
-    const detailsCell = document.createElement("td");
-    detailsCell.colSpan = 6;
-    const subnet = subnetFrom(iface.ip_address, iface.netmask);
-    const details = [
-      { label: "IP address", value: iface.ip_address },
-      { label: "Netmask", value: iface.netmask },
-      { label: "Subnet", value: subnet },
-      { label: "Gateway", value: iface.gateway },
+function populateDetailPanel() {
+  const iface = interfaceCache.find((i) => (i.id || i.name) === selectedInterfaceId);
+  if (!iface || !interfaceDraft) return;
+
+  const id = iface.id || iface.name;
+  const status = String(iface.status || "down").toLowerCase();
+
+  if (elements.interfaceInfoStrip) {
+    elements.interfaceInfoStrip.innerHTML = "";
+    const cells = [
+      { label: "Status", value: status, isPill: true },
       { label: "MAC", value: iface.mac_address },
       { label: "MTU", value: iface.mtu },
-      { label: "Speed", value: iface.speed_mbps ? `${iface.speed_mbps} Mbps` : "" },
       { label: "Driver", value: iface.driver },
+      { label: "Speed", value: iface.speed_mbps ? `${iface.speed_mbps} Mbps` : null },
     ];
-    const detailsContent = document.createElement("div");
-    detailsContent.className = "details-content";
-    details.forEach((item) => {
-      const detailItem = document.createElement("div");
-      detailItem.className = "details-item";
-      const label = document.createElement("span");
-      label.className = "details-label";
-      label.textContent = item.label;
-      const value = document.createElement("span");
-      value.className = "details-value";
-      value.textContent = item.value || "--";
-      detailItem.appendChild(label);
-      detailItem.appendChild(value);
-      detailsContent.appendChild(detailItem);
+    cells.forEach(({ label, value, isPill }) => {
+      const cell = document.createElement("div");
+      cell.className = "interface-info-cell";
+      cell.innerHTML = `<div class="interface-info-label">${escapeHtml(label)}</div><div class="interface-info-value">`;
+      const valEl = cell.querySelector(".interface-info-value");
+      if (isPill && (label === "Status")) {
+        const pill = document.createElement("span");
+        pill.className = "interface-info-status-pill " + (status === "up" ? "is-up" : "is-down");
+        pill.textContent = status || "--";
+        valEl.appendChild(pill);
+      } else {
+        valEl.textContent = value || "--";
+      }
+      elements.interfaceInfoStrip.appendChild(cell);
     });
-    detailsCell.appendChild(detailsContent);
-    detailsRow.appendChild(detailsCell);
+  }
 
-    detailsButton.addEventListener("click", () => {
-      const expanded = detailsButton.getAttribute("aria-expanded") === "true";
-      detailsButton.setAttribute("aria-expanded", expanded ? "false" : "true");
-      detailsRow.hidden = expanded;
+  if (elements.interfaceConfigTitle) {
+    elements.interfaceConfigTitle.textContent = `Configuration — ${iface.friendly_name || id}`;
+  }
+
+  if (elements.interfaceDhcpToggle) {
+    elements.interfaceDhcpToggle.checked = interfaceDraft.mode === "dhcp";
+    elements.interfaceDhcpToggle.onchange = () => {
+      interfaceDraft.mode = elements.interfaceDhcpToggle.checked ? "dhcp" : "static";
+      setStaticFieldsDisabled(elements.interfaceDhcpToggle.checked);
+    };
+    setStaticFieldsDisabled(interfaceDraft.mode === "dhcp");
+  }
+
+  if (elements.interfaceFormGrid) {
+    elements.interfaceFormGrid.innerHTML = "";
+    const fields = [
+      { key: "ip_address", label: "IP Address", type: "text", disabled: interfaceDraft.mode === "dhcp" },
+      { key: "netmask", label: "Netmask", type: "text", disabled: interfaceDraft.mode === "dhcp" },
+      { key: "gateway", label: "Gateway", type: "text", disabled: interfaceDraft.mode === "dhcp" },
+      {
+        key: "role",
+        label: "Role",
+        type: "select",
+        options: [
+          { value: "lan", label: "LAN" },
+          { value: "wan", label: "WAN" },
+        ],
+        disabled: false,
+      },
+      { key: "mtu", label: "MTU", type: "text", disabled: false },
+    ];
+    fields.forEach(({ key, label, type, options, disabled }) => {
+      const field = document.createElement("div");
+      field.className = "field";
+      field.dataset.fieldKey = key;
+      const lab = document.createElement("label");
+      lab.className = "field-label";
+      lab.htmlFor = `interface-form-${key}`;
+      lab.textContent = label;
+      field.appendChild(lab);
+      if (type === "select") {
+        const sel = document.createElement("select");
+        sel.id = `interface-form-${key}`;
+        sel.className = "select input";
+        sel.dataset.key = key;
+        (options || []).forEach((opt) => {
+          const o = document.createElement("option");
+          o.value = opt.value;
+          o.textContent = opt.label;
+          o.selected = (interfaceDraft[key] || "").toLowerCase() === opt.value.toLowerCase();
+          sel.appendChild(o);
+        });
+        sel.disabled = !!disabled;
+        sel.addEventListener("change", () => {
+          interfaceDraft[key] = sel.value;
+        });
+        field.appendChild(sel);
+      } else {
+        const inp = document.createElement("input");
+        inp.id = `interface-form-${key}`;
+        inp.type = type || "text";
+        inp.className = "input";
+        inp.dataset.key = key;
+        inp.value = interfaceDraft[key] || "";
+        inp.disabled = !!disabled;
+        inp.addEventListener("input", () => {
+          interfaceDraft[key] = inp.value;
+        });
+        field.appendChild(inp);
+      }
+      elements.interfaceFormGrid.appendChild(field);
     });
+  }
 
-    elements.interfaceTable.appendChild(row);
-    elements.interfaceTable.appendChild(detailsRow);
+  if (elements.interfaceToggleUpDown && elements.interfaceToggleUpDownLabel) {
+    const isUp = status === "up";
+    elements.interfaceToggleUpDownLabel.textContent = isUp ? "Bring Down" : "Bring Up";
+    elements.interfaceToggleUpDown.className = isUp ? "btn btn-ghost btn-danger-ghost" : "btn btn-secondary";
+    elements.interfaceToggleUpDown.onclick = () => {
+      showToast("Interface bring up/down requires backend support.", "info");
+    };
+  }
+
+  if (elements.interfaceDiscard) {
+    elements.interfaceDiscard.onclick = () => {
+      syncDraftFromInterface(iface);
+      populateDetailPanel();
+    };
+  }
+
+  if (elements.interfaceApply) {
+    elements.interfaceApply.onclick = () => applyInterfaceConfig();
+  }
+}
+
+function setStaticFieldsDisabled(disabled) {
+  ["ip_address", "netmask", "gateway"].forEach((key) => {
+    const inp = elements.interfaceFormGrid?.querySelector(`[data-key="${key}"]`);
+    if (inp) inp.disabled = disabled;
   });
+}
+
+function getFormValues() {
+  const values = { ...interfaceDraft };
+  if (elements.interfaceFormGrid) {
+    elements.interfaceFormGrid.querySelectorAll("[data-key]").forEach((el) => {
+      values[el.dataset.key] = el.value;
+    });
+  }
+  return values;
+}
+
+function applyInterfaceConfig() {
+  if (!selectedInterfaceId || !interfaceDraft) return;
+  const vals = getFormValues();
+  const payload = { mode: vals.mode };
+  if (vals.mode === "static") {
+    if (!vals.ip_address?.trim() || !vals.netmask?.trim()) {
+      showToast("IP address and netmask are required for static mode.", "error");
+      return;
+    }
+    payload.ip_address = vals.ip_address.trim();
+    payload.netmask = vals.netmask.trim();
+    if (vals.gateway?.trim()) payload.gateway = vals.gateway.trim();
+  }
+  apiPut(`/api/v1/network/interfaces/${encodeURIComponent(selectedInterfaceId)}`, payload)
+    .then(() => {
+      showSavedMessage();
+      showToast(`Updated ${selectedInterfaceId}.`, "success");
+      loadNetworkData();
+    })
+    .catch(() => showToast("Unable to update interface.", "error"));
+}
+
+function showSavedMessage() {
+  const msg = elements.interfaceSavedMsg;
+  if (!msg) return;
+  msg.textContent = "✓ Saved";
+  msg.hidden = false;
+  msg.classList.remove("fade-out");
+  clearTimeout(msg._fadeTimeout);
+  msg._fadeTimeout = setTimeout(() => {
+    msg.classList.add("fade-out");
+    msg._fadeTimeout = setTimeout(() => {
+      msg.hidden = true;
+    }, 300);
+  }, 2500);
 }
 
 function renderRoutes(routes) {

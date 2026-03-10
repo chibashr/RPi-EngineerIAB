@@ -135,36 +135,64 @@
             </button>
           </div>
 
-          <section class="card" data-tab-panel="interfaces">
+          <section class="card interfaces-card" data-tab-panel="interfaces">
             <div class="section-header">
               <h2>Interfaces</h2>
               <div class="section-actions">
                 <button class="btn btn-secondary" id="refresh-interfaces">
-                  Refresh Interfaces
+                  Refresh
                 </button>
-                <button class="btn btn-primary" id="configure-interface">
-                  Configure Interface
+                <button class="btn btn-primary" id="add-interface">
+                  Add Interface
                 </button>
               </div>
             </div>
-            <div class="section-body">
-              <table class="status-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Status</th>
-                    <th>IP</th>
-                    <th>Role</th>
-                    <th>Share with Hotspot</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="interface-table-body">
-                  <tr>
-                    <td colspan="6">Loading interfaces...</td>
-                  </tr>
-                </tbody>
-              </table>
+            <div class="interfaces-panel-body">
+              <aside class="interfaces-list-panel" aria-label="Interface list">
+                <ul class="interface-list" id="interface-list" role="listbox">
+                  <li class="interface-list-placeholder" id="interface-list-placeholder">
+                    Loading interfaces...
+                  </li>
+                </ul>
+              </aside>
+              <div class="interface-detail-panel" id="interface-detail-panel" aria-live="polite">
+                <div class="interface-detail-empty" id="interface-detail-empty">
+                  <svg class="empty-state-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                    <line x1="8" y1="21" x2="16" y2="21"/>
+                    <line x1="12" y1="17" x2="12" y2="21"/>
+                  </svg>
+                  <p class="empty-state-desc">Select an interface to view details and configure.</p>
+                </div>
+                <div class="interface-detail-content" id="interface-detail-content" hidden>
+                  <div class="interface-info-strip" id="interface-info-strip"></div>
+                  <div class="interface-config-section">
+                    <h3 class="interface-config-title" id="interface-config-title">Configuration</h3>
+                    <div class="interface-dhcp-row">
+                      <div>
+                        <span class="field-label">DHCP</span>
+                        <p class="field-desc">Assign address automatically</p>
+                      </div>
+                      <label class="toggle">
+                        <input type="checkbox" id="interface-dhcp-toggle" aria-label="DHCP mode">
+                      </label>
+                    </div>
+                    <div class="interface-form-grid" id="interface-form-grid"></div>
+                  </div>
+                  <footer class="interface-detail-footer">
+                    <div class="interface-footer-left">
+                      <button type="button" class="btn btn-ghost btn-danger-ghost" id="interface-toggle-updown" aria-label="Bring interface up or down">
+                        <span id="interface-toggle-updown-label">Bring Down</span>
+                      </button>
+                      <span class="interface-saved-msg" id="interface-saved-msg" aria-live="polite" hidden>Saved</span>
+                    </div>
+                    <div class="interface-footer-right">
+                      <button type="button" class="btn btn-secondary" id="interface-discard">Discard</button>
+                      <button type="button" class="btn btn-primary" id="interface-apply">Apply</button>
+                    </div>
+                  </footer>
+                </div>
+              </div>
             </div>
           </section>
 
