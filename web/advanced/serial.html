@@ -168,6 +168,23 @@
 
           <section class="card">
             <div class="section-header">
+              <h2>Syntax Highlighting</h2>
+            </div>
+            <div class="section-body" id="serial-highlight-panel">
+              <label class="field checkbox-field highlight-global-toggle">
+                <input type="checkbox" id="highlight-enabled" checked />
+                <span class="field-label">Enable syntax highlighting</span>
+              </label>
+              <div id="serial-highlight-groups"></div>
+              <div class="highlight-actions">
+                <button type="button" class="btn btn-secondary btn-sm" id="highlight-add-group">Add Group</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="highlight-reset-defaults">Reset to Defaults</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-header">
               <h2>Session Logs</h2>
               <span class="panel-meta" id="serial-logs-meta" aria-live="polite"></span>
             </div>
