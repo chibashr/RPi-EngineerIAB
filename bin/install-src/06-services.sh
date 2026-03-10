@@ -148,7 +148,22 @@ EOF
 }
 
 configure_services() {
-    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "services"; then log_info "Step 'services' already completed; skipping."; SERVICES_CONFIGURED="yes"; return 0; fi
+    if [ "$INSTALL_MODE" = "continue" ] && step_already_done "services"; then
+        log_info "Step 'services' already completed; skipping."
+        # Always ensure newer sudoers rules exist (e.g. remote password reset) so upgrades get them
+        add_sudoers_rule() {
+            local script="$1" name="$2"
+            [ -f "$script" ] || return 0
+            chmod 755 "$script"
+            mkdir -p /etc/sudoers.d
+            echo "$SERVICE_USER ALL=(root) NOPASSWD: $script" > "/etc/sudoers.d/rpi-engineer-$name"
+            chmod 440 "/etc/sudoers.d/rpi-engineer-$name"
+        }
+        add_sudoers_rule "$INSTALL_DIR/bin/read-remote-config.sh" "read-remote-config"
+        add_sudoers_rule "$INSTALL_DIR/bin/set-remote-password.sh" "set-remote-password"
+        SERVICES_CONFIGURED="yes"
+        return 0
+    fi
     log_step "Configuring systemd services"
     create_master_service
     local api_env="Environment=RPI_ENGINEER_ROOT=${INSTALL_DIR}
