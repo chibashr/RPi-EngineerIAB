@@ -174,24 +174,48 @@ function subnetFrom(ip, netmask) {
 async function toggleShareWithHotspot(checkbox) {
   const interfaceId = checkbox.dataset.interfaceId;
   if (!interfaceId) return;
-  const enabled = checkbox.checked;
+
+  const intended = checkbox.checked;
   const wrap = checkbox.closest(".interface-share-toggle-wrap");
   const loadingEl = document.getElementById("interface-share-loading");
+
+  // Lock UI immediately
+  checkbox.disabled = true;
+  checkbox.dataset.pending = "true";
   if (wrap) wrap.classList.add("is-loading");
   if (loadingEl) loadingEl.hidden = false;
-  checkbox.disabled = true;
+
   try {
-    await apiPut(`/api/v1/network/interfaces/${encodeURIComponent(interfaceId)}/share-with-hotspot`, {
-      enabled,
-    });
-    showToast(enabled ? `Sharing ${interfaceId} with hotspot.` : `Stopped sharing ${interfaceId}.`, "success");
+    await apiPut(
+      `/api/v1/network/interfaces/${encodeURIComponent(interfaceId)}/share-with-hotspot`,
+      { enabled: intended }
+    );
+
+    // Re-fetch the interface to get the actual server state — do not trust the checkbox
     await loadNetworkData();
     if (selectedInterfaceId) selectInterface(selectedInterfaceId);
-  } catch (error) {
-    checkbox.checked = !enabled;
+
+    // Read back the real value from the refreshed cache
+    const updated = interfaceCache.find((i) => (i.id || i.name) === interfaceId);
+    const actual = updated?.share_with_hotspot === true;
+
+    if (actual !== intended) {
+      // Server state disagrees with what we asked for — show a warning
+      showToast(`Share state mismatch on ${interfaceId} — check Pi logs.`, "error");
+    } else {
+      showToast(
+        intended ? `Sharing ${interfaceId} with hotspot.` : `Stopped sharing ${interfaceId}.`,
+        "success"
+      );
+    }
+  } catch (err) {
+    // Revert checkbox to last known good state from cache
+    const cached = interfaceCache.find((i) => (i.id || i.name) === interfaceId);
+    checkbox.checked = cached?.share_with_hotspot === true;
     showToast("Unable to update connection share.", "error");
   } finally {
     checkbox.disabled = false;
+    delete checkbox.dataset.pending;
     if (wrap) wrap.classList.remove("is-loading");
     if (loadingEl) loadingEl.hidden = true;
   }
@@ -670,7 +694,16 @@ function populateDetailPanel() {
     } else {
       elements.interfaceShareRow.hidden = false;
       elements.interfaceShareHotspotToggle.dataset.interfaceId = id;
-      elements.interfaceShareHotspotToggle.checked = iface.share_with_hotspot === true;
+
+      // Always set checked from server data, never from prior DOM state
+      const isSharing = iface.share_with_hotspot === true;
+      elements.interfaceShareHotspotToggle.checked = isSharing;
+
+      // Disable the toggle if another interface is currently pending
+      const anyPending = document.querySelector("[data-pending='true']");
+      elements.interfaceShareHotspotToggle.disabled = !!anyPending;
+
+      // Replace onchange each render to avoid stale closures
       elements.interfaceShareHotspotToggle.onchange = () =>
         toggleShareWithHotspot(elements.interfaceShareHotspotToggle);
     }

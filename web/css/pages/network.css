@@ -449,14 +449,26 @@
   gap: 0.5rem;
 }
 
-.interface-share-toggle-wrap.is-loading .share-with-hotspot-toggle {
-  pointer-events: none;
+.share-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: share-spin 0.6s linear infinite;
   opacity: 0.6;
 }
 
-.interface-share-loading {
-  width: 18px;
-  height: 18px;
+@keyframes share-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.interface-share-toggle-wrap.is-loading input[type="checkbox"] {
+  opacity: 0.4;
+  pointer-events: none;
 }
 
 .interface-form-grid {
