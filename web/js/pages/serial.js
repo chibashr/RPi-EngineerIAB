@@ -415,7 +415,6 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
     localEcho: false,
     consoleLines: getConsoleLines(),
     syntaxRules: getSyntaxRules(syntaxMode()),
-    tabEl: null,
     tabPanelEl: null,
     terminalEl: null,
     inputEl: null,
@@ -424,32 +423,14 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   };
   sessionMap.set(sessionId, state);
 
-  const tab = document.createElement("button");
-  tab.type = "button";
-  tab.className = "tab-button";
-  tab.setAttribute("role", "tab");
-  tab.setAttribute("aria-selected", "false");
-  tab.dataset.sessionId = sessionId;
-  tab.appendChild(document.createTextNode(deviceName));
-  const closeSpan = document.createElement("span");
-  closeSpan.className = "serial-tab-close";
-  closeSpan.setAttribute("aria-label", "Close");
-  closeSpan.textContent = "×";
-  closeSpan.addEventListener("click", (e) => {
-    e.stopPropagation();
-    disconnectDevice(sessionId);
-  });
-  tab.appendChild(closeSpan);
-  tab.addEventListener("click", (e) => {
-    if (e.target !== closeSpan) switchTab(sessionId);
-  });
-  state.tabEl = tab;
-
   const panel = document.createElement("div");
   panel.className = "console-tab-panel console-block";
   panel.dataset.sessionId = sessionId;
   panel.setAttribute("role", "tabpanel");
   state.tabPanelEl = panel;
+
+  const toolbarRow = document.createElement("div");
+  toolbarRow.className = "console-toolbar-row";
 
   const toolbar = document.createElement("div");
   toolbar.className = "console-toolbar";
@@ -509,7 +490,7 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   syntaxLabel.append(syntaxSelect, syntaxConfigBtn);
   const linesLabel = document.createElement("label");
   linesLabel.className = "field";
-  linesLabel.innerHTML = '<span class="field-label">Console lines</span>';
+  linesLabel.innerHTML = '<span class="field-label">Lines</span>';
   const linesSelect = document.createElement("select");
   linesSelect.className = "select";
   linesSelect.title = "Visible lines in console (fixed height)";
@@ -540,9 +521,7 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   });
   details.append(syntaxLabel, linesLabel, echoLabel);
 
-  const side = document.createElement("div");
-  side.className = "console-panel-side";
-  side.append(toolbar, details);
+  toolbarRow.append(toolbar, details);
 
   const status = document.createElement("div");
   status.className = "console-status status-disconnected";
@@ -575,12 +554,8 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   main.className = "console-panel-main";
   main.append(status, body);
 
-  const row = document.createElement("div");
-  row.className = "console-panel-row";
-  row.append(side, main);
-  panel.appendChild(row);
+  panel.append(toolbarRow, main);
 
-  elements.consoleTabs?.appendChild(tab);
   elements.consolePanels?.appendChild(panel);
 
   setupTerminalInputForSession(state);
@@ -687,10 +662,7 @@ function switchTab(sessionId) {
   const state = sessionMap.get(sessionId);
   if (state?.deviceId) selectedDeviceId = state.deviceId;
   sessionMap.forEach((s, sid) => {
-    const isActive = sid === sessionId;
-    s.tabEl?.classList.toggle("tab-button-active", isActive);
-    s.tabEl?.setAttribute("aria-selected", isActive ? "true" : "false");
-    s.tabPanelEl?.classList.toggle("is-active", isActive);
+    s.tabPanelEl?.classList.toggle("is-active", sid === sessionId);
   });
   updateListSelection();
   state?.inputEl?.focus();
@@ -707,7 +679,6 @@ function removeTabAndDisconnect(sessionId) {
     state.wsClient.close();
     state.wsClient = null;
   }
-  state.tabEl?.remove();
   state.tabPanelEl?.remove();
   sessionMap.delete(sessionId);
   if (activeTabSessionId === sessionId) {

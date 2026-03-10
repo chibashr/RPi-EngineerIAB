@@ -46,24 +46,6 @@ MODULES_INSTALLED="no"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# TUI detection: use whiptail only when interactive, not piped, whiptail available, and TTY present.
-USE_TUI=0
-if [ "${NONINTERACTIVE:-0}" != "1" ] && \
-   command -v whiptail >/dev/null 2>&1 && \
-   [ -t 0 ] && \
-   [ ! -p /dev/stdin ] 2>/dev/null; then
-    USE_TUI=1
-fi
-readonly WHIPTAIL_TITLE=" RPi Engineer-in-a-Box "
-
-whiptail_check_cancel() {
-    local ret=$1
-    if [ "$ret" = "1" ] || [ "$ret" = "255" ]; then
-        log_error "Installation aborted by user."
-        exit 1
-    fi
-}
-
 log_info() {
     echo "[INFO] $1" | tee -a "$INSTALL_LOG"
 }
@@ -105,20 +87,9 @@ mark_step_done() {
 }
 
 # Simple scrolling progress only; no scroll region or cursor tricks.
-# When USE_TUI=1, progress_bar uses whiptail --gauge fed via a named pipe.
 PROGRESS_BAR_WIDTH=40
-GAUGE_FIFO=""
-GAUGE_PID=""
-
 progress_init() {
-    if [ "$USE_TUI" = "1" ]; then
-        GAUGE_FIFO="/tmp/rpi-engineer-gauge-$$.pipe"
-        mkfifo "$GAUGE_FIFO" 2>/dev/null || true
-        whiptail --title "$WHIPTAIL_TITLE" --gauge "Initializing..." 8 70 0 < "$GAUGE_FIFO" &
-        GAUGE_PID=$!
-        exec 3>"$GAUGE_FIFO"
-        printf "XXX\n0\nInitializing...\nXXX\n" >&3
-    fi
+    : # No-op; progress just scrolls with output
 }
 
 progress_ensure_region() {
@@ -131,33 +102,22 @@ progress_bar() {
     local label="${3:-}"
     local pct=0
     [ "$total" -gt 0 ] && pct=$((current * 100 / total))
-    if [ "$USE_TUI" = "1" ] && [ -n "$GAUGE_FIFO" ] && [ -n "$GAUGE_PID" ]; then
-        printf "XXX\n%d\n%s\nXXX\n" "$pct" "$label" >&3
-    else
-        local filled=$((current * PROGRESS_BAR_WIDTH / total))
-        [ "$filled" -gt "$PROGRESS_BAR_WIDTH" ] && filled=$PROGRESS_BAR_WIDTH
-        local bar=""
-        local i=0
-        for ((i = 0; i < PROGRESS_BAR_WIDTH; i++)); do
-            [ "$i" -lt "$filled" ] && bar="${bar}=" || bar="${bar}-"
-        done
-        local max_label_len=36
-        [ "${#label}" -gt "$max_label_len" ] && label="${label:0:$((max_label_len - 3))}..."
-        local line="[${bar}] ${pct}% ${label}"
-        echo "$line"
-    fi
+    local filled=$((current * PROGRESS_BAR_WIDTH / total))
+    [ "$filled" -gt "$PROGRESS_BAR_WIDTH" ] && filled=$PROGRESS_BAR_WIDTH
+    local bar=""
+    local i=0
+    for ((i = 0; i < PROGRESS_BAR_WIDTH; i++)); do
+        [ "$i" -lt "$filled" ] && bar="${bar}=" || bar="${bar}-"
+    done
+    local max_label_len=36
+    [ "${#label}" -gt "$max_label_len" ] && label="${label:0:$((max_label_len - 3))}..."
+    local line="[${bar}] ${pct}% ${label}"
+    echo "$line"
     echo "[INFO] Progress: ${current}/${total} (${pct}%) ${label}" >> "$INSTALL_LOG"
 }
 
 progress_cleanup() {
-    if [ "$USE_TUI" = "1" ] && [ -n "$GAUGE_FIFO" ] && [ -n "$GAUGE_PID" ]; then
-        printf "XXX\n100\nComplete\nXXX\n" >&3
-        exec 3>&-
-        wait "$GAUGE_PID" 2>/dev/null || true
-        rm -f "$GAUGE_FIFO"
-        GAUGE_FIFO=""
-        GAUGE_PID=""
-    fi
+    : # No-op; no scroll region to reset
 }
 
 detect_interrupted_install() {
@@ -319,6 +279,384 @@ run_preflight_checks() {
     log_info "Pre-flight checks passed."
 }
 
+get_default_hotspot_ssid() {
+    local suffix="0000"
+    if [ -f /sys/class/net/wlan0/address ]; then
+        suffix="$(tr -d ':' < /sys/class/net/wlan0/address | tail -c 5)"
+    fi
+    echo "${DEFAULT_HOTSPOT_SSID_PREFIX}-${suffix}"
+}
+
+get_system_info() {
+    local ram_mb
+    local storage_mb
+    ram_mb="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)"
+    storage_mb="$(df -Pm / | awk 'NR==2 {print $4}')"
+    echo "  OS: ${OS_ID} ${OS_VERSION}"
+    echo "  Model: $([ -f /proc/device-tree/model ] && tr -d '\0' < /proc/device-tree/model || echo "Unknown")"
+    echo "  RAM: ${ram_mb}MB"
+    echo "  Storage: ${storage_mb}MB available"
+}
+
+determine_install_mode() {
+    if [ "$INSTALL_MODE" = "continue" ]; then
+        log_info "Install mode: continue (repair/resume interrupted install)"
+        return 0
+    fi
+    if [ "${NONINTERACTIVE:-0}" = "1" ] && [ "$INSTALL_MODE" = "reconfigure" ]; then
+        log_info "Install mode: reconfigure (from environment; will use existing install.conf)"
+        return 0
+    fi
+    if [ "${NONINTERACTIVE:-0}" = "1" ] && [ "$INSTALL_MODE" = "uninstall" ]; then
+        log_info "Install mode: uninstall (from environment)"
+        return 0
+    fi
+    if [ "${NONINTERACTIVE:-0}" = "1" ] && [ "$INSTALL_MODE" = "quick_update" ]; then
+        log_info "Install mode: quick update (from environment)"
+        return 0
+    fi
+    if [ -d "$INSTALL_DIR" ] || [ -d "$CONFIG_DIR" ]; then
+        log_warn "Existing installation detected."
+        if [ "${NONINTERACTIVE:-0}" != "1" ]; then
+            echo "Select install mode:"
+            echo "  1) Upgrade (update files and services)"
+            echo "  2) Quick update (update repo only, no wizard)"
+            echo "  3) Reconfigure (wizard and config only)"
+            echo "  4) Uninstall"
+            echo "  5) Abort"
+            interactive_read -r -p "Enter choice (1-5) [1]: " choice
+        fi
+        case "${choice:-1}" in
+            1) INSTALL_MODE="upgrade" ;;
+            2) INSTALL_MODE="quick_update" ;;
+            3) INSTALL_MODE="reconfigure" ;;
+            4) INSTALL_MODE="uninstall" ;;
+            5) log_error "Installation aborted by user."; exit 1 ;;
+            *) INSTALL_MODE="upgrade" ;;
+        esac
+        if [ "$INSTALL_MODE" = "upgrade" ]; then
+            if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+                UPGRADE_SKIP_CONFIG="1"
+                log_info "Non-interactive upgrade: using existing configuration."
+            else
+                echo "Upgrade configuration:"
+                echo "  1) Use existing configuration (only choose modules)"
+                echo "  2) Re-run full configuration wizard"
+                interactive_read -r -p "Enter choice (1-2) [1]: " upgrade_choice
+                case "${upgrade_choice:-1}" in
+                    1) UPGRADE_SKIP_CONFIG="1"; log_info "Upgrade: using existing configuration (upgrade in place)." ;;
+                    2) UPGRADE_SKIP_CONFIG="0"; log_info "Upgrade: re-running full wizard." ;;
+                    *) UPGRADE_SKIP_CONFIG="1" ;;
+                esac
+            fi
+        fi
+    else
+        INSTALL_MODE="fresh"
+    fi
+    log_info "Install mode: $INSTALL_MODE"
+}
+
+# Offer repair/continue when a previous run was interrupted (progress file left behind)
+prompt_repair_or_start_over() {
+    if ! detect_interrupted_install; then
+        return 0
+    fi
+    log_warn "Interrupted installation detected (progress file present)."
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        log_info "Non-interactive: continuing (repair) installation."
+        INSTALL_MODE="continue"
+        return 0
+    fi
+    echo "The previous installation did not finish. You can:"
+    echo "  1) Continue / Repair (resume from where it stopped)"
+    echo "  2) Start over (discard progress and run a new install)"
+    interactive_read -r -p "Enter choice (1-2) [1]: " choice
+    case "${choice:-1}" in
+        1) INSTALL_MODE="continue"; log_info "Continuing interrupted installation." ;;
+        2)
+            rm -f "$INSTALL_PROGRESS_FILE"
+            log_info "Progress file removed; starting fresh."
+            ;;
+        *) INSTALL_MODE="continue" ;;
+    esac
+}
+
+prompt_welcome() {
+    log_step "Welcome"
+    cat <<'EOF'
+============================================================
+          RPi Engineer-in-a-Box Installation
+                    Version 1.0.0
+============================================================
+EOF
+    echo "This script will install RPi Engineer-in-a-Box on your system."
+    echo
+    echo "System Information:"
+    get_system_info
+    echo
+    echo "This installation will:"
+    echo "  - Install system dependencies"
+    echo "  - Configure network interfaces"
+    echo "  - Set up WiFi hotspot"
+    echo "  - Install selected remote access tool"
+    echo "  - Install selected modules"
+    echo "  - Configure systemd services"
+    echo
+    echo "Estimated time: 10-15 minutes"
+    echo
+    if [ "${NONINTERACTIVE:-0}" != "1" ]; then
+        interactive_read -r -p "Do you want to continue? (y/n): " confirm
+        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+            log_error "Installation aborted by user."
+            exit 1
+        fi
+    else
+        log_info "Non-interactive mode: proceeding."
+    fi
+}
+
+prompt_remote_access() {
+    log_step "Remote access configuration"
+    if [ "${NONINTERACTIVE:-0}" != "1" ]; then
+        echo "Select the remote access tool you want to install:"
+        echo "  1) AnyDesk (Recommended)"
+        echo "  2) TeamViewer"
+        echo "  3) TigerVNC"
+        echo "  4) Raspberry Pi Connect (Raspberry Pi OS only)"
+        echo "  5) Install multiple (select after)"
+        echo "  6) Skip (install manually later)"
+        interactive_read -r -p "Enter your choice (1-6) [6]: " choice
+    fi
+    case "${choice:-6}" in
+        1) REMOTE_ACCESS_TOOLS=("anydesk") ;;
+        2) REMOTE_ACCESS_TOOLS=("teamviewer") ;;
+        3) REMOTE_ACCESS_TOOLS=("vnc") ;;
+        4) REMOTE_ACCESS_TOOLS=("rpi_connect") ;;
+        5)
+            echo "Select tools to install (comma-separated, e.g., 1,2):"
+            echo "  1) AnyDesk"
+            echo "  2) TeamViewer"
+            echo "  3) TigerVNC"
+            echo "  4) Raspberry Pi Connect (Raspberry Pi OS only)"
+            interactive_read -r -p "Enter your choices: " multi_choice
+            IFS=',' read -r -a selections <<< "${multi_choice:-}"
+            REMOTE_ACCESS_TOOLS=()
+            for selection in "${selections[@]}"; do
+                case "$(echo "$selection" | tr -d ' ')" in
+                    1) REMOTE_ACCESS_TOOLS+=("anydesk") ;;
+                    2) REMOTE_ACCESS_TOOLS+=("teamviewer") ;;
+                    3) REMOTE_ACCESS_TOOLS+=("vnc") ;;
+                    4) REMOTE_ACCESS_TOOLS+=("rpi_connect") ;;
+                esac
+            done
+            ;;
+        6) REMOTE_ACCESS_TOOLS=() ;;
+        *) REMOTE_ACCESS_TOOLS=() ;;
+    esac
+    if [ "${#REMOTE_ACCESS_TOOLS[@]}" -eq 0 ]; then
+        log_info "Selected remote access tool: skip"
+    else
+        log_info "Selected remote access tools: ${REMOTE_ACCESS_TOOLS[*]}"
+    fi
+}
+
+prompt_hotspot_config() {
+    log_step "WiFi hotspot configuration"
+    local default_ssid
+    default_ssid="$(get_default_hotspot_ssid)"
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        HOTSPOT_SSID="${default_ssid}"
+        HOTSPOT_PASSWORD="rpi-engineer-default-password"
+        log_info "Non-interactive: using default SSID and password."
+    else
+        echo "Default SSID: ${default_ssid}"
+        interactive_read -r -p "Press Enter to use default, or type custom SSID: " HOTSPOT_SSID
+        if [ -z "$HOTSPOT_SSID" ]; then
+            HOTSPOT_SSID="$default_ssid"
+        fi
+        while true; do
+            interactive_read -r -s -p "Enter WiFi hotspot password (8-63 characters): " HOTSPOT_PASSWORD
+            echo
+            interactive_read -r -s -p "Confirm password: " password_confirm
+            echo
+            if [ "$HOTSPOT_PASSWORD" != "$password_confirm" ]; then
+                log_warn "Passwords do not match."
+                continue
+            fi
+            if [ "${#HOTSPOT_PASSWORD}" -ge 8 ] && [ "${#HOTSPOT_PASSWORD}" -le 63 ]; then
+                break
+            fi
+            log_warn "Hotspot password must be 8-63 characters."
+        done
+    fi
+}
+
+prompt_hostname() {
+    log_step "Hostname configuration"
+    local current_hostname
+    current_hostname="$(hostname)"
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        TARGET_HOSTNAME="$current_hostname"
+    else
+        echo "Current hostname: $current_hostname"
+        interactive_read -r -p "Enter new hostname (or press Enter to keep current): " TARGET_HOSTNAME
+        if [ -z "$TARGET_HOSTNAME" ]; then
+            TARGET_HOSTNAME="$current_hostname"
+        fi
+    fi
+    log_info "Hostname set to: $TARGET_HOSTNAME"
+}
+
+get_available_modules() {
+    local modules_dir="$1"
+    local mod
+    AVAILABLE_MODULES=()
+    if [ ! -d "$modules_dir" ]; then
+        return 0
+    fi
+    for mod in "$modules_dir"/*/; do
+        [ -d "$mod" ] || continue
+        mod="$(basename "$mod")"
+        if [ -f "$modules_dir/$mod/module.json" ]; then
+            AVAILABLE_MODULES+=("$mod")
+        fi
+    done
+}
+
+get_module_display_name() {
+    local modules_dir="$1"
+    local mod="$2"
+    local json="$modules_dir/$mod/module.json"
+    if [ -f "$json" ] && command -v jq >/dev/null 2>&1; then
+        jq -r '.display_name // .name // empty' "$json" 2>/dev/null || echo "$mod"
+    else
+        echo "$mod"
+    fi
+}
+
+prompt_modules() {
+    local modules_dir="$SOURCE_DIR/modules"
+    get_available_modules "$modules_dir"
+    if [ "${#AVAILABLE_MODULES[@]}" -eq 0 ] && [ -d "$INSTALL_DIR/modules" ]; then
+        modules_dir="$INSTALL_DIR/modules"
+        get_available_modules "$modules_dir"
+    fi
+    if [ "${#AVAILABLE_MODULES[@]}" -eq 0 ]; then
+        log_info "No installable modules found; skipping module selection."
+        MODULE_SELECTIONS=()
+        return 0
+    fi
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        log_info "Non-interactive: skipping module selection."
+        MODULE_SELECTIONS=()
+        return 0
+    fi
+    log_step "Module selection"
+    echo "Select optional modules to install:"
+    local i=1
+    local display_name
+    for mod in "${AVAILABLE_MODULES[@]}"; do
+        display_name="$(get_module_display_name "$modules_dir" "$mod")"
+        echo "  $i) $display_name ($mod)"
+        i=$((i + 1))
+    done
+    interactive_read -r -p "Enter module numbers (comma-separated) or press Enter to skip: " module_choice
+    MODULE_SELECTIONS=()
+    if [ -n "${module_choice:-}" ]; then
+        local selections
+        IFS=',' read -r -a selections <<< "$module_choice"
+        for selection in "${selections[@]}"; do
+            selection="$(echo "$selection" | tr -d ' ')"
+            if [ -n "$selection" ] && [ "$selection" -ge 1 ] 2>/dev/null && [ "$selection" -le "${#AVAILABLE_MODULES[@]}" ] 2>/dev/null; then
+                MODULE_SELECTIONS+=("${AVAILABLE_MODULES[$((selection - 1))]}")
+            fi
+        done
+    fi
+    if [ "${#MODULE_SELECTIONS[@]}" -eq 0 ]; then
+        log_info "No modules selected."
+    else
+        log_info "Selected modules: ${MODULE_SELECTIONS[*]}"
+    fi
+}
+
+confirm_summary() {
+    log_step "Configuration summary"
+    echo "Installation Configuration:"
+    echo
+    if [ "${#REMOTE_ACCESS_TOOLS[@]}" -eq 0 ]; then
+        echo "  Remote Access: skip"
+    else
+        echo "  Remote Access: ${REMOTE_ACCESS_TOOLS[*]}"
+    fi
+    echo "  WiFi SSID: $HOTSPOT_SSID"
+    echo "  WiFi Password: ********"
+    echo "  Hostname: $TARGET_HOSTNAME"
+    if [ "${#MODULE_SELECTIONS[@]}" -eq 0 ]; then
+        echo "  Modules: none"
+    else
+        echo "  Modules: ${MODULE_SELECTIONS[*]}"
+    fi
+    echo
+    if [ "${NONINTERACTIVE:-0}" != "1" ]; then
+        interactive_read -r -p "Is this correct? (y/n): " confirm
+        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+            log_error "Installation aborted by user."
+            exit 1
+        fi
+    fi
+}
+
+write_install_conf() {
+    mkdir -p "$CONFIG_DIR"
+    local password_hash
+    if [ "$UPGRADE_SKIP_CONFIG" = "1" ] && [ -f "$CONFIG_DIR/install.conf" ]; then
+        password_hash="$(awk -F= '/^hotspot_password_hash=/ {print $2; exit}' "$CONFIG_DIR/install.conf")"
+        [ -z "$password_hash" ] && password_hash="$(openssl passwd -6 "${HOTSPOT_PASSWORD:-rpi-engineer-default-password}")"
+    else
+        password_hash="$(openssl passwd -6 "$HOTSPOT_PASSWORD")"
+    fi
+    cat > "$CONFIG_DIR/install.conf" <<EOF
+[general]
+version=$VERSION
+install_date=$(date -Iseconds)
+hostname=$TARGET_HOSTNAME
+
+[remote_access]
+tools=${REMOTE_ACCESS_TOOLS[*]:-}
+
+[network]
+hotspot_ssid=$HOTSPOT_SSID
+hotspot_password_hash=$password_hash
+
+[modules]
+enabled=${MODULE_SELECTIONS[*]:-}
+EOF
+}
+
+# Load install choices from a previous run (for repair/continue)
+load_install_conf() {
+    local conf="$CONFIG_DIR/install.conf"
+    if [ ! -f "$conf" ]; then
+        log_error "Cannot continue: $conf not found. Start over instead."
+        exit 1
+    fi
+    TARGET_HOSTNAME="$(awk -F= '/^hostname=/ {print $2; exit}' "$conf")"
+    HOTSPOT_SSID="$(awk -F= '/^hotspot_ssid=/ {print $2; exit}' "$conf")"
+    local tools_line
+    tools_line="$(awk -F= '/^tools=/ {print $2; exit}' "$conf")"
+    REMOTE_ACCESS_TOOLS=()
+    if [ -n "$tools_line" ]; then
+        read -r -a REMOTE_ACCESS_TOOLS <<< "$tools_line"
+    fi
+    local enabled_line
+    enabled_line="$(awk -F= '/^enabled=/ {print $2; exit}' "$conf")"
+    MODULE_SELECTIONS=()
+    if [ -n "$enabled_line" ]; then
+        read -r -a MODULE_SELECTIONS <<< "$enabled_line"
+    fi
+    log_info "Loaded previous choices from $conf (hostname=$TARGET_HOSTNAME, ssid=$HOTSPOT_SSID)."
+}
+
 # Quick update: git fetch + reset in install dir only. No wizard, no deps, no service reconfig.
 run_quick_update() {
     log_step "Quick update (repo only)"
@@ -354,23 +692,7 @@ run_uninstall() {
     fi
 
     if [ "${NONINTERACTIVE:-0}" != "1" ]; then
-        if [ "$USE_TUI" = "1" ]; then
-            whiptail --title "$WHIPTAIL_TITLE" --yesno "Remove data and logs too?
-
-Yes = Remove /var/lib/rpi-engineer and /var/log/rpi-engineer
-No = Keep data and logs" 10 70 3>&1 1>&2 2>&3
-            local ret=$?
-            if [ "$ret" = "0" ]; then
-                remove_data="y"
-            elif [ "$ret" = "255" ]; then
-                whiptail_check_cancel "$ret"
-            else
-                remove_data="n"
-            fi
-        else
-            interactive_read -r -p "Remove data and logs too? (y/n) [n]: " remove_data
-        fi
-        remove_data="${remove_data:-n}"
+        interactive_read -r -p "Remove data and logs too? (y/n) [n]: " remove_data
     elif [ "${RPI_ENGINEER_REMOVE_DATA:-0}" = "1" ]; then
         remove_data="y"
     else
@@ -456,674 +778,6 @@ No = Keep data and logs" 10 70 3>&1 1>&2 2>&3
 
     # Note: we do not remove the rpi-engineer user/group; they may be referenced elsewhere.
     echo "Uninstall complete."
-}
-
-get_default_hotspot_ssid() {
-    local suffix="0000"
-    if [ -f /sys/class/net/wlan0/address ]; then
-        suffix="$(tr -d ':' < /sys/class/net/wlan0/address | tail -c 5)"
-    fi
-    echo "${DEFAULT_HOTSPOT_SSID_PREFIX}-${suffix}"
-}
-
-get_system_info() {
-    local ram_mb
-    local storage_mb
-    ram_mb="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)"
-    storage_mb="$(df -Pm / | awk 'NR==2 {print $4}')"
-    echo "  OS: ${OS_ID} ${OS_VERSION}"
-    echo "  Model: $([ -f /proc/device-tree/model ] && tr -d '\0' < /proc/device-tree/model || echo "Unknown")"
-    echo "  RAM: ${ram_mb}MB"
-    echo "  Storage: ${storage_mb}MB available"
-}
-
-determine_install_mode() {
-    if [ "$INSTALL_MODE" = "continue" ]; then
-        log_info "Install mode: continue (repair/resume interrupted install)"
-        return 0
-    fi
-    if [ "${NONINTERACTIVE:-0}" = "1" ] && [ "$INSTALL_MODE" = "reconfigure" ]; then
-        log_info "Install mode: reconfigure (from environment; will use existing install.conf)"
-        return 0
-    fi
-    if [ "${NONINTERACTIVE:-0}" = "1" ] && [ "$INSTALL_MODE" = "uninstall" ]; then
-        log_info "Install mode: uninstall (from environment)"
-        return 0
-    fi
-    if [ "${NONINTERACTIVE:-0}" = "1" ] && [ "$INSTALL_MODE" = "quick_update" ]; then
-        log_info "Install mode: quick update (from environment)"
-        return 0
-    fi
-    if [ -d "$INSTALL_DIR" ] || [ -d "$CONFIG_DIR" ]; then
-        log_warn "Existing installation detected."
-        if [ "${NONINTERACTIVE:-0}" != "1" ]; then
-            if [ "$USE_TUI" = "1" ]; then
-                choice=$(whiptail --title "$WHIPTAIL_TITLE" --menu "Select install mode:" 12 70 5 \
-                    "1" "Upgrade (update files and services)" \
-                    "2" "Quick update (update repo only, no wizard)" \
-                    "3" "Reconfigure (wizard and config only)" \
-                    "4" "Uninstall" \
-                    "5" "Abort" \
-                    3>&1 1>&2 2>&3)
-                whiptail_check_cancel $?
-            else
-                echo "Select install mode:"
-                echo "  1) Upgrade (update files and services)"
-                echo "  2) Quick update (update repo only, no wizard)"
-                echo "  3) Reconfigure (wizard and config only)"
-                echo "  4) Uninstall"
-                echo "  5) Abort"
-                interactive_read -r -p "Enter choice (1-5) [1]: " choice
-            fi
-        fi
-        choice="${choice:-1}"
-        case "$choice" in
-            1) INSTALL_MODE="upgrade" ;;
-            2) INSTALL_MODE="quick_update" ;;
-            3) INSTALL_MODE="reconfigure" ;;
-            4) INSTALL_MODE="uninstall" ;;
-            5) log_error "Installation aborted by user."; exit 1 ;;
-            *) INSTALL_MODE="upgrade" ;;
-        esac
-        if [ "$INSTALL_MODE" = "upgrade" ]; then
-            if [ "${NONINTERACTIVE:-0}" = "1" ]; then
-                UPGRADE_SKIP_CONFIG="1"
-                log_info "Non-interactive upgrade: using existing configuration."
-            elif [ "$USE_TUI" = "1" ]; then
-                whiptail --title "$WHIPTAIL_TITLE" --yesno "Use existing configuration (only choose modules) or re-run full wizard?\n\nYes = Use existing config\nNo = Re-run full wizard" 10 70 3>&1 1>&2 2>&3
-                local yesno_ret=$?
-                if [ "$yesno_ret" = "0" ]; then
-                    UPGRADE_SKIP_CONFIG="1"
-                    log_info "Upgrade: using existing configuration (upgrade in place)."
-                elif [ "$yesno_ret" = "255" ]; then
-                    whiptail_check_cancel "$yesno_ret"
-                else
-                    UPGRADE_SKIP_CONFIG="0"
-                    log_info "Upgrade: re-running full wizard."
-                fi
-            else
-                echo "Upgrade configuration:"
-                echo "  1) Use existing configuration (only choose modules)"
-                echo "  2) Re-run full configuration wizard"
-                interactive_read -r -p "Enter choice (1-2) [1]: " upgrade_choice
-                case "${upgrade_choice:-1}" in
-                    1) UPGRADE_SKIP_CONFIG="1"; log_info "Upgrade: using existing configuration (upgrade in place)." ;;
-                    2) UPGRADE_SKIP_CONFIG="0"; log_info "Upgrade: re-running full wizard." ;;
-                    *) UPGRADE_SKIP_CONFIG="1" ;;
-                esac
-            fi
-        fi
-    else
-        INSTALL_MODE="fresh"
-    fi
-    log_info "Install mode: $INSTALL_MODE"
-}
-
-# Offer repair/continue when a previous run was interrupted (progress file left behind)
-prompt_repair_or_start_over() {
-    if ! detect_interrupted_install; then
-        return 0
-    fi
-    log_warn "Interrupted installation detected (progress file present)."
-    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
-        log_info "Non-interactive: continuing (repair) installation."
-        INSTALL_MODE="continue"
-        return 0
-    fi
-    if [ "$USE_TUI" = "1" ]; then
-        whiptail --title "$WHIPTAIL_TITLE" --yesno "The previous installation did not finish.
-
-Yes = Continue / Repair (resume from where it stopped)
-No = Start over (discard progress and run a new install)" 10 70 3>&1 1>&2 2>&3
-        local ret=$?
-        if [ "$ret" = "0" ]; then
-            INSTALL_MODE="continue"
-            log_info "Continuing interrupted installation."
-        elif [ "$ret" = "255" ]; then
-            whiptail_check_cancel "$ret"
-        else
-            rm -f "$INSTALL_PROGRESS_FILE"
-            log_info "Progress file removed; starting fresh."
-        fi
-        return 0
-    fi
-    echo "The previous installation did not finish. You can:"
-    echo "  1) Continue / Repair (resume from where it stopped)"
-    echo "  2) Start over (discard progress and run a new install)"
-    interactive_read -r -p "Enter choice (1-2) [1]: " choice
-    case "${choice:-1}" in
-        1) INSTALL_MODE="continue"; log_info "Continuing interrupted installation." ;;
-        2)
-            rm -f "$INSTALL_PROGRESS_FILE"
-            log_info "Progress file removed; starting fresh."
-            ;;
-        *) INSTALL_MODE="continue" ;;
-    esac
-}
-
-prompt_welcome() {
-    log_step "Welcome"
-    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
-        log_info "Non-interactive mode: proceeding."
-        return 0
-    fi
-    if [ "$USE_TUI" = "1" ]; then
-        local sysinfo
-        sysinfo="$(get_system_info)"
-        local msg
-        msg="RPi Engineer-in-a-Box Installation
-Version 1.0.0
-
-This script will install RPi Engineer-in-a-Box on your system.
-
-System Information:
-${sysinfo}
-
-This installation will:
-  - Install system dependencies
-  - Configure network interfaces
-  - Set up WiFi hotspot
-  - Install selected remote access tool
-  - Install selected modules
-  - Configure systemd services
-
-Estimated time: 10-15 minutes"
-        whiptail --title "$WHIPTAIL_TITLE" --msgbox "$msg" 22 70 3>&1 1>&2 2>&3
-        whiptail_check_cancel $?
-        whiptail --title "$WHIPTAIL_TITLE" --yesno "Do you want to continue with the installation?" 8 70 3>&1 1>&2 2>&3
-        whiptail_check_cancel $?
-        return 0
-    fi
-    cat <<'EOF'
-============================================================
-          RPi Engineer-in-a-Box Installation
-                    Version 1.0.0
-============================================================
-EOF
-    echo "This script will install RPi Engineer-in-a-Box on your system."
-    echo
-    echo "System Information:"
-    get_system_info
-    echo
-    echo "This installation will:"
-    echo "  - Install system dependencies"
-    echo "  - Configure network interfaces"
-    echo "  - Set up WiFi hotspot"
-    echo "  - Install selected remote access tool"
-    echo "  - Install selected modules"
-    echo "  - Configure systemd services"
-    echo
-    echo "Estimated time: 10-15 minutes"
-    echo
-    interactive_read -r -p "Do you want to continue? (y/n): " confirm
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        log_error "Installation aborted by user."
-        exit 1
-    fi
-}
-
-prompt_remote_access() {
-    log_step "Remote access configuration"
-    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
-        REMOTE_ACCESS_TOOLS=()
-        log_info "Non-interactive: skipping remote access selection."
-        return 0
-    fi
-    if [ "$USE_TUI" = "1" ]; then
-        choice=$(whiptail --title "$WHIPTAIL_TITLE" --radiolist \
-            "Select the remote access tool you want to install:" 14 70 6 \
-            "1" "AnyDesk (Recommended)" OFF \
-            "2" "TeamViewer" OFF \
-            "3" "TigerVNC" OFF \
-            "4" "Raspberry Pi Connect (Raspberry Pi OS only)" OFF \
-            "5" "Install multiple (select after)" OFF \
-            "6" "Skip (install manually later)" ON \
-            3>&1 1>&2 2>&3)
-        whiptail_check_cancel $?
-        if [ "$choice" = "5" ]; then
-            multi_result=$(whiptail --title "$WHIPTAIL_TITLE" --checklist --separate-output \
-                "Select tools to install (space to toggle, Enter to confirm):" 12 70 4 \
-                "1" "AnyDesk" OFF \
-                "2" "TeamViewer" OFF \
-                "3" "TigerVNC" OFF \
-                "4" "Raspberry Pi Connect (Raspberry Pi OS only)" OFF \
-                3>&1 1>&2 2>&3)
-            whiptail_check_cancel $?
-            REMOTE_ACCESS_TOOLS=()
-            while IFS= read -r sel; do
-                [ -z "$sel" ] && continue
-                case "$sel" in
-                    1) REMOTE_ACCESS_TOOLS+=("anydesk") ;;
-                    2) REMOTE_ACCESS_TOOLS+=("teamviewer") ;;
-                    3) REMOTE_ACCESS_TOOLS+=("vnc") ;;
-                    4) REMOTE_ACCESS_TOOLS+=("rpi_connect") ;;
-                esac
-            done <<< "$multi_result"
-        else
-            case "$choice" in
-                1) REMOTE_ACCESS_TOOLS=("anydesk") ;;
-                2) REMOTE_ACCESS_TOOLS=("teamviewer") ;;
-                3) REMOTE_ACCESS_TOOLS=("vnc") ;;
-                4) REMOTE_ACCESS_TOOLS=("rpi_connect") ;;
-                *) REMOTE_ACCESS_TOOLS=() ;;
-            esac
-        fi
-    else
-        echo "Select the remote access tool you want to install:"
-        echo "  1) AnyDesk (Recommended)"
-        echo "  2) TeamViewer"
-        echo "  3) TigerVNC"
-        echo "  4) Raspberry Pi Connect (Raspberry Pi OS only)"
-        echo "  5) Install multiple (select after)"
-        echo "  6) Skip (install manually later)"
-        interactive_read -r -p "Enter your choice (1-6) [6]: " choice
-        case "${choice:-6}" in
-            1) REMOTE_ACCESS_TOOLS=("anydesk") ;;
-            2) REMOTE_ACCESS_TOOLS=("teamviewer") ;;
-            3) REMOTE_ACCESS_TOOLS=("vnc") ;;
-            4) REMOTE_ACCESS_TOOLS=("rpi_connect") ;;
-            5)
-                echo "Select tools to install (comma-separated, e.g., 1,2):"
-                echo "  1) AnyDesk"
-                echo "  2) TeamViewer"
-                echo "  3) TigerVNC"
-                echo "  4) Raspberry Pi Connect (Raspberry Pi OS only)"
-                interactive_read -r -p "Enter your choices: " multi_choice
-                IFS=',' read -r -a selections <<< "${multi_choice:-}"
-                REMOTE_ACCESS_TOOLS=()
-                for selection in "${selections[@]}"; do
-                    case "$(echo "$selection" | tr -d ' ')" in
-                        1) REMOTE_ACCESS_TOOLS+=("anydesk") ;;
-                        2) REMOTE_ACCESS_TOOLS+=("teamviewer") ;;
-                        3) REMOTE_ACCESS_TOOLS+=("vnc") ;;
-                        4) REMOTE_ACCESS_TOOLS+=("rpi_connect") ;;
-                    esac
-                done
-                ;;
-            6) REMOTE_ACCESS_TOOLS=() ;;
-            *) REMOTE_ACCESS_TOOLS=() ;;
-        esac
-    fi
-    if [ "${#REMOTE_ACCESS_TOOLS[@]}" -eq 0 ]; then
-        log_info "Selected remote access tool: skip"
-    else
-        log_info "Selected remote access tools: ${REMOTE_ACCESS_TOOLS[*]}"
-    fi
-}
-
-prompt_hotspot_config() {
-    log_step "WiFi hotspot configuration"
-    local default_ssid
-    default_ssid="$(get_default_hotspot_ssid)"
-    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
-        HOTSPOT_SSID="${default_ssid}"
-        HOTSPOT_PASSWORD="rpi-engineer-default-password"
-        log_info "Non-interactive: using default SSID and password."
-    elif [ "$USE_TUI" = "1" ]; then
-        HOTSPOT_SSID=$(whiptail --title "$WHIPTAIL_TITLE" --inputbox "WiFi hotspot SSID (default: $default_ssid)" 8 70 "$default_ssid" 3>&1 1>&2 2>&3)
-        whiptail_check_cancel $?
-        [ -z "$HOTSPOT_SSID" ] && HOTSPOT_SSID="$default_ssid"
-        while true; do
-            HOTSPOT_PASSWORD=$(whiptail --title "$WHIPTAIL_TITLE" --passwordbox "Enter WiFi hotspot password (8-63 characters)" 8 70 3>&1 1>&2 2>&3)
-            whiptail_check_cancel $?
-            password_confirm=$(whiptail --title "$WHIPTAIL_TITLE" --passwordbox "Confirm password" 8 70 3>&1 1>&2 2>&3)
-            whiptail_check_cancel $?
-            if [ "$HOTSPOT_PASSWORD" != "$password_confirm" ]; then
-                log_warn "Passwords do not match."
-                whiptail --title "$WHIPTAIL_TITLE" --msgbox "Passwords do not match. Please try again." 8 70 3>&1 1>&2 2>&3
-                whiptail_check_cancel $?
-                continue
-            fi
-            if [ "${#HOTSPOT_PASSWORD}" -ge 8 ] && [ "${#HOTSPOT_PASSWORD}" -le 63 ]; then
-                break
-            fi
-            log_warn "Hotspot password must be 8-63 characters."
-            whiptail --title "$WHIPTAIL_TITLE" --msgbox "Password must be 8-63 characters. Please try again." 8 70 3>&1 1>&2 2>&3
-            whiptail_check_cancel $?
-        done
-    else
-        echo "Default SSID: ${default_ssid}"
-        interactive_read -r -p "Press Enter to use default, or type custom SSID: " HOTSPOT_SSID
-        if [ -z "$HOTSPOT_SSID" ]; then
-            HOTSPOT_SSID="$default_ssid"
-        fi
-        while true; do
-            interactive_read -r -s -p "Enter WiFi hotspot password (8-63 characters): " HOTSPOT_PASSWORD
-            echo
-            interactive_read -r -s -p "Confirm password: " password_confirm
-            echo
-            if [ "$HOTSPOT_PASSWORD" != "$password_confirm" ]; then
-                log_warn "Passwords do not match."
-                continue
-            fi
-            if [ "${#HOTSPOT_PASSWORD}" -ge 8 ] && [ "${#HOTSPOT_PASSWORD}" -le 63 ]; then
-                break
-            fi
-            log_warn "Hotspot password must be 8-63 characters."
-        done
-    fi
-}
-
-# Prompt for remote access password when AnyDesk, TeamViewer, or VNC is selected.
-# These tools need a password for unattended access. User can use hotspot password or set custom.
-# Env: RPI_ENGINEER_REMOTE_ACCESS_PASSWORD for non-interactive.
-prompt_remote_access_password() {
-    local needs_password=0
-    for t in anydesk teamviewer vnc; do
-        printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -q "^${t}$" && needs_password=1 && break
-    done
-    [ "$needs_password" = "0" ] && return 0
-
-    log_step "Remote access password"
-    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
-        if [ -n "${RPI_ENGINEER_REMOTE_ACCESS_PASSWORD:-}" ]; then
-            REMOTE_ACCESS_PASSWORD="$RPI_ENGINEER_REMOTE_ACCESS_PASSWORD"
-            log_info "Non-interactive: using RPI_ENGINEER_REMOTE_ACCESS_PASSWORD."
-        else
-            REMOTE_ACCESS_PASSWORD=""
-            log_info "Non-interactive: remote access password will use hotspot password."
-        fi
-        return 0
-    fi
-    if [ "$USE_TUI" = "1" ]; then
-        whiptail --title "$WHIPTAIL_TITLE" --yesno "AnyDesk, TeamViewer, and VNC need a password for unattended access.
-
-Use the same password as the WiFi hotspot, or set a different one?
-
-Yes = Use hotspot password
-No = Set a custom remote access password" 12 70 3>&1 1>&2 2>&3
-        local ret=$?
-        if [ "$ret" = "0" ]; then
-            REMOTE_ACCESS_PASSWORD=""
-            log_info "Using hotspot password for remote access."
-            return 0
-        fi
-        if [ "$ret" = "255" ]; then
-            whiptail_check_cancel "$ret"
-        fi
-        while true; do
-            REMOTE_ACCESS_PASSWORD=$(whiptail --title "$WHIPTAIL_TITLE" --passwordbox "Enter remote access password (8-63 characters, for AnyDesk/TeamViewer/VNC)" 8 70 3>&1 1>&2 2>&3)
-            whiptail_check_cancel $?
-            password_confirm=$(whiptail --title "$WHIPTAIL_TITLE" --passwordbox "Confirm remote access password" 8 70 3>&1 1>&2 2>&3)
-            whiptail_check_cancel $?
-            if [ "$REMOTE_ACCESS_PASSWORD" != "$password_confirm" ]; then
-                log_warn "Passwords do not match."
-                whiptail --title "$WHIPTAIL_TITLE" --msgbox "Passwords do not match. Please try again." 8 70 3>&1 1>&2 2>&3
-                whiptail_check_cancel $?
-                continue
-            fi
-            if [ "${#REMOTE_ACCESS_PASSWORD}" -ge 8 ] && [ "${#REMOTE_ACCESS_PASSWORD}" -le 63 ]; then
-                break
-            fi
-            log_warn "Remote access password must be 8-63 characters."
-            whiptail --title "$WHIPTAIL_TITLE" --msgbox "Password must be 8-63 characters. Please try again." 8 70 3>&1 1>&2 2>&3
-            whiptail_check_cancel $?
-        done
-        log_info "Using custom remote access password."
-    else
-        echo "Remote access tools (AnyDesk, TeamViewer, VNC) need a password for unattended access."
-        interactive_read -r -p "Use hotspot password or set custom? (h/c) [h]: " pass_choice
-        if [[ "${pass_choice:-h}" =~ ^[Cc]$ ]]; then
-            while true; do
-                interactive_read -r -s -p "Enter remote access password (8-63 characters): " REMOTE_ACCESS_PASSWORD
-                echo
-                interactive_read -r -s -p "Confirm password: " password_confirm
-                echo
-                if [ "$REMOTE_ACCESS_PASSWORD" != "$password_confirm" ]; then
-                    log_warn "Passwords do not match."
-                    continue
-                fi
-                if [ "${#REMOTE_ACCESS_PASSWORD}" -ge 8 ] && [ "${#REMOTE_ACCESS_PASSWORD}" -le 63 ]; then
-                    break
-                fi
-                log_warn "Remote access password must be 8-63 characters."
-            done
-            log_info "Using custom remote access password."
-        else
-            REMOTE_ACCESS_PASSWORD=""
-            log_info "Using hotspot password for remote access."
-        fi
-    fi
-}
-
-# Optional: restrict web/firewall access to a specific LAN subnet. Env: RPI_ENGINEER_LAN_SUBNET.
-prompt_lan_subnet() {
-    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
-        LAN_SUBNET="${RPI_ENGINEER_LAN_SUBNET:-}"
-        return 0
-    fi
-    if [ "$USE_TUI" = "1" ]; then
-        LAN_SUBNET=$(whiptail --title "$WHIPTAIL_TITLE" --inputbox "LAN subnet restriction (optional)
-
-Restrict web/firewall access to a specific subnet.
-Example: 192.168.1.0/24
-Leave blank for no restriction." 12 70 "${LAN_SUBNET:-}" 3>&1 1>&2 2>&3)
-        whiptail_check_cancel $?
-    else
-        echo "LAN subnet restriction (optional, e.g. 192.168.1.0/24, leave blank for none):"
-        interactive_read -r -p "Subnet: " LAN_SUBNET
-    fi
-    LAN_SUBNET="${LAN_SUBNET:-}"
-    [ -n "$LAN_SUBNET" ] && log_info "LAN subnet restriction: $LAN_SUBNET"
-}
-
-prompt_hostname() {
-    log_step "Hostname configuration"
-    local current_hostname
-    current_hostname="$(hostname)"
-    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
-        TARGET_HOSTNAME="$current_hostname"
-    elif [ "$USE_TUI" = "1" ]; then
-        TARGET_HOSTNAME=$(whiptail --title "$WHIPTAIL_TITLE" --inputbox "Enter new hostname (current: $current_hostname)" 8 70 "$current_hostname" 3>&1 1>&2 2>&3)
-        whiptail_check_cancel $?
-        [ -z "$TARGET_HOSTNAME" ] && TARGET_HOSTNAME="$current_hostname"
-    else
-        echo "Current hostname: $current_hostname"
-        interactive_read -r -p "Enter new hostname (or press Enter to keep current): " TARGET_HOSTNAME
-        if [ -z "$TARGET_HOSTNAME" ]; then
-            TARGET_HOSTNAME="$current_hostname"
-        fi
-    fi
-    log_info "Hostname set to: $TARGET_HOSTNAME"
-}
-
-get_available_modules() {
-    local modules_dir="$1"
-    local mod
-    AVAILABLE_MODULES=()
-    if [ ! -d "$modules_dir" ]; then
-        return 0
-    fi
-    for mod in "$modules_dir"/*/; do
-        [ -d "$mod" ] || continue
-        mod="$(basename "$mod")"
-        if [ -f "$modules_dir/$mod/module.json" ]; then
-            AVAILABLE_MODULES+=("$mod")
-        fi
-    done
-}
-
-get_module_display_name() {
-    local modules_dir="$1"
-    local mod="$2"
-    local json="$modules_dir/$mod/module.json"
-    if [ -f "$json" ] && command -v jq >/dev/null 2>&1; then
-        jq -r '.display_name // .name // empty' "$json" 2>/dev/null || echo "$mod"
-    else
-        echo "$mod"
-    fi
-}
-
-prompt_modules() {
-    local modules_dir="$SOURCE_DIR/modules"
-    get_available_modules "$modules_dir"
-    if [ "${#AVAILABLE_MODULES[@]}" -eq 0 ] && [ -d "$INSTALL_DIR/modules" ]; then
-        modules_dir="$INSTALL_DIR/modules"
-        get_available_modules "$modules_dir"
-    fi
-    if [ "${#AVAILABLE_MODULES[@]}" -eq 0 ]; then
-        log_info "No installable modules found; skipping module selection."
-        MODULE_SELECTIONS=()
-        return 0
-    fi
-    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
-        log_info "Non-interactive: skipping module selection."
-        MODULE_SELECTIONS=()
-        return 0
-    fi
-    log_step "Module selection"
-    if [ "$USE_TUI" = "1" ]; then
-        local checklist_args=()
-        local display_name
-        for mod in "${AVAILABLE_MODULES[@]}"; do
-            display_name="$(get_module_display_name "$modules_dir" "$mod")"
-            checklist_args+=("$mod" "$display_name" "OFF")
-        done
-        local list_height="${#AVAILABLE_MODULES[@]}"
-        [ "$list_height" -gt 12 ] && list_height=12
-        [ "$list_height" -lt 4 ] && list_height=4
-        local result
-        result=$(whiptail --title "$WHIPTAIL_TITLE" --checklist --separate-output \
-            "Select optional modules to install (space to toggle, Enter to confirm):" \
-            16 70 "$list_height" "${checklist_args[@]}" 3>&1 1>&2 2>&3)
-        whiptail_check_cancel $?
-        MODULE_SELECTIONS=()
-        while IFS= read -r mod; do
-            [ -n "$mod" ] && MODULE_SELECTIONS+=("$mod")
-        done <<< "$result"
-    else
-        echo "Select optional modules to install:"
-        local i=1
-        local display_name
-        for mod in "${AVAILABLE_MODULES[@]}"; do
-            display_name="$(get_module_display_name "$modules_dir" "$mod")"
-            echo "  $i) $display_name ($mod)"
-            i=$((i + 1))
-        done
-        interactive_read -r -p "Enter module numbers (comma-separated) or press Enter to skip: " module_choice
-        MODULE_SELECTIONS=()
-        if [ -n "${module_choice:-}" ]; then
-            local selections
-            IFS=',' read -r -a selections <<< "$module_choice"
-            for selection in "${selections[@]}"; do
-                selection="$(echo "$selection" | tr -d ' ')"
-                if [ -n "$selection" ] && [ "$selection" -ge 1 ] 2>/dev/null && [ "$selection" -le "${#AVAILABLE_MODULES[@]}" ] 2>/dev/null; then
-                    MODULE_SELECTIONS+=("${AVAILABLE_MODULES[$((selection - 1))]}")
-                fi
-            done
-        fi
-    fi
-    if [ "${#MODULE_SELECTIONS[@]}" -eq 0 ]; then
-        log_info "No modules selected."
-    else
-        log_info "Selected modules: ${MODULE_SELECTIONS[*]}"
-    fi
-}
-
-confirm_summary() {
-    log_step "Configuration summary"
-    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
-        return 0
-    fi
-    if [ "$USE_TUI" = "1" ]; then
-        local summary remote_pwd_info
-        remote_pwd_info=""
-        if printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -qE '^(anydesk|teamviewer|vnc)$'; then
-            remote_pwd_info=$([ -n "$REMOTE_ACCESS_PASSWORD" ] && echo "Remote access pwd: custom" || echo "Remote access pwd: same as hotspot")
-        fi
-        summary="Installation Configuration:
-
-Remote Access: $([ "${#REMOTE_ACCESS_TOOLS[@]}" -eq 0 ] && echo "skip" || echo "${REMOTE_ACCESS_TOOLS[*]}")
-${remote_pwd_info}
-WiFi SSID: $HOTSPOT_SSID
-WiFi Password: ********
-Hostname: $TARGET_HOSTNAME
-LAN subnet: $([ -n "$LAN_SUBNET" ] && echo "$LAN_SUBNET" || echo "none")
-Modules: $([ "${#MODULE_SELECTIONS[@]}" -eq 0 ] && echo "none" || echo "${MODULE_SELECTIONS[*]}")
-
-Is this correct?"
-        whiptail --title "$WHIPTAIL_TITLE" --yesno "$summary" 14 70 3>&1 1>&2 2>&3
-        whiptail_check_cancel $?
-        return 0
-    fi
-    echo "Installation Configuration:"
-    echo
-    if [ "${#REMOTE_ACCESS_TOOLS[@]}" -eq 0 ]; then
-        echo "  Remote Access: skip"
-    else
-        echo "  Remote Access: ${REMOTE_ACCESS_TOOLS[*]}"
-        if printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -qE '^(anydesk|teamviewer|vnc)$'; then
-            [ -n "$REMOTE_ACCESS_PASSWORD" ] && echo "  Remote access pwd: custom" || echo "  Remote access pwd: same as hotspot"
-        fi
-    fi
-    echo "  WiFi SSID: $HOTSPOT_SSID"
-    echo "  WiFi Password: ********"
-    echo "  Hostname: $TARGET_HOSTNAME"
-    echo "  LAN subnet: ${LAN_SUBNET:-none}"
-    if [ "${#MODULE_SELECTIONS[@]}" -eq 0 ]; then
-        echo "  Modules: none"
-    else
-        echo "  Modules: ${MODULE_SELECTIONS[*]}"
-    fi
-    echo
-    interactive_read -r -p "Is this correct? (y/n): " confirm
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        log_error "Installation aborted by user."
-        exit 1
-    fi
-}
-
-write_install_conf() {
-    mkdir -p "$CONFIG_DIR"
-    local password_hash
-    if [ "$UPGRADE_SKIP_CONFIG" = "1" ] && [ -f "$CONFIG_DIR/install.conf" ]; then
-        password_hash="$(awk -F= '/^hotspot_password_hash=/ {print $2; exit}' "$CONFIG_DIR/install.conf")"
-        [ -z "$password_hash" ] && password_hash="$(openssl passwd -6 "${HOTSPOT_PASSWORD:-rpi-engineer-default-password}")"
-    else
-        password_hash="$(openssl passwd -6 "$HOTSPOT_PASSWORD")"
-    fi
-    cat > "$CONFIG_DIR/install.conf" <<EOF
-[general]
-version=$VERSION
-install_date=$(date -Iseconds)
-hostname=$TARGET_HOSTNAME
-
-[remote_access]
-tools=${REMOTE_ACCESS_TOOLS[*]:-}
-
-[network]
-hotspot_ssid=$HOTSPOT_SSID
-hotspot_password_hash=$password_hash
-lan_subnet=${LAN_SUBNET:-}
-
-[modules]
-enabled=${MODULE_SELECTIONS[*]:-}
-EOF
-}
-
-# Load install choices from a previous run (for repair/continue)
-load_install_conf() {
-    local conf="$CONFIG_DIR/install.conf"
-    if [ ! -f "$conf" ]; then
-        log_error "Cannot continue: $conf not found. Start over instead."
-        exit 1
-    fi
-    TARGET_HOSTNAME="$(awk -F= '/^hostname=/ {print $2; exit}' "$conf")"
-    HOTSPOT_SSID="$(awk -F= '/^hotspot_ssid=/ {print $2; exit}' "$conf")"
-    LAN_SUBNET="$(awk -F= '/^lan_subnet=/ {print $2; exit}' "$conf")"
-    local tools_line
-    tools_line="$(awk -F= '/^tools=/ {print $2; exit}' "$conf")"
-    REMOTE_ACCESS_TOOLS=()
-    if [ -n "$tools_line" ]; then
-        read -r -a REMOTE_ACCESS_TOOLS <<< "$tools_line"
-    fi
-    local enabled_line
-    enabled_line="$(awk -F= '/^enabled=/ {print $2; exit}' "$conf")"
-    MODULE_SELECTIONS=()
-    if [ -n "$enabled_line" ]; then
-        read -r -a MODULE_SELECTIONS <<< "$enabled_line"
-    fi
-    log_info "Loaded previous choices from $conf (hostname=$TARGET_HOSTNAME, ssid=$HOTSPOT_SSID)."
 }
 
 # Run apt-get install. When NONINTERACTIVE=1 or no TTY, use DEBIAN_FRONTEND=noninteractive.
@@ -2099,6 +1753,7 @@ configure_firewall() {
     ensure_rule INPUT -i lo -j ACCEPT
     ensure_rule INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
     ensure_rule INPUT -i wlan0 -p tcp -m multiport --dports 80,443 -s 192.168.50.0/24 -j ACCEPT
+    ensure_rule INPUT -i wlan0 -p tcp --dport 22 -s 192.168.50.0/24 -j ACCEPT
     ensure_rule INPUT -i wlan0 -p udp --dport 53 -j ACCEPT
     ensure_rule INPUT -i wlan0 -p udp --dport 67:68 -j ACCEPT
     if [ -n "$LAN_SUBNET" ]; then
@@ -2471,11 +2126,7 @@ setup_remote_access() {
         return 0
     fi
     if [ -z "$REMOTE_ACCESS_PASSWORD" ]; then
-        if [ "${NONINTERACTIVE:-0}" = "1" ] && [ -n "${RPI_ENGINEER_REMOTE_ACCESS_PASSWORD:-}" ]; then
-            REMOTE_ACCESS_PASSWORD="$RPI_ENGINEER_REMOTE_ACCESS_PASSWORD"
-        else
-            REMOTE_ACCESS_PASSWORD="$HOTSPOT_PASSWORD"
-        fi
+        REMOTE_ACCESS_PASSWORD="$HOTSPOT_PASSWORD"
     fi
     # AnyDesk requires Xvfb on headless; TeamViewer can use framebuffer console (no Xorg) per headless docs.
     need_xvfb=$(printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -q '^anydesk$' && echo 1)
@@ -2653,14 +2304,7 @@ reboot_system() {
         log_info "Non-interactive: skipping reboot. Run 'sudo reboot' manually if needed."
         return 0
     fi
-    if [ "$USE_TUI" = "1" ]; then
-        whiptail --title "$WHIPTAIL_TITLE" --msgbox "Installation complete. Press OK to reboot now.
-
-Hotspot and network changes take effect after reboot." 8 70 3>&1 1>&2 2>&3
-        whiptail_check_cancel $?
-    else
-        interactive_read -r -p "Press Enter to reboot now, or Ctrl+C to reboot manually later..."
-    fi
+    interactive_read -r -p "Press Enter to reboot now, or Ctrl+C to reboot manually later..."
     reboot
 }
 
@@ -2668,9 +2312,7 @@ run_wizard() {
     prompt_welcome
     prompt_remote_access
     prompt_hotspot_config
-    prompt_remote_access_password
     prompt_hostname
-    prompt_lan_subnet
     prompt_modules
     confirm_summary
     write_install_conf
@@ -2706,30 +2348,15 @@ main() {
         load_install_conf
         if [ "${NONINTERACTIVE:-0}" != "1" ] && ! step_already_done "hotspot"; then
             log_step "Hotspot password (for resume)"
-            if [ "$USE_TUI" = "1" ]; then
-                while true; do
-                    HOTSPOT_PASSWORD=$(whiptail --title "$WHIPTAIL_TITLE" --passwordbox "SSID from previous run: $HOTSPOT_SSID
-
-Enter WiFi hotspot password (8-63 characters):" 10 70 3>&1 1>&2 2>&3)
-                    whiptail_check_cancel $?
-                    if [ "${#HOTSPOT_PASSWORD}" -ge 8 ] && [ "${#HOTSPOT_PASSWORD}" -le 63 ]; then
-                        break
-                    fi
-                    log_warn "Hotspot password must be 8-63 characters."
-                    whiptail --title "$WHIPTAIL_TITLE" --msgbox "Password must be 8-63 characters. Please try again." 8 70 3>&1 1>&2 2>&3
-                    whiptail_check_cancel $?
-                done
-            else
-                echo "SSID from previous run: $HOTSPOT_SSID"
-                while true; do
-                    interactive_read -r -s -p "Enter WiFi hotspot password (8-63 characters): " HOTSPOT_PASSWORD
-                    echo
-                    if [ "${#HOTSPOT_PASSWORD}" -ge 8 ] && [ "${#HOTSPOT_PASSWORD}" -le 63 ]; then
-                        break
-                    fi
-                    log_warn "Hotspot password must be 8-63 characters."
-                done
-            fi
+            echo "SSID from previous run: $HOTSPOT_SSID"
+            while true; do
+                interactive_read -r -s -p "Enter WiFi hotspot password (8-63 characters): " HOTSPOT_PASSWORD
+                echo
+                if [ "${#HOTSPOT_PASSWORD}" -ge 8 ] && [ "${#HOTSPOT_PASSWORD}" -le 63 ]; then
+                    break
+                fi
+                log_warn "Hotspot password must be 8-63 characters."
+            done
         fi
     elif [ "$INSTALL_MODE" = "upgrade" ] && [ "$UPGRADE_SKIP_CONFIG" = "1" ]; then
         load_install_conf

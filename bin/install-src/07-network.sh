@@ -234,6 +234,7 @@ configure_firewall() {
     ensure_rule INPUT -i lo -j ACCEPT
     ensure_rule INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
     ensure_rule INPUT -i wlan0 -p tcp -m multiport --dports 80,443 -s 192.168.50.0/24 -j ACCEPT
+    ensure_rule INPUT -i wlan0 -p tcp --dport 22 -s 192.168.50.0/24 -j ACCEPT
     ensure_rule INPUT -i wlan0 -p udp --dport 53 -j ACCEPT
     ensure_rule INPUT -i wlan0 -p udp --dport 67:68 -j ACCEPT
     if [ -n "$LAN_SUBNET" ]; then

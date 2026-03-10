@@ -27,7 +27,6 @@ function createSerialDom() {
       <button id="serial-empty-configure" hidden>Configure</button>
     </div>
     <div id="serial-detail-content" hidden>
-      <div id="serial-console-tabs"></div>
       <div id="serial-console-panels"></div>
     </div>
     <table>
@@ -159,9 +158,8 @@ describe("serial.js fast JS-level behavior", () => {
     expect(state.connectingDeviceId).toBeNull();
     expect(state.activeSessions.length).toBeGreaterThanOrEqual(1);
 
-    const tabs = document.querySelectorAll(".tab-button");
-    expect(tabs.length).toBe(1);
-    expect(tabs[0].textContent).toContain("Test Dev 1");
+    const panels = document.querySelectorAll(".console-tab-panel");
+    expect(panels.length).toBe(1);
   });
 
   test("connecting a second device adds a second session and keeps the first", async () => {
@@ -189,8 +187,8 @@ describe("serial.js fast JS-level behavior", () => {
     expect(sessions.some((s) => s.device_id === "dev1")).toBe(true);
     expect(sessions.some((s) => s.device_id === "dev2")).toBe(true);
 
-    const tabs = document.querySelectorAll(".tab-button");
-    expect(tabs.length).toBe(2);
+    const panels = document.querySelectorAll(".console-tab-panel");
+    expect(panels.length).toBe(2);
   });
 
   test("switching tabs focuses corresponding session input", async () => {

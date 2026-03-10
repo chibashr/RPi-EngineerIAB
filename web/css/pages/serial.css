@@ -156,21 +156,6 @@
   margin-bottom: 1rem;
 }
 
-.serial-console-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-}
-
-.serial-console-tabs .tab-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 44px;
-  padding: 0.5rem 1rem;
-  min-width: 0;
-}
-
 .section-header {
   display: flex;
   flex-wrap: wrap;
@@ -253,46 +238,6 @@
   gap: 0.35rem;
 }
 
-/* Console tabs – larger hit targets for easier switching */
-.serial-detail-content .tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-}
-
-.serial-detail-content .tab-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 44px;
-  padding: 0.5rem 1rem;
-  min-width: 0;
-}
-
-.serial-detail-content .tab-button:hover {
-  background: rgba(90, 100, 114, 0.08);
-  color: var(--color-fg);
-}
-
-.serial-detail-content .tab-button-active:hover {
-  background: rgba(47, 111, 237, 0.2);
-  color: var(--color-accent);
-}
-
-.serial-tab-close {
-  padding: 0.35rem;
-  margin: -0.2rem -0.2rem -0.2rem 0.25rem;
-  font-size: 1.1rem;
-  line-height: 1;
-  opacity: 0.7;
-  border-radius: 6px;
-}
-
-.serial-tab-close:hover {
-  opacity: 1;
-  background: rgba(90, 100, 114, 0.15);
-}
-
 .console-tab-panels {
   min-height: 0;
   position: relative;
@@ -308,41 +253,40 @@
   display: flex;
 }
 
-/* Desktop: settings left (thin), console right (wide) */
-.console-panel-row {
+/* Toolbar + settings row above console, full-width layout */
+.console-toolbar-row {
   display: flex;
-  flex-direction: row;
-  gap: 1.25rem;
-  align-items: stretch;
-  min-height: 0;
-  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  width: 100%;
 }
 
-.console-panel-side {
-  flex: 0 0 auto;
-  width: 200px;
-  max-width: 220px;
+.console-toolbar-row .console-toolbar {
   display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.console-panel-side .console-toolbar {
-  flex-direction: column;
-  align-items: stretch;
+.console-toolbar-row .console-settings {
+  margin: 0;
 }
 
-.console-panel-side .console-settings {
-  flex: 0 0 auto;
+.console-toolbar-row .console-settings .field {
+  margin: 0.25rem 0.75rem 0 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.console-panel-side .console-settings .field {
-  flex-direction: column;
-  align-items: flex-start;
+.console-toolbar-row .console-settings .field:first-of-type {
+  margin-left: 0;
 }
 
 .console-panel-main {
-  flex: 1 1 0;
+  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -352,6 +296,12 @@
 .console-panel-main .console-block-body {
   flex: 1;
   min-height: 0;
+}
+
+/* Wider console: full-width, taller viewport */
+.serial-card .console-window-wrapper {
+  max-height: 36em;
+  width: 100%;
 }
 
 /* Fixed line count: no min/max so inline height controls viewport size */
@@ -455,25 +405,3 @@
   font-weight: 600;
 }
 
-/* Mobile: stack settings above console */
-@media (max-width: 767px) {
-  .console-panel-row {
-    flex-direction: column;
-  }
-
-  .console-panel-side {
-    width: 100%;
-    max-width: none;
-  }
-
-  .console-panel-side .console-toolbar {
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-}
-
-@media (max-width: 639px) {
-  .serial-detail-content .tabs {
-    flex-wrap: wrap;
-  }
-}
