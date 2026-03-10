@@ -2,118 +2,6 @@ import { apiGet, apiPost, apiPut, apiDelete, extractData } from "../api.js";
 import { createWebSocketClient } from "../websocket.js";
 import { modalForm, modalPrompt, modalConfirm } from "../modal.js";
 
-const SYNTAX_STORAGE_KEY = "rpi-serial-syntax";
-const CUSTOM_RULES_KEY = "rpi-serial-syntax-custom";
-const CONSOLE_LINES_KEY = "rpi-serial-console-lines";
-const DEFAULT_CONSOLE_LINES = 24;
-const CONSOLE_LINE_OPTIONS = [16, 24, 32, 48, 96];
-const CONSOLE_LINE_HEIGHT_REM = 1.26;
-const CONSOLE_PADDING_REM = 2;
-
-const CISCO_RULES = [
-  { pattern: /^[^\s]+(>|#|\(config[^)]*\)#)/gm, class: "sh-prompt" },
-  { pattern: /% (Invalid|Error|Incomplete|Ambiguous)[^\n]*/g, class: "sh-error" },
-  { pattern: /\b(show|configure|interface|enable|disable|exit|end|no|copy|ping|traceroute|telnet|ssh|write|reload)\b/g, class: "sh-command" },
-  { pattern: /\b(ip |ipv6 |access-list|router |vlan |line |hostname |logging )/g, class: "sh-config" },
-  { pattern: /(up|down|administratively down)/g, class: "sh-status" },
-];
-
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-function getConsoleLines() {
-  try {
-    const n = parseInt(localStorage.getItem(CONSOLE_LINES_KEY), 10);
-    return CONSOLE_LINE_OPTIONS.includes(n) ? n : DEFAULT_CONSOLE_LINES;
-  } catch {
-    return DEFAULT_CONSOLE_LINES;
-  }
-}
-
-function applyConsoleLinesHeight(state) {
-  if (!state?.wrapperEl) return;
-  const lines = state.consoleLines ?? getConsoleLines();
-  state.wrapperEl.style.height = `${CONSOLE_PADDING_REM + lines * CONSOLE_LINE_HEIGHT_REM}rem`;
-}
-
-function getCustomRules() {
-  try {
-    const raw = localStorage.getItem(CUSTOM_RULES_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr.filter((r) => r?.pattern && r?.class) : [];
-  } catch {
-    return [];
-  }
-}
-
-async function openCustomSyntaxModal(state) {
-  const rules = getCustomRules();
-  const json = JSON.stringify(rules, null, 2);
-  const result = await modalForm(
-    [
-      {
-        name: "rules",
-        label: "Custom regex rules (JSON array)",
-        type: "textarea",
-        default: json,
-      },
-      {
-        name: "help",
-        label: "Example",
-        type: "display",
-        default: '[{"pattern": "\\\\b(show|config)\\\\b", "class": "sh-command", "flags": "g"}]',
-      },
-    ],
-    "Custom syntax highlighting"
-  );
-  if (!result) return;
-  let arr;
-  try {
-    arr = JSON.parse(result.rules || "[]");
-    if (!Array.isArray(arr)) throw new Error("Must be an array");
-    arr = arr.filter((r) => r && typeof r.pattern === "string" && typeof r.class === "string");
-  } catch (e) {
-    showToast("Invalid JSON: " + (e?.message || "parse error"), "error");
-    return;
-  }
-  saveCustomRules(arr);
-  state.syntaxRules = getSyntaxRules("custom");
-  const html = applySyntaxHighlighting(state.terminalBuffer.join("\n"), state.syntaxRules);
-  if (state.terminalEl) state.terminalEl.innerHTML = html || "Click here to focus, then type to send data.";
-  scrollConsoleToBottom(state);
-  showToast("Custom rules saved.", "success");
-}
-
-function saveCustomRules(rules) {
-  try {
-    localStorage.setItem(CUSTOM_RULES_KEY, JSON.stringify(rules));
-  } catch {
-    /* ignore */
-  }
-}
-
-function getSyntaxRules(mode) {
-  if (mode === "cisco") return CISCO_RULES;
-  if (mode === "custom") {
-    const custom = getCustomRules();
-    return custom.map((r) => ({ pattern: new RegExp(r.pattern, r.flags || "g"), class: r.class }));
-  }
-  return [];
-}
-
-function applySyntaxHighlighting(text, rules) {
-  if (!text || !rules?.length) return escapeHtml(text);
-  let out = escapeHtml(text);
-  for (const { pattern, class: cls } of rules) {
-    out = out.replace(pattern, (m) => `<span class="${cls}">${m}</span>`);
-  }
-  return out;
-}
-
 const SERIAL_API_TIMEOUT_MS = 60000;
 
 // Resolve from document on each access so tests (or DOM changes) always see current nodes.
@@ -152,7 +40,6 @@ let deviceCache = [];
 let serialLogsCache = [];
 let logsPageSize = 10;
 let logsPageIndex = 0;
-const MAX_TERMINAL_LINES = 100;
 const LOGS_PAGE_SIZES = [10, 25, 50];
 let lastNotConnectedToast = 0;
 let connectingDeviceId = null;
@@ -329,84 +216,9 @@ function updateSessionsMeta() {
   el.textContent = n > 0 ? `${n} active` : "";
 }
 
-function ensureTerminalLine(state) {
-  if (state.terminalBuffer.length === 0) state.terminalBuffer.push("");
-}
-
-function processReceivedChar(state, c, i, s) {
-  ensureTerminalLine(state);
-  const line = state.terminalBuffer[state.terminalBuffer.length - 1];
-  if (c === "\n") {
-    state.terminalBuffer.push("");
-  } else if (c === "\r") {
-    if (i + 1 < s.length && s[i + 1] === "\n") {
-      state.terminalBuffer.push("");
-      return 1;
-    }
-    state.terminalBuffer[state.terminalBuffer.length - 1] = "";
-  } else if (c === "\x7f" || c === "\x08") {
-    if (line.length > 0) {
-      state.terminalBuffer[state.terminalBuffer.length - 1] = line.slice(0, -1);
-    }
-  } else if (c === "\t") {
-    state.terminalBuffer[state.terminalBuffer.length - 1] += "    ";
-  } else if (c >= " " || c === "\t") {
-    state.terminalBuffer[state.terminalBuffer.length - 1] += c;
-  }
-  return 0;
-}
-
-function updateTerminalForSession(sessionId, text) {
-  const state = sessionMap.get(sessionId);
-  if (!state || !state.terminalEl) return;
-  const s = String(text);
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    const skip = processReceivedChar(state, c, i, s);
-    if (skip) i += skip;
-  }
-  if (state.terminalBuffer.length > MAX_TERMINAL_LINES) {
-    state.terminalBuffer = state.terminalBuffer.slice(-MAX_TERMINAL_LINES);
-  }
-  const html = applySyntaxHighlighting(state.terminalBuffer.join("\n"), state.syntaxRules);
-  state.terminalEl.innerHTML = html;
-  scrollConsoleToBottom(state);
-}
-
-function appendLocalEchoForSession(sessionId, char) {
-  const state = sessionMap.get(sessionId);
-  if (!state || !state.terminalEl) return;
-  ensureTerminalLine(state);
-  if (char === "\n") {
-    state.terminalBuffer.push("");
-  } else if (char === "\x7f" || char === "\x08") {
-    const line = state.terminalBuffer[state.terminalBuffer.length - 1];
-    if (line.length > 0) {
-      state.terminalBuffer[state.terminalBuffer.length - 1] = line.slice(0, -1);
-    }
-  } else if (char === "\t") {
-    state.terminalBuffer[state.terminalBuffer.length - 1] += "    ";
-  } else {
-    state.terminalBuffer[state.terminalBuffer.length - 1] += char;
-  }
-  if (state.terminalBuffer.length > MAX_TERMINAL_LINES) {
-    state.terminalBuffer = state.terminalBuffer.slice(-MAX_TERMINAL_LINES);
-  }
-  const html = applySyntaxHighlighting(state.terminalBuffer.join("\n"), state.syntaxRules);
-  state.terminalEl.innerHTML = html;
-  scrollConsoleToBottom(state);
-}
-
-function scrollConsoleToBottom(state) {
-  if (state?.wrapperEl) {
-    state.wrapperEl.scrollTop = state.wrapperEl.scrollHeight;
-  }
-}
-
 function createTabAndConnect(sessionId, deviceId, deviceName) {
   if (sessionMap.has(sessionId)) return sessionMap.get(sessionId);
 
-  const syntaxMode = () => (typeof localStorage !== "undefined" ? localStorage.getItem(SYNTAX_STORAGE_KEY) || "none" : "none");
   const state = {
     sessionId,
     deviceId,
@@ -414,15 +226,10 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
     wsClient: null,
     wsStatus: "",
     connectTimeoutId: null,
-    terminalBuffer: [],
     localEcho: false,
-    consoleLines: getConsoleLines(),
-    syntaxRules: getSyntaxRules(syntaxMode()),
     tabPanelEl: null,
-    terminalEl: null,
-    inputEl: null,
     statusEl: null,
-    wrapperEl: null,
+    xtermInstance: null,
   };
   sessionMap.set(sessionId, state);
 
@@ -441,10 +248,7 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   clearBtn.className = "btn btn-secondary btn-sm";
   clearBtn.textContent = "Clear";
   clearBtn.addEventListener("click", () => {
-    state.terminalBuffer = [];
-    if (state.terminalEl) {
-      state.terminalEl.textContent = "Click here to focus, then type to send data.";
-    }
+    state.xtermInstance?.clear();
   });
   const breakBtn = document.createElement("button");
   breakBtn.className = "btn btn-secondary btn-sm";
@@ -467,59 +271,6 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   const summary = document.createElement("summary");
   summary.textContent = "Settings";
   details.appendChild(summary);
-  const syntaxSelect = document.createElement("select");
-  syntaxSelect.className = "select";
-  syntaxSelect.title = "Syntax highlighting";
-  syntaxSelect.innerHTML = '<option value="none">None</option><option value="cisco">Cisco</option><option value="custom">Custom</option>';
-  syntaxSelect.value = syntaxMode();
-  const syntaxConfigBtn = document.createElement("button");
-  syntaxConfigBtn.type = "button";
-  syntaxConfigBtn.className = "btn btn-ghost btn-sm";
-  syntaxConfigBtn.textContent = "Configure";
-  syntaxConfigBtn.title = "Edit custom regex rules";
-  syntaxConfigBtn.style.display = syntaxSelect.value === "custom" ? "inline-block" : "none";
-  syntaxSelect.addEventListener("change", (e) => {
-    const mode = e.target.value;
-    try {
-      localStorage.setItem(SYNTAX_STORAGE_KEY, mode);
-    } catch {
-      /* ignore */
-    }
-    syntaxConfigBtn.style.display = mode === "custom" ? "inline-block" : "none";
-    state.syntaxRules = getSyntaxRules(mode);
-    const html = applySyntaxHighlighting(state.terminalBuffer.join("\n"), state.syntaxRules);
-    if (state.terminalEl) state.terminalEl.innerHTML = html || "Click here to focus, then type to send data.";
-    scrollConsoleToBottom(state);
-  });
-  syntaxConfigBtn.addEventListener("click", () => openCustomSyntaxModal(state));
-  const syntaxLabel = document.createElement("label");
-  syntaxLabel.className = "field";
-  syntaxLabel.innerHTML = '<span class="field-label">Syntax</span>';
-  syntaxLabel.append(syntaxSelect, syntaxConfigBtn);
-  const linesLabel = document.createElement("label");
-  linesLabel.className = "field";
-  linesLabel.innerHTML = '<span class="field-label">Lines</span>';
-  const linesSelect = document.createElement("select");
-  linesSelect.className = "select";
-  linesSelect.title = "Visible lines in console (fixed height)";
-  CONSOLE_LINE_OPTIONS.forEach((n) => {
-    const opt = document.createElement("option");
-    opt.value = String(n);
-    opt.textContent = String(n);
-    if (n === state.consoleLines) opt.selected = true;
-    linesSelect.appendChild(opt);
-  });
-  linesSelect.addEventListener("change", () => {
-    const n = parseInt(linesSelect.value, 10);
-    state.consoleLines = n;
-    try {
-      localStorage.setItem(CONSOLE_LINES_KEY, String(n));
-    } catch {
-      /* ignore */
-    }
-    applyConsoleLinesHeight(state);
-  });
-  linesLabel.appendChild(linesSelect);
   const echoLabel = document.createElement("label");
   echoLabel.className = "field checkbox-field";
   echoLabel.title = "Enable if the device does not echo typed characters";
@@ -527,7 +278,7 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   echoLabel.querySelector("input").addEventListener("change", (e) => {
     state.localEcho = e.target.checked;
   });
-  details.append(syntaxLabel, linesLabel, echoLabel);
+  details.append(echoLabel);
 
   toolbarRow.append(toolbar, details);
 
@@ -539,24 +290,22 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   const body = document.createElement("div");
   body.className = "console-block-body";
   const wrapper = document.createElement("div");
-  wrapper.className = "console-window-wrapper console-window-fixed-lines";
-  state.wrapperEl = wrapper;
-  const terminal = document.createElement("div");
-  terminal.className = "console-window";
-  terminal.textContent = "Click here to focus, then type to send data.";
-  state.terminalEl = terminal;
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "console-input-overlay";
-  input.setAttribute("aria-label", "Serial console input");
-  input.autocomplete = "off";
-  input.autocapitalize = "off";
-  input.autocorrect = "off";
-  input.spellcheck = false;
-  state.inputEl = input;
-  wrapper.append(terminal, input);
+  wrapper.className = "console-window-wrapper";
+  const container = document.createElement("div");
+  container.className = "console-window xterm-container";
+  container.setAttribute("aria-label", "Serial console");
+  wrapper.appendChild(container);
   body.appendChild(wrapper);
-  applyConsoleLinesHeight(state);
+
+  const term = new window.Terminal({
+    scrollback: 5000,
+    convertEol: false,
+    fontFamily: "monospace",
+    fontSize: 14,
+    theme: { background: "#1e1e1e", foreground: "#d4d4d4" },
+  });
+  state.xtermInstance = term;
+  term.open(container);
 
   const main = document.createElement("div");
   main.className = "console-panel-main";
@@ -586,7 +335,7 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
     }
     if (status === "connected") {
       if (activeTabSessionId === sessionId) {
-        state.inputEl?.focus();
+        state.xtermInstance?.focus();
       }
     }
     if (status === "disconnected" || status === "error") {
@@ -596,7 +345,7 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
     renderDevices(deviceCache);
   });
   state.wsClient.on("data", (message) => {
-    updateTerminalForSession(sessionId, message.data || "");
+    state.xtermInstance?.write(message.data || "");
   });
   state.wsClient.on("status", (message) => {
     if (state.statusEl) {
@@ -634,35 +383,19 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
     }
     state.connectTimeoutId = null;
   }, 15000);
-  state.inputEl?.focus();
+  state.xtermInstance?.focus();
 
   return state;
 }
 
 function setupTerminalInputForSession(state) {
-  const input = state.inputEl;
-  const wrapper = state.wrapperEl;
-  const sessionId = state.sessionId;
-  if (!input || !wrapper) return;
-  wrapper.tabIndex = 0;
-  const scrollToBottomOnFocus = () => scrollConsoleToBottom(state);
-  wrapper.addEventListener("focus", scrollToBottomOnFocus);
-  input.addEventListener("focus", scrollToBottomOnFocus);
-  input.addEventListener("keydown", (event) => {
-    const char = charFromKeyEvent(event);
-    if (char !== null) {
-      event.preventDefault();
-      event.stopPropagation();
-      if (sendToSerialForSession(sessionId, char)) {
-        if (state.localEcho) appendLocalEchoForSession(sessionId, char);
+  state.xtermInstance.onData((data) => {
+    if (sendToSerialForSession(state.sessionId, data)) {
+      if (state.localEcho) {
+        state.xtermInstance.write(data);
       }
     }
   });
-  input.addEventListener("wheel", (e) => {
-    wrapper.scrollTop += e.deltaY;
-    e.preventDefault();
-  }, { passive: false });
-  wrapper.addEventListener("click", () => input?.focus());
 }
 
 function switchTab(sessionId) {
@@ -673,7 +406,7 @@ function switchTab(sessionId) {
     s.tabPanelEl?.classList.toggle("is-active", sid === sessionId);
   });
   updateListSelection();
-  state?.inputEl?.focus();
+  state?.xtermInstance?.focus();
 }
 
 function removeTabAndDisconnect(sessionId) {
@@ -687,6 +420,7 @@ function removeTabAndDisconnect(sessionId) {
     state.wsClient.close();
     state.wsClient = null;
   }
+  state.xtermInstance?.dispose();
   state.tabPanelEl?.remove();
   sessionMap.delete(sessionId);
   if (activeTabSessionId === sessionId) {
@@ -696,24 +430,6 @@ function removeTabAndDisconnect(sessionId) {
   updateConsoleEmptyState();
   updateSessionsMeta();
   renderDevices(deviceCache);
-}
-
-function charFromKeyEvent(event) {
-  if (event.ctrlKey || event.metaKey) {
-    const c = event.key.toLowerCase();
-    if (c >= "a" && c <= "z") return String.fromCharCode(c.charCodeAt(0) - 96);
-    if (c === "@") return "\x00";
-    if (c === "[") return "\x1b";
-    if (c === "\\") return "\x1c";
-    if (c === "]") return "\x1d";
-    if (c === "^" || c === "6") return "\x1e";
-    if (c === "_" || c === "-") return "\x1f";
-  }
-  if (event.key === "Enter") return "\n";
-  if (event.key === "Backspace") return "\x7f";
-  if (event.key === "Tab") return "\t";
-  if (event.key.length === 1) return event.key;
-  return null;
 }
 
 function sendBreakForSession(sessionId) {
@@ -779,7 +495,7 @@ function reconnectSession(sessionId) {
     if (status === "connected") {
       showToast("Reconnected.", "success");
       if (activeTabSessionId === sessionId) {
-        state.inputEl?.focus();
+        state.xtermInstance?.focus();
       }
     }
     if (status === "disconnected" || status === "error") {
@@ -789,7 +505,7 @@ function reconnectSession(sessionId) {
     renderDevices(deviceCache);
   });
   state.wsClient.on("data", (message) => {
-    updateTerminalForSession(sessionId, message.data || "");
+    state.xtermInstance?.write(message.data || "");
   });
   state.wsClient.on("status", (message) => {
     if (state.statusEl) {
@@ -828,7 +544,7 @@ function reconnectSession(sessionId) {
     }
     state.connectTimeoutId = null;
   }, 15000);
-  state.inputEl?.focus();
+  state.xtermInstance?.focus();
 }
 
 async function connectDevice(deviceId) {
@@ -1302,6 +1018,7 @@ function resetStateForTest() {
       st.connectTimeoutId = null;
     }
     st.wsClient?.close?.();
+    st.xtermInstance?.dispose?.();
   });
   sessionMap.clear();
   activeSessions.length = 0;

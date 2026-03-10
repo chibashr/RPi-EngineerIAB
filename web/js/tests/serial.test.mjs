@@ -15,8 +15,35 @@
 
 import { jest } from "@jest/globals";
 
+// Fake xterm.js Terminal for tests (serial.js uses window.Terminal).
+function createFakeTerminal() {
+  class FakeTerminal {
+    constructor() {
+      this.written = "";
+      this.dataHandler = null;
+    }
+    open(container) {
+      this.container = container;
+    }
+    write(data) {
+      this.written += data || "";
+    }
+    onData(cb) {
+      this.dataHandler = cb;
+    }
+    focus() {}
+    clear() {
+      this.written = "";
+    }
+    dispose() {}
+  }
+  globalThis.Terminal = FakeTerminal;
+  if (typeof window !== "undefined") window.Terminal = FakeTerminal;
+}
+
 // Minimal fake DOM factory for the parts serial.js expects.
 function createSerialDom() {
+  createFakeTerminal();
   document.body.innerHTML = `
     <div id="toast-region"></div>
     <ul id="serial-device-list">
@@ -191,7 +218,7 @@ describe("serial.js fast JS-level behavior", () => {
     expect(panels.length).toBe(2);
   });
 
-  test("switching tabs focuses corresponding session input", async () => {
+  test("switching tabs focuses corresponding session terminal", async () => {
     const { __apiState } = (await import("../api.js"));
     __apiState.devicesResponse = {
       devices: [
@@ -241,15 +268,16 @@ describe("serial.js fast JS-level behavior", () => {
     expect(state1).toBeTruthy();
     expect(state2).toBeTruthy();
 
-    // Helper to type characters into a session's input (simulating user input).
+    // Helper to type into a session via xterm's onData (simulating user input).
+    // FakeWebSocketClient echoes sent data back through the "data" handler, which
+    // calls term.write(), so we check state.xtermInstance.written.
     async function typeIntoSession(sessionState, text) {
-      const input = sessionState.inputEl;
-      expect(input).toBeTruthy();
+      const term = sessionState.xtermInstance;
+      expect(term).toBeTruthy();
+      expect(term.dataHandler).toBeTruthy();
       for (const ch of text) {
-        const evt = new KeyboardEvent("keydown", { key: ch, bubbles: true });
-        input.dispatchEvent(evt);
+        term.dataHandler(ch);
       }
-      // Allow any async callbacks to run.
       await new Promise((r) => setTimeout(r, 5));
     }
 
@@ -257,13 +285,13 @@ describe("serial.js fast JS-level behavior", () => {
     await typeIntoSession(state1, "AAA");
     await typeIntoSession(state2, "BBB");
 
-    const term1 = state1.terminalEl;
-    const term2 = state2.terminalEl;
+    const term1 = state1.xtermInstance;
+    const term2 = state2.xtermInstance;
     expect(term1).toBeTruthy();
     expect(term2).toBeTruthy();
 
-    const text1 = term1.textContent || "";
-    const text2 = term2.textContent || "";
+    const text1 = term1.written || "";
+    const text2 = term2.written || "";
 
     // Each tab should reflect its own traffic and not be polluted by the other.
     expect(text1).toContain("AAA");

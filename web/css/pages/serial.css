@@ -303,14 +303,9 @@
   border-color: color-mix(in srgb, var(--color-border) 50%, transparent);
 }
 
-/* Fixed line count: no min/max so inline height controls viewport size */
-.console-window-wrapper.console-window-fixed-lines {
-  min-height: 0;
-  max-height: none;
-}
-
-.console-window-wrapper.console-window-fixed-lines .console-window {
-  min-height: 0;
+.xterm-container {
+  height: 480px;
+  padding: 0.5rem;
 }
 
 
