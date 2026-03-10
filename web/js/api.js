@@ -72,6 +72,12 @@ export async function apiPost(endpoint, body, options = {}) {
       const payload = await response.json();
       if (payload?.error?.message && typeof payload.error.message === "string") {
         message = payload.error.message;
+      } else if (payload?.detail && typeof payload.detail === "string") {
+        message = payload.detail;
+      } else if (payload?.detail && Array.isArray(payload.detail)) {
+        const first = payload.detail[0];
+        const msg = first?.msg ?? (typeof first === "string" ? first : null);
+        if (msg) message = msg;
       }
     } catch {
       // ignore non-JSON or parse errors

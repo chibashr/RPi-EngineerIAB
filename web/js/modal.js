@@ -126,7 +126,7 @@ export function modalConfirm(message) {
  * Show a single-input prompt dialog.
  * @param {string} message
  * @param {string} defaultValue
- * @param {{ label?: string }} [options]
+ * @param {{ label?: string, inputType?: string }} [options]
  * @returns {Promise<string|null>}
  */
 export function modalPrompt(message, defaultValue = "", options = {}) {
@@ -141,6 +141,7 @@ export function modalPrompt(message, defaultValue = "", options = {}) {
   overlay.setAttribute("aria-labelledby", "modal-prompt-title");
 
   const label = options.label != null ? options.label : "Value";
+  const inputType = options.inputType === "password" ? "password" : "text";
   const inputId = "modal-prompt-input";
 
   let resolveRef;
@@ -161,7 +162,7 @@ export function modalPrompt(message, defaultValue = "", options = {}) {
       <h2 id="modal-prompt-title" class="modal-title">${escapeHtml(message)}</h2>
       <div class="field">
         <label class="field-label" for="${inputId}">${escapeHtml(label)}</label>
-        <input type="text" id="${inputId}" class="modal-input" value="${escapeHtml(defaultValue)}" />
+        <input type="${escapeHtml(inputType)}" id="${inputId}" class="modal-input" value="${escapeHtml(defaultValue)}" />
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>

@@ -1,5 +1,6 @@
 import { apiGet, apiPost, extractData } from "../api.js";
 import { copyTextToClipboard } from "../components.js";
+import { modalPrompt } from "../modal.js";
 import { createWebSocketClient } from "../websocket.js";
 import { setAlerts, formatAlertTimestamp } from "../notifications.js";
 
@@ -446,7 +447,11 @@ function setupRemotePasswordDelegation() {
       const ok = pw ? await copyTextToClipboard(pw) : false;
       showToast(ok ? "Password copied." : "Nothing to copy.", ok ? "success" : "error");
     } else if (resetBtn) {
-      const newPassword = window.prompt("Enter new unattended access password:");
+      const label = tool === "anydesk" ? "AnyDesk" : "TeamViewer";
+      const newPassword = await modalPrompt(`Set new unattended access password for ${label}`, "", {
+        label: "New password",
+        inputType: "password",
+      });
       if (newPassword == null) return;
       if (!newPassword.trim()) {
         showToast("Password cannot be empty.", "error");

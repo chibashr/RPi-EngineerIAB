@@ -79,6 +79,16 @@
   gap: 1.25rem;
 }
 
+.dashboard-grid [data-widget-id="panel-remote"] {
+  grid-column: span 2;
+}
+
+@media (max-width: 639px) {
+  .dashboard-grid [data-widget-id="panel-remote"] {
+    grid-column: span 1;
+  }
+}
+
 .panel {
   background: var(--color-surface);
   padding: 1rem;
