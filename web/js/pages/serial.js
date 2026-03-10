@@ -173,7 +173,7 @@ function getUngroupedRules() {
   return highlightConfig.rules.filter((r) => !inGroup.has(r.id));
 }
 
-async function openRuleModal(rule, groupId) {
+async function openRuleModal(rule, groupId, onConfigChange) {
   const isNew = !rule;
   const fields = [
     { name: "label", label: "Label", default: rule?.label ?? "" },
@@ -185,7 +185,7 @@ async function openRuleModal(rule, groupId) {
   if (!form) return;
   if (compileRule({ pattern: form.pattern, flags: form.flags || "g" }) === null) {
     showToast("Invalid regex pattern.", "error");
-    return openRuleModal(rule, groupId);
+    return openRuleModal(rule, groupId, onConfigChange);
   }
   if (isNew) {
     const newRule = {
@@ -208,10 +208,11 @@ async function openRuleModal(rule, groupId) {
     rule.label = form.label || "Rule";
   }
   saveHighlightConfig();
-  renderHighlightPanel();
+  renderHighlightPanel(onConfigChange);
+  onConfigChange?.();
 }
 
-function renderHighlightPanel() {
+function renderHighlightPanel(onConfigChange) {
   const container = document.getElementById("serial-highlight-groups");
   const enabledCheckbox = document.getElementById("highlight-enabled");
   if (!container) return;
@@ -220,6 +221,7 @@ function renderHighlightPanel() {
     enabledCheckbox.onchange = () => {
       highlightingEnabled = enabledCheckbox.checked;
       saveHighlightingEnabled();
+      onConfigChange?.();
     };
   }
   container.textContent = "";
@@ -239,6 +241,7 @@ function renderHighlightPanel() {
     groupCheckbox.onchange = () => {
       group.enabled = groupCheckbox.checked;
       saveHighlightConfig();
+      onConfigChange?.();
     };
     const labelSpan = document.createElement("span");
     labelSpan.className = "group-label";
@@ -258,6 +261,7 @@ function renderHighlightPanel() {
             const val = input.value.trim();
             g.label = val || g.label;
             saveHighlightConfig();
+            onConfigChange?.();
           }
           const span = document.createElement("span");
           span.className = "group-label";
@@ -283,7 +287,7 @@ function renderHighlightPanel() {
     editBtn.textContent = "Edit";
     editBtn.onclick = () => {
       expandedGroupIds.has(group.id) ? expandedGroupIds.delete(group.id) : expandedGroupIds.add(group.id);
-      renderHighlightPanel();
+      renderHighlightPanel(onConfigChange);
     };
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
@@ -295,7 +299,7 @@ function renderHighlightPanel() {
       highlightConfig.groups = highlightConfig.groups.filter((g) => g.id !== group.id);
       expandedGroupIds.delete(group.id);
       saveHighlightConfig();
-      renderHighlightPanel();
+      renderHighlightPanel(onConfigChange);
     };
     header.append(groupCheckbox, labelSpan, countSpan, editBtn, deleteBtn);
     card.appendChild(header);
@@ -311,6 +315,7 @@ function renderHighlightPanel() {
         ruleCheckbox.onchange = () => {
           rule.enabled = ruleCheckbox.checked;
           saveHighlightConfig();
+          onConfigChange?.();
         };
         const labelEl = document.createElement("span");
         labelEl.textContent = rule.label;
@@ -325,7 +330,7 @@ function renderHighlightPanel() {
         ruleEditBtn.type = "button";
         ruleEditBtn.className = "btn btn-ghost btn-sm";
         ruleEditBtn.textContent = "Edit";
-        ruleEditBtn.onclick = () => openRuleModal(rule, null);
+        ruleEditBtn.onclick = () => openRuleModal(rule, null, onConfigChange);
         const ruleDeleteBtn = document.createElement("button");
         ruleDeleteBtn.type = "button";
         ruleDeleteBtn.className = "btn btn-ghost btn-sm";
@@ -336,7 +341,7 @@ function renderHighlightPanel() {
           highlightConfig.rules = highlightConfig.rules.filter((r) => r.id !== rule.id);
           group.rules = group.rules.filter((rid) => rid !== rule.id);
           saveHighlightConfig();
-          renderHighlightPanel();
+          renderHighlightPanel(onConfigChange);
         };
         row.append(ruleCheckbox, labelEl, patternEl, swatch, ruleEditBtn, ruleDeleteBtn);
         rulesList.appendChild(row);
@@ -345,7 +350,7 @@ function renderHighlightPanel() {
       addRuleBtn.type = "button";
       addRuleBtn.className = "btn btn-secondary btn-sm";
       addRuleBtn.textContent = "Add Rule";
-      addRuleBtn.onclick = () => openRuleModal(null, group.id);
+      addRuleBtn.onclick = () => openRuleModal(null, group.id, onConfigChange);
       rulesList.appendChild(addRuleBtn);
       card.appendChild(rulesList);
     }
@@ -373,6 +378,7 @@ function renderHighlightPanel() {
       ruleCheckbox.onchange = () => {
         rule.enabled = ruleCheckbox.checked;
         saveHighlightConfig();
+        onConfigChange?.();
       };
       const labelEl = document.createElement("span");
       labelEl.textContent = rule.label;
@@ -387,7 +393,7 @@ function renderHighlightPanel() {
       ruleEditBtn.type = "button";
       ruleEditBtn.className = "btn btn-ghost btn-sm";
       ruleEditBtn.textContent = "Edit";
-      ruleEditBtn.onclick = () => openRuleModal(rule, null);
+      ruleEditBtn.onclick = () => openRuleModal(rule, null, onConfigChange);
       const ruleDeleteBtn = document.createElement("button");
       ruleDeleteBtn.type = "button";
       ruleDeleteBtn.className = "btn btn-ghost btn-sm";
@@ -400,7 +406,7 @@ function renderHighlightPanel() {
           g.rules = g.rules.filter((rid) => rid !== rule.id);
         });
         saveHighlightConfig();
-        renderHighlightPanel();
+        renderHighlightPanel(onConfigChange);
       };
       row.append(ruleCheckbox, labelEl, patternEl, swatch, ruleEditBtn, ruleDeleteBtn);
       rulesList.appendChild(row);
@@ -409,18 +415,117 @@ function renderHighlightPanel() {
     addRuleBtn.type = "button";
     addRuleBtn.className = "btn btn-secondary btn-sm";
     addRuleBtn.textContent = "Add Rule";
-    addRuleBtn.onclick = () => openRuleModal(null, null);
+    addRuleBtn.onclick = () => openRuleModal(null, null, onConfigChange);
     rulesList.appendChild(addRuleBtn);
     section.appendChild(rulesList);
     container.appendChild(section);
   }
 }
 
-function initHighlightPanel() {
+const HIGHLIGHT_MODAL_CONTAINER_ID = "rpi-highlight-modal-container";
+
+function getHighlightModalContainer() {
+  let el = document.getElementById(HIGHLIGHT_MODAL_CONTAINER_ID);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = HIGHLIGHT_MODAL_CONTAINER_ID;
+    el.className = "modal-container";
+    el.setAttribute("aria-hidden", "true");
+    const mainModal = document.getElementById("rpi-modal-container");
+    if (mainModal) {
+      mainModal.parentNode.insertBefore(el, mainModal);
+    } else {
+      document.body.appendChild(el);
+    }
+  }
+  return el;
+}
+
+function openHighlightModal() {
   loadHighlightConfig();
   loadHighlightingEnabled();
-  renderHighlightPanel();
-  const addGroupBtn = document.getElementById("highlight-add-group");
+
+  const container = getHighlightModalContainer();
+  container.setAttribute("aria-hidden", "false");
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+
+  const dialog = document.createElement("div");
+  dialog.className = "modal-dialog highlight-modal-dialog";
+
+  const testAreaHtml = `
+    <div class="highlight-test-section">
+      <h3 class="highlight-test-title">Test</h3>
+      <div class="highlight-test-row">
+        <label class="field">
+          <span class="field-label">Sample input</span>
+          <textarea id="highlight-test-input" class="highlight-test-input" rows="4" placeholder="Paste or type text to preview highlighting..."></textarea>
+        </label>
+      </div>
+      <div class="highlight-test-row">
+        <span class="field-label">Output</span>
+        <div id="highlight-test-output" class="highlight-test-output" aria-label="Highlighted output"></div>
+      </div>
+    </div>
+  `;
+
+  dialog.innerHTML = `
+    <h2 class="modal-title">Syntax Highlighting</h2>
+    <label class="field checkbox-field highlight-global-toggle">
+      <input type="checkbox" id="highlight-enabled" ${highlightingEnabled ? "checked" : ""} />
+      <span class="field-label">Enable syntax highlighting</span>
+    </label>
+    <div id="serial-highlight-groups"></div>
+    <div class="highlight-actions">
+      <button type="button" class="btn btn-secondary btn-sm" id="highlight-add-group">Add Group</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="highlight-reset-defaults">Reset to Defaults</button>
+    </div>
+    ${testAreaHtml}
+    <div class="modal-actions" style="margin-top:1rem">
+      <button type="button" class="btn btn-primary" id="highlight-modal-close">Close</button>
+    </div>
+  `;
+
+  overlay.appendChild(dialog);
+
+  const testOutput = dialog.querySelector("#highlight-test-output");
+  const testInput = dialog.querySelector("#highlight-test-input");
+  let testTerm = null;
+
+  const updateTestOutput = () => {
+    const raw = testInput?.value ?? "";
+    const display = applyHighlighting(raw);
+    if (testTerm) {
+      testTerm.clear();
+      if (display) testTerm.write(display);
+    }
+  };
+
+  if (testOutput && window.Terminal) {
+    testTerm = new window.Terminal({
+      scrollback: 100,
+      convertEol: true,
+      fontFamily: '"Courier New", Consolas, monospace',
+      fontSize: 12,
+      lineHeight: 1.3,
+      theme: {
+        background: "#0d0e11",
+        foreground: "#c8cdd4",
+        cursor: "#c8cdd4",
+      },
+    });
+    testTerm.open(testOutput);
+    testInput?.addEventListener("input", updateTestOutput);
+    testInput?.addEventListener("keyup", updateTestOutput);
+  }
+
+  const onConfigChange = () => updateTestOutput();
+
+  renderHighlightPanel(onConfigChange);
+  updateTestOutput();
+
+  const addGroupBtn = dialog.querySelector("#highlight-add-group");
   if (addGroupBtn) {
     addGroupBtn.onclick = async () => {
       const label = await modalPrompt("Add Group", "", { label: "Group label" });
@@ -432,10 +537,12 @@ function initHighlightPanel() {
         rules: [],
       });
       saveHighlightConfig();
-      renderHighlightPanel();
+      renderHighlightPanel(onConfigChange);
+      onConfigChange();
     };
   }
-  const resetBtn = document.getElementById("highlight-reset-defaults");
+
+  const resetBtn = dialog.querySelector("#highlight-reset-defaults");
   if (resetBtn) {
     resetBtn.onclick = async () => {
       const ok = await modalConfirm("Reset syntax highlighting to defaults? This will replace your current rules.");
@@ -443,9 +550,42 @@ function initHighlightPanel() {
       highlightConfig = getDefaultHighlightConfig();
       saveHighlightConfig();
       expandedGroupIds.clear();
-      renderHighlightPanel();
+      renderHighlightPanel(onConfigChange);
+      onConfigChange();
     };
   }
+
+  const close = () => {
+    overlay.remove();
+    testTerm?.dispose();
+    testTerm = null;
+    if (container.children.length === 0) {
+      container.setAttribute("aria-hidden", "true");
+    }
+  };
+
+  dialog.querySelector("#highlight-modal-close").onclick = close;
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+
+  const escapeHandler = (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      close();
+      document.removeEventListener("keydown", escapeHandler);
+    }
+  };
+  document.addEventListener("keydown", escapeHandler);
+
+  container.appendChild(overlay);
+}
+
+function initHighlightPanel() {
+  loadHighlightConfig();
+  loadHighlightingEnabled();
+  const btn = document.getElementById("serial-highlight-btn");
+  if (btn) btn.onclick = openHighlightModal;
 }
 
 // Resolve from document on each access so tests (or DOM changes) always see current nodes.
@@ -674,6 +814,7 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
     tabPanelEl: null,
     statusEl: null,
     xtermInstance: null,
+    resizeObserver: null,
   };
   sessionMap.set(sessionId, state);
 
@@ -746,6 +887,21 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   });
   state.xtermInstance = term;
   term.open(container);
+
+  const resizeObserver = new ResizeObserver(() => {
+    const dims = term._core._renderService.dimensions;
+    if (!dims) return;
+    const cellWidth = dims.actualCellWidth || dims.css?.cell?.width;
+    const cellHeight = dims.actualCellHeight || dims.css?.cell?.height;
+    if (!cellWidth || !cellHeight) return;
+    const cols = Math.floor(container.clientWidth / cellWidth);
+    const rows = Math.floor(container.clientHeight / cellHeight);
+    if (cols > 0 && rows > 0) {
+      term.resize(cols, rows);
+    }
+  });
+  resizeObserver.observe(container);
+  state.resizeObserver = resizeObserver;
 
   const main = document.createElement("div");
   main.className = "console-panel-main";
@@ -863,6 +1019,7 @@ function removeTabAndDisconnect(sessionId) {
     state.wsClient = null;
   }
   state.xtermInstance?.dispose();
+  state.resizeObserver?.disconnect();
   state.tabPanelEl?.remove();
   sessionMap.delete(sessionId);
   if (activeTabSessionId === sessionId) {

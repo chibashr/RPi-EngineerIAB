@@ -249,6 +249,9 @@
 
 .console-tab-panel.is-active {
   display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Toolbar + settings row above console, full-width layout */
@@ -285,10 +288,10 @@
 
 .console-panel-main {
   flex: 1;
-  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
 }
 
 .console-panel-main .console-block-body {
@@ -296,21 +299,41 @@
   min-height: 0;
 }
 
+.serial-card .console-block-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Wider console: full-width, taller viewport, softer border */
 .serial-card .console-window-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
   width: 100%;
   border-color: color-mix(in srgb, var(--color-border) 50%, transparent);
-  max-height: unset;
   border-radius: 12px;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .xterm-container {
-  height: 480px;
   padding: 0;
   background: #0d0e11;
   border-radius: 10px;
   overflow: hidden;
+  height: 480px;
+  max-height: 60vh;
+  box-sizing: border-box;
+}
+
+.serial-card .console-window-wrapper .xterm-container {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
 }
 
 .xterm-container .xterm {
@@ -526,5 +549,61 @@
   font-weight: 600;
   font-size: 0.9rem;
   padding: 0.4rem 0;
+}
+
+/* Syntax highlighting modal */
+.highlight-modal-dialog {
+  max-width: min(720px, 95vw);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.highlight-test-section {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
+}
+
+.highlight-test-title {
+  font-size: 0.95rem;
+  margin: 0 0 0.5rem 0;
+  color: var(--color-fg);
+}
+
+.highlight-test-row {
+  margin-bottom: 0.75rem;
+}
+
+.highlight-test-row .field-label {
+  display: block;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+  color: var(--color-muted);
+}
+
+.highlight-test-input {
+  width: 100%;
+  min-height: 80px;
+  padding: 0.5rem 0.75rem;
+  font-family: "Courier New", Consolas, monospace;
+  font-size: 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-fg);
+  resize: vertical;
+}
+
+.highlight-test-output {
+  min-height: 120px;
+  padding: 0.5rem 0.75rem;
+  background: #0d0e11;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+  overflow: auto;
+}
+
+.highlight-test-output .xterm {
+  padding: 0.5rem;
 }
 
