@@ -46,6 +46,24 @@ MODULES_INSTALLED="no"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# TUI detection: use whiptail only when interactive, not piped, whiptail available, and TTY present.
+USE_TUI=0
+if [ "${NONINTERACTIVE:-0}" != "1" ] && \
+   command -v whiptail >/dev/null 2>&1 && \
+   [ -t 0 ] && \
+   [ ! -p /dev/stdin ] 2>/dev/null; then
+    USE_TUI=1
+fi
+readonly WHIPTAIL_TITLE=" RPi Engineer-in-a-Box "
+
+whiptail_check_cancel() {
+    local ret=$1
+    if [ "$ret" = "1" ] || [ "$ret" = "255" ]; then
+        log_error "Installation aborted by user."
+        exit 1
+    fi
+}
+
 log_info() {
     echo "[INFO] $1" | tee -a "$INSTALL_LOG"
 }
@@ -87,9 +105,20 @@ mark_step_done() {
 }
 
 # Simple scrolling progress only; no scroll region or cursor tricks.
+# When USE_TUI=1, progress_bar uses whiptail --gauge fed via a named pipe.
 PROGRESS_BAR_WIDTH=40
+GAUGE_FIFO=""
+GAUGE_PID=""
+
 progress_init() {
-    : # No-op; progress just scrolls with output
+    if [ "$USE_TUI" = "1" ]; then
+        GAUGE_FIFO="/tmp/rpi-engineer-gauge-$$.pipe"
+        mkfifo "$GAUGE_FIFO" 2>/dev/null || true
+        whiptail --title "$WHIPTAIL_TITLE" --gauge "Initializing..." 8 70 0 < "$GAUGE_FIFO" &
+        GAUGE_PID=$!
+        exec 3>"$GAUGE_FIFO"
+        printf "XXX\n0\nInitializing...\nXXX\n" >&3
+    fi
 }
 
 progress_ensure_region() {
@@ -102,22 +131,33 @@ progress_bar() {
     local label="${3:-}"
     local pct=0
     [ "$total" -gt 0 ] && pct=$((current * 100 / total))
-    local filled=$((current * PROGRESS_BAR_WIDTH / total))
-    [ "$filled" -gt "$PROGRESS_BAR_WIDTH" ] && filled=$PROGRESS_BAR_WIDTH
-    local bar=""
-    local i=0
-    for ((i = 0; i < PROGRESS_BAR_WIDTH; i++)); do
-        [ "$i" -lt "$filled" ] && bar="${bar}=" || bar="${bar}-"
-    done
-    local max_label_len=36
-    [ "${#label}" -gt "$max_label_len" ] && label="${label:0:$((max_label_len - 3))}..."
-    local line="[${bar}] ${pct}% ${label}"
-    echo "$line"
+    if [ "$USE_TUI" = "1" ] && [ -n "$GAUGE_FIFO" ] && [ -n "$GAUGE_PID" ]; then
+        printf "XXX\n%d\n%s\nXXX\n" "$pct" "$label" >&3
+    else
+        local filled=$((current * PROGRESS_BAR_WIDTH / total))
+        [ "$filled" -gt "$PROGRESS_BAR_WIDTH" ] && filled=$PROGRESS_BAR_WIDTH
+        local bar=""
+        local i=0
+        for ((i = 0; i < PROGRESS_BAR_WIDTH; i++)); do
+            [ "$i" -lt "$filled" ] && bar="${bar}=" || bar="${bar}-"
+        done
+        local max_label_len=36
+        [ "${#label}" -gt "$max_label_len" ] && label="${label:0:$((max_label_len - 3))}..."
+        local line="[${bar}] ${pct}% ${label}"
+        echo "$line"
+    fi
     echo "[INFO] Progress: ${current}/${total} (${pct}%) ${label}" >> "$INSTALL_LOG"
 }
 
 progress_cleanup() {
-    : # No-op; no scroll region to reset
+    if [ "$USE_TUI" = "1" ] && [ -n "$GAUGE_FIFO" ] && [ -n "$GAUGE_PID" ]; then
+        printf "XXX\n100\nComplete\nXXX\n" >&3
+        exec 3>&-
+        wait "$GAUGE_PID" 2>/dev/null || true
+        rm -f "$GAUGE_FIFO"
+        GAUGE_FIFO=""
+        GAUGE_PID=""
+    fi
 }
 
 detect_interrupted_install() {
@@ -441,15 +481,27 @@ determine_install_mode() {
     if [ -d "$INSTALL_DIR" ] || [ -d "$CONFIG_DIR" ]; then
         log_warn "Existing installation detected."
         if [ "${NONINTERACTIVE:-0}" != "1" ]; then
-            echo "Select install mode:"
-            echo "  1) Upgrade (update files and services)"
-            echo "  2) Quick update (update repo only, no wizard)"
-            echo "  3) Reconfigure (wizard and config only)"
-            echo "  4) Uninstall"
-            echo "  5) Abort"
-            interactive_read -r -p "Enter choice (1-5) [1]: " choice
+            if [ "$USE_TUI" = "1" ]; then
+                choice=$(whiptail --title "$WHIPTAIL_TITLE" --menu "Select install mode:" 12 70 5 \
+                    "1" "Upgrade (update files and services)" \
+                    "2" "Quick update (update repo only, no wizard)" \
+                    "3" "Reconfigure (wizard and config only)" \
+                    "4" "Uninstall" \
+                    "5" "Abort" \
+                    3>&1 1>&2 2>&3)
+                whiptail_check_cancel $?
+            else
+                echo "Select install mode:"
+                echo "  1) Upgrade (update files and services)"
+                echo "  2) Quick update (update repo only, no wizard)"
+                echo "  3) Reconfigure (wizard and config only)"
+                echo "  4) Uninstall"
+                echo "  5) Abort"
+                interactive_read -r -p "Enter choice (1-5) [1]: " choice
+            fi
         fi
-        case "${choice:-1}" in
+        choice="${choice:-1}"
+        case "$choice" in
             1) INSTALL_MODE="upgrade" ;;
             2) INSTALL_MODE="quick_update" ;;
             3) INSTALL_MODE="reconfigure" ;;
@@ -461,6 +513,18 @@ determine_install_mode() {
             if [ "${NONINTERACTIVE:-0}" = "1" ]; then
                 UPGRADE_SKIP_CONFIG="1"
                 log_info "Non-interactive upgrade: using existing configuration."
+            elif [ "$USE_TUI" = "1" ]; then
+                whiptail --title "$WHIPTAIL_TITLE" --yesno "Use existing configuration (only choose modules) or re-run full wizard?\n\nYes = Use existing config\nNo = Re-run full wizard" 10 70 3>&1 1>&2 2>&3
+                local yesno_ret=$?
+                if [ "$yesno_ret" = "0" ]; then
+                    UPGRADE_SKIP_CONFIG="1"
+                    log_info "Upgrade: using existing configuration (upgrade in place)."
+                elif [ "$yesno_ret" = "255" ]; then
+                    whiptail_check_cancel "$yesno_ret"
+                else
+                    UPGRADE_SKIP_CONFIG="0"
+                    log_info "Upgrade: re-running full wizard."
+                fi
             else
                 echo "Upgrade configuration:"
                 echo "  1) Use existing configuration (only choose modules)"
@@ -490,6 +554,23 @@ prompt_repair_or_start_over() {
         INSTALL_MODE="continue"
         return 0
     fi
+    if [ "$USE_TUI" = "1" ]; then
+        whiptail --title "$WHIPTAIL_TITLE" --yesno "The previous installation did not finish.
+
+Yes = Continue / Repair (resume from where it stopped)
+No = Start over (discard progress and run a new install)" 10 70 3>&1 1>&2 2>&3
+        local ret=$?
+        if [ "$ret" = "0" ]; then
+            INSTALL_MODE="continue"
+            log_info "Continuing interrupted installation."
+        elif [ "$ret" = "255" ]; then
+            whiptail_check_cancel "$ret"
+        else
+            rm -f "$INSTALL_PROGRESS_FILE"
+            log_info "Progress file removed; starting fresh."
+        fi
+        return 0
+    fi
     echo "The previous installation did not finish. You can:"
     echo "  1) Continue / Repair (resume from where it stopped)"
     echo "  2) Start over (discard progress and run a new install)"
@@ -506,6 +587,37 @@ prompt_repair_or_start_over() {
 
 prompt_welcome() {
     log_step "Welcome"
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        log_info "Non-interactive mode: proceeding."
+        return 0
+    fi
+    if [ "$USE_TUI" = "1" ]; then
+        local sysinfo
+        sysinfo="$(get_system_info)"
+        local msg
+        msg="RPi Engineer-in-a-Box Installation
+Version 1.0.0
+
+This script will install RPi Engineer-in-a-Box on your system.
+
+System Information:
+${sysinfo}
+
+This installation will:
+  - Install system dependencies
+  - Configure network interfaces
+  - Set up WiFi hotspot
+  - Install selected remote access tool
+  - Install selected modules
+  - Configure systemd services
+
+Estimated time: 10-15 minutes"
+        whiptail --title "$WHIPTAIL_TITLE" --msgbox "$msg" 22 70 3>&1 1>&2 2>&3
+        whiptail_check_cancel $?
+        whiptail --title "$WHIPTAIL_TITLE" --yesno "Do you want to continue with the installation?" 8 70 3>&1 1>&2 2>&3
+        whiptail_check_cancel $?
+        return 0
+    fi
     cat <<'EOF'
 ============================================================
           RPi Engineer-in-a-Box Installation
@@ -527,20 +639,60 @@ EOF
     echo
     echo "Estimated time: 10-15 minutes"
     echo
-    if [ "${NONINTERACTIVE:-0}" != "1" ]; then
-        interactive_read -r -p "Do you want to continue? (y/n): " confirm
-        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-            log_error "Installation aborted by user."
-            exit 1
-        fi
-    else
-        log_info "Non-interactive mode: proceeding."
+    interactive_read -r -p "Do you want to continue? (y/n): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        log_error "Installation aborted by user."
+        exit 1
     fi
 }
 
 prompt_remote_access() {
     log_step "Remote access configuration"
-    if [ "${NONINTERACTIVE:-0}" != "1" ]; then
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        REMOTE_ACCESS_TOOLS=()
+        log_info "Non-interactive: skipping remote access selection."
+        return 0
+    fi
+    if [ "$USE_TUI" = "1" ]; then
+        choice=$(whiptail --title "$WHIPTAIL_TITLE" --radiolist \
+            "Select the remote access tool you want to install:" 14 70 6 \
+            "1" "AnyDesk (Recommended)" OFF \
+            "2" "TeamViewer" OFF \
+            "3" "TigerVNC" OFF \
+            "4" "Raspberry Pi Connect (Raspberry Pi OS only)" OFF \
+            "5" "Install multiple (select after)" OFF \
+            "6" "Skip (install manually later)" ON \
+            3>&1 1>&2 2>&3)
+        whiptail_check_cancel $?
+        if [ "$choice" = "5" ]; then
+            multi_result=$(whiptail --title "$WHIPTAIL_TITLE" --checklist --separate-output \
+                "Select tools to install (space to toggle, Enter to confirm):" 12 70 4 \
+                "1" "AnyDesk" OFF \
+                "2" "TeamViewer" OFF \
+                "3" "TigerVNC" OFF \
+                "4" "Raspberry Pi Connect (Raspberry Pi OS only)" OFF \
+                3>&1 1>&2 2>&3)
+            whiptail_check_cancel $?
+            REMOTE_ACCESS_TOOLS=()
+            while IFS= read -r sel; do
+                [ -z "$sel" ] && continue
+                case "$sel" in
+                    1) REMOTE_ACCESS_TOOLS+=("anydesk") ;;
+                    2) REMOTE_ACCESS_TOOLS+=("teamviewer") ;;
+                    3) REMOTE_ACCESS_TOOLS+=("vnc") ;;
+                    4) REMOTE_ACCESS_TOOLS+=("rpi_connect") ;;
+                esac
+            done <<< "$multi_result"
+        else
+            case "$choice" in
+                1) REMOTE_ACCESS_TOOLS=("anydesk") ;;
+                2) REMOTE_ACCESS_TOOLS=("teamviewer") ;;
+                3) REMOTE_ACCESS_TOOLS=("vnc") ;;
+                4) REMOTE_ACCESS_TOOLS=("rpi_connect") ;;
+                *) REMOTE_ACCESS_TOOLS=() ;;
+            esac
+        fi
+    else
         echo "Select the remote access tool you want to install:"
         echo "  1) AnyDesk (Recommended)"
         echo "  2) TeamViewer"
@@ -549,33 +701,33 @@ prompt_remote_access() {
         echo "  5) Install multiple (select after)"
         echo "  6) Skip (install manually later)"
         interactive_read -r -p "Enter your choice (1-6) [6]: " choice
+        case "${choice:-6}" in
+            1) REMOTE_ACCESS_TOOLS=("anydesk") ;;
+            2) REMOTE_ACCESS_TOOLS=("teamviewer") ;;
+            3) REMOTE_ACCESS_TOOLS=("vnc") ;;
+            4) REMOTE_ACCESS_TOOLS=("rpi_connect") ;;
+            5)
+                echo "Select tools to install (comma-separated, e.g., 1,2):"
+                echo "  1) AnyDesk"
+                echo "  2) TeamViewer"
+                echo "  3) TigerVNC"
+                echo "  4) Raspberry Pi Connect (Raspberry Pi OS only)"
+                interactive_read -r -p "Enter your choices: " multi_choice
+                IFS=',' read -r -a selections <<< "${multi_choice:-}"
+                REMOTE_ACCESS_TOOLS=()
+                for selection in "${selections[@]}"; do
+                    case "$(echo "$selection" | tr -d ' ')" in
+                        1) REMOTE_ACCESS_TOOLS+=("anydesk") ;;
+                        2) REMOTE_ACCESS_TOOLS+=("teamviewer") ;;
+                        3) REMOTE_ACCESS_TOOLS+=("vnc") ;;
+                        4) REMOTE_ACCESS_TOOLS+=("rpi_connect") ;;
+                    esac
+                done
+                ;;
+            6) REMOTE_ACCESS_TOOLS=() ;;
+            *) REMOTE_ACCESS_TOOLS=() ;;
+        esac
     fi
-    case "${choice:-6}" in
-        1) REMOTE_ACCESS_TOOLS=("anydesk") ;;
-        2) REMOTE_ACCESS_TOOLS=("teamviewer") ;;
-        3) REMOTE_ACCESS_TOOLS=("vnc") ;;
-        4) REMOTE_ACCESS_TOOLS=("rpi_connect") ;;
-        5)
-            echo "Select tools to install (comma-separated, e.g., 1,2):"
-            echo "  1) AnyDesk"
-            echo "  2) TeamViewer"
-            echo "  3) TigerVNC"
-            echo "  4) Raspberry Pi Connect (Raspberry Pi OS only)"
-            interactive_read -r -p "Enter your choices: " multi_choice
-            IFS=',' read -r -a selections <<< "${multi_choice:-}"
-            REMOTE_ACCESS_TOOLS=()
-            for selection in "${selections[@]}"; do
-                case "$(echo "$selection" | tr -d ' ')" in
-                    1) REMOTE_ACCESS_TOOLS+=("anydesk") ;;
-                    2) REMOTE_ACCESS_TOOLS+=("teamviewer") ;;
-                    3) REMOTE_ACCESS_TOOLS+=("vnc") ;;
-                    4) REMOTE_ACCESS_TOOLS+=("rpi_connect") ;;
-                esac
-            done
-            ;;
-        6) REMOTE_ACCESS_TOOLS=() ;;
-        *) REMOTE_ACCESS_TOOLS=() ;;
-    esac
     if [ "${#REMOTE_ACCESS_TOOLS[@]}" -eq 0 ]; then
         log_info "Selected remote access tool: skip"
     else
@@ -591,6 +743,28 @@ prompt_hotspot_config() {
         HOTSPOT_SSID="${default_ssid}"
         HOTSPOT_PASSWORD="rpi-engineer-default-password"
         log_info "Non-interactive: using default SSID and password."
+    elif [ "$USE_TUI" = "1" ]; then
+        HOTSPOT_SSID=$(whiptail --title "$WHIPTAIL_TITLE" --inputbox "WiFi hotspot SSID (default: $default_ssid)" 8 70 "$default_ssid" 3>&1 1>&2 2>&3)
+        whiptail_check_cancel $?
+        [ -z "$HOTSPOT_SSID" ] && HOTSPOT_SSID="$default_ssid"
+        while true; do
+            HOTSPOT_PASSWORD=$(whiptail --title "$WHIPTAIL_TITLE" --passwordbox "Enter WiFi hotspot password (8-63 characters)" 8 70 3>&1 1>&2 2>&3)
+            whiptail_check_cancel $?
+            password_confirm=$(whiptail --title "$WHIPTAIL_TITLE" --passwordbox "Confirm password" 8 70 3>&1 1>&2 2>&3)
+            whiptail_check_cancel $?
+            if [ "$HOTSPOT_PASSWORD" != "$password_confirm" ]; then
+                log_warn "Passwords do not match."
+                whiptail --title "$WHIPTAIL_TITLE" --msgbox "Passwords do not match. Please try again." 8 70 3>&1 1>&2 2>&3
+                whiptail_check_cancel $?
+                continue
+            fi
+            if [ "${#HOTSPOT_PASSWORD}" -ge 8 ] && [ "${#HOTSPOT_PASSWORD}" -le 63 ]; then
+                break
+            fi
+            log_warn "Hotspot password must be 8-63 characters."
+            whiptail --title "$WHIPTAIL_TITLE" --msgbox "Password must be 8-63 characters. Please try again." 8 70 3>&1 1>&2 2>&3
+            whiptail_check_cancel $?
+        done
     else
         echo "Default SSID: ${default_ssid}"
         interactive_read -r -p "Press Enter to use default, or type custom SSID: " HOTSPOT_SSID
@@ -620,6 +794,10 @@ prompt_hostname() {
     current_hostname="$(hostname)"
     if [ "${NONINTERACTIVE:-0}" = "1" ]; then
         TARGET_HOSTNAME="$current_hostname"
+    elif [ "$USE_TUI" = "1" ]; then
+        TARGET_HOSTNAME=$(whiptail --title "$WHIPTAIL_TITLE" --inputbox "Enter new hostname (current: $current_hostname)" 8 70 "$current_hostname" 3>&1 1>&2 2>&3)
+        whiptail_check_cancel $?
+        [ -z "$TARGET_HOSTNAME" ] && TARGET_HOSTNAME="$current_hostname"
     else
         echo "Current hostname: $current_hostname"
         interactive_read -r -p "Enter new hostname (or press Enter to keep current): " TARGET_HOSTNAME
@@ -675,25 +853,46 @@ prompt_modules() {
         return 0
     fi
     log_step "Module selection"
-    echo "Select optional modules to install:"
-    local i=1
-    local display_name
-    for mod in "${AVAILABLE_MODULES[@]}"; do
-        display_name="$(get_module_display_name "$modules_dir" "$mod")"
-        echo "  $i) $display_name ($mod)"
-        i=$((i + 1))
-    done
-    interactive_read -r -p "Enter module numbers (comma-separated) or press Enter to skip: " module_choice
-    MODULE_SELECTIONS=()
-    if [ -n "${module_choice:-}" ]; then
-        local selections
-        IFS=',' read -r -a selections <<< "$module_choice"
-        for selection in "${selections[@]}"; do
-            selection="$(echo "$selection" | tr -d ' ')"
-            if [ -n "$selection" ] && [ "$selection" -ge 1 ] 2>/dev/null && [ "$selection" -le "${#AVAILABLE_MODULES[@]}" ] 2>/dev/null; then
-                MODULE_SELECTIONS+=("${AVAILABLE_MODULES[$((selection - 1))]}")
-            fi
+    if [ "$USE_TUI" = "1" ]; then
+        local checklist_args=()
+        local display_name
+        for mod in "${AVAILABLE_MODULES[@]}"; do
+            display_name="$(get_module_display_name "$modules_dir" "$mod")"
+            checklist_args+=("$mod" "$display_name" "OFF")
         done
+        local list_height="${#AVAILABLE_MODULES[@]}"
+        [ "$list_height" -gt 12 ] && list_height=12
+        [ "$list_height" -lt 4 ] && list_height=4
+        local result
+        result=$(whiptail --title "$WHIPTAIL_TITLE" --checklist --separate-output \
+            "Select optional modules to install (space to toggle, Enter to confirm):" \
+            16 70 "$list_height" "${checklist_args[@]}" 3>&1 1>&2 2>&3)
+        whiptail_check_cancel $?
+        MODULE_SELECTIONS=()
+        while IFS= read -r mod; do
+            [ -n "$mod" ] && MODULE_SELECTIONS+=("$mod")
+        done <<< "$result"
+    else
+        echo "Select optional modules to install:"
+        local i=1
+        local display_name
+        for mod in "${AVAILABLE_MODULES[@]}"; do
+            display_name="$(get_module_display_name "$modules_dir" "$mod")"
+            echo "  $i) $display_name ($mod)"
+            i=$((i + 1))
+        done
+        interactive_read -r -p "Enter module numbers (comma-separated) or press Enter to skip: " module_choice
+        MODULE_SELECTIONS=()
+        if [ -n "${module_choice:-}" ]; then
+            local selections
+            IFS=',' read -r -a selections <<< "$module_choice"
+            for selection in "${selections[@]}"; do
+                selection="$(echo "$selection" | tr -d ' ')"
+                if [ -n "$selection" ] && [ "$selection" -ge 1 ] 2>/dev/null && [ "$selection" -le "${#AVAILABLE_MODULES[@]}" ] 2>/dev/null; then
+                    MODULE_SELECTIONS+=("${AVAILABLE_MODULES[$((selection - 1))]}")
+                fi
+            done
+        fi
     fi
     if [ "${#MODULE_SELECTIONS[@]}" -eq 0 ]; then
         log_info "No modules selected."
@@ -704,6 +903,24 @@ prompt_modules() {
 
 confirm_summary() {
     log_step "Configuration summary"
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        return 0
+    fi
+    if [ "$USE_TUI" = "1" ]; then
+        local summary
+        summary="Installation Configuration:
+
+Remote Access: $([ "${#REMOTE_ACCESS_TOOLS[@]}" -eq 0 ] && echo "skip" || echo "${REMOTE_ACCESS_TOOLS[*]}")
+WiFi SSID: $HOTSPOT_SSID
+WiFi Password: ********
+Hostname: $TARGET_HOSTNAME
+Modules: $([ "${#MODULE_SELECTIONS[@]}" -eq 0 ] && echo "none" || echo "${MODULE_SELECTIONS[*]}")
+
+Is this correct?"
+        whiptail --title "$WHIPTAIL_TITLE" --yesno "$summary" 14 70 3>&1 1>&2 2>&3
+        whiptail_check_cancel $?
+        return 0
+    fi
     echo "Installation Configuration:"
     echo
     if [ "${#REMOTE_ACCESS_TOOLS[@]}" -eq 0 ]; then
@@ -720,12 +937,10 @@ confirm_summary() {
         echo "  Modules: ${MODULE_SELECTIONS[*]}"
     fi
     echo
-    if [ "${NONINTERACTIVE:-0}" != "1" ]; then
-        interactive_read -r -p "Is this correct? (y/n): " confirm
-        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-            log_error "Installation aborted by user."
-            exit 1
-        fi
+    interactive_read -r -p "Is this correct? (y/n): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        log_error "Installation aborted by user."
+        exit 1
     fi
 }
 
