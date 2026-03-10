@@ -286,6 +286,19 @@
   margin-left: 0;
 }
 
+.console-wrap-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0 0.5rem;
+  cursor: pointer;
+}
+
+.console-wrap-toggle .field-label {
+  font-size: 0.875rem;
+  color: var(--color-muted);
+}
+
 .console-panel-main {
   flex: 1;
   min-height: 0;

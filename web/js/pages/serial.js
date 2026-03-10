@@ -6,6 +6,7 @@ const SERIAL_API_TIMEOUT_MS = 60000;
 
 const HIGHLIGHT_STORAGE_KEY = "rpi-serial-highlight";
 const HIGHLIGHT_ENABLED_KEY = "rpi-serial-highlight-enabled";
+const WRAP_STORAGE_KEY = "rpi-serial-wrap-enabled";
 
 const ANSI_SWATCH_MAP = {
   "38;5;75": "#5fafff",
@@ -119,6 +120,23 @@ function loadHighlightingEnabled() {
 function saveHighlightingEnabled() {
   try {
     localStorage.setItem(HIGHLIGHT_ENABLED_KEY, highlightingEnabled ? "true" : "false");
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function loadWrapEnabled() {
+  try {
+    const v = localStorage.getItem(WRAP_STORAGE_KEY);
+    return v !== "false";
+  } catch (_) {
+    return true;
+  }
+}
+
+function saveWrapEnabled(enabled) {
+  try {
+    localStorage.setItem(WRAP_STORAGE_KEY, enabled ? "true" : "false");
   } catch (_) {
     /* ignore */
   }
@@ -488,6 +506,7 @@ function openHighlightModal() {
   `;
 
   overlay.appendChild(dialog);
+  container.appendChild(overlay);
 
   const testOutput = dialog.querySelector("#highlight-test-output");
   const testInput = dialog.querySelector("#highlight-test-input");
@@ -497,8 +516,7 @@ function openHighlightModal() {
     const raw = testInput?.value ?? "";
     const display = applyHighlighting(raw);
     if (testTerm) {
-      testTerm.clear();
-      if (display) testTerm.write(display);
+      testTerm.write("\x1b[2J\x1b[H" + (display || ""));
     }
   };
 
@@ -517,7 +535,6 @@ function openHighlightModal() {
     });
     testTerm.open(testOutput);
     testInput?.addEventListener("input", updateTestOutput);
-    testInput?.addEventListener("keyup", updateTestOutput);
   }
 
   const onConfigChange = () => updateTestOutput();
@@ -577,8 +594,6 @@ function openHighlightModal() {
     }
   };
   document.addEventListener("keydown", escapeHandler);
-
-  container.appendChild(overlay);
 }
 
 function initHighlightPanel() {
@@ -851,6 +866,30 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   disconnectBtn.addEventListener("click", () => disconnectDevice(sessionId));
   toolbar.append(clearBtn, breakBtn, saveBtn, disconnectBtn);
 
+  const wrapLabel = document.createElement("label");
+  wrapLabel.className = "field console-wrap-toggle";
+  const wrapCheckbox = document.createElement("input");
+  wrapCheckbox.type = "checkbox";
+  wrapCheckbox.checked = loadWrapEnabled();
+  wrapCheckbox.setAttribute("aria-label", "Wrap long lines");
+  wrapLabel.appendChild(wrapCheckbox);
+  const wrapSpan = document.createElement("span");
+  wrapSpan.className = "field-label";
+  wrapSpan.textContent = "Wrap";
+  wrapLabel.appendChild(wrapSpan);
+
+  const applyWrapMode = (enabled) => {
+    if (!state.xtermInstance) return;
+    state.xtermInstance.write(enabled ? "\x1b[?7h" : "\x1b[?7l");
+  };
+
+  wrapCheckbox.addEventListener("change", () => {
+    const enabled = wrapCheckbox.checked;
+    saveWrapEnabled(enabled);
+    applyWrapMode(enabled);
+  });
+
+  toolbar.append(wrapLabel);
   toolbarRow.append(toolbar);
 
   const status = document.createElement("div");
@@ -902,6 +941,8 @@ function createTabAndConnect(sessionId, deviceId, deviceName) {
   });
   resizeObserver.observe(container);
   state.resizeObserver = resizeObserver;
+
+  applyWrapMode(wrapCheckbox.checked);
 
   const main = document.createElement("div");
   main.className = "console-panel-main";
