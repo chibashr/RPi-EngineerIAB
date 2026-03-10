@@ -1307,7 +1307,7 @@ EOF
 
 _write_rpi_engineer_sudoers() {
     # Controlled privileged operations: tcpdump, ip, ethtool, iptables, sysctl, systemctl (no password).
-    # Use detected paths for iptables/sysctl (may be in /usr/sbin or /sbin depending on distro).
+    # Cover /usr/sbin, /sbin, and /usr/bin for iptables and sysctl — path varies by distro and Debian version.
     local iptables_path sysctl_path
     iptables_path="$(command -v iptables 2>/dev/null)"
     [ -n "$iptables_path" ] || iptables_path="/usr/sbin/iptables"
@@ -1318,8 +1318,22 @@ _write_rpi_engineer_sudoers() {
         echo "$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/tcpdump"
         echo "$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/ip"
         echo "$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/ethtool"
-        echo "$SERVICE_USER ALL=(root) NOPASSWD: $iptables_path"
-        echo "$SERVICE_USER ALL=(root) NOPASSWD: $sysctl_path -w net.ipv4.ip_forward=1"
+        # Cover all three common iptables locations so the runtime path always matches
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/iptables"
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: /usr/bin/iptables"
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: /sbin/iptables"
+        # Add detected path if it differs from the above (e.g. iptables-legacy wrapper)
+        case "$iptables_path" in
+            /usr/sbin/iptables|/usr/bin/iptables|/sbin/iptables) ;;
+            *) echo "$SERVICE_USER ALL=(root) NOPASSWD: $iptables_path" ;;
+        esac
+        # Broaden sysctl: allow any sysctl -w call, not just ip_forward
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/sysctl"
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: /sbin/sysctl"
+        case "$sysctl_path" in
+            /usr/sbin/sysctl|/sbin/sysctl) ;;
+            *) echo "$SERVICE_USER ALL=(root) NOPASSWD: $sysctl_path" ;;
+        esac
         echo "$SERVICE_USER ALL=(root) NOPASSWD: /bin/systemctl restart rpi-engineer*"
     } > /etc/sudoers.d/rpi-engineer
     chmod 440 /etc/sudoers.d/rpi-engineer
@@ -1760,10 +1774,6 @@ configure_firewall() {
         ensure_rule INPUT -i eth0 -p tcp -m multiport --dports 80,443 -s "$LAN_SUBNET" -j ACCEPT
     fi
     ensure_rule FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-    ensure_rule FORWARD -i wlan0 -o eth0 -j ACCEPT
-    ensure_rule FORWARD -i wlan0 -o usb0 -j ACCEPT
-    ensure_nat_rule POSTROUTING -o eth0 -j MASQUERADE
-    ensure_nat_rule POSTROUTING -o usb0 -j MASQUERADE
     echo "Firewall rules configured."
     mark_step_done "firewall"
 }

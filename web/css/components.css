@@ -623,8 +623,9 @@
 .input-prefix-icon { left: 0.65rem; }
 .input-suffix-icon { right: 0.65rem; }
 
-/* Custom checkbox */
-.checkbox {
+/* Checkbox and toggle wrappers */
+.checkbox,
+.toggle {
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -635,46 +636,8 @@
   min-height: 40px;
 }
 
-.checkbox input[type="checkbox"] {
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  border: 2px solid var(--color-border);
-  border-radius: 4px;
-  background: var(--color-surface);
-  flex-shrink: 0;
-  cursor: pointer;
-  position: relative;
-}
-
-.checkbox input[type="checkbox"]:checked {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-}
-
-.checkbox input[type="checkbox"]:checked::after {
-  content: "";
-  position: absolute;
-  left: 3px;
-  top: 0px;
-  width: 5px;
-  height: 9px;
-  border: 2px solid var(--color-accent-contrast);
-  border-top: none;
-  border-left: none;
-  transform: rotate(45deg);
-}
-
-/* Toggle switch */
-.toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  cursor: pointer;
-  min-height: 40px;
-}
-
-.toggle input[type="checkbox"] {
+/* All checkboxes restyled as toggles */
+input[type="checkbox"] {
   appearance: none;
   width: 40px;
   height: 22px;
@@ -686,7 +649,7 @@
   flex-shrink: 0;
 }
 
-.toggle input[type="checkbox"]::after {
+input[type="checkbox"]::after {
   content: "";
   position: absolute;
   width: 16px;
@@ -698,11 +661,11 @@
   transition: transform 0.2s ease;
 }
 
-.toggle input[type="checkbox"]:checked {
+input[type="checkbox"]:checked {
   background: var(--color-accent);
 }
 
-.toggle input[type="checkbox"]:checked::after {
+input[type="checkbox"]:checked::after {
   transform: translateX(18px);
 }
 
