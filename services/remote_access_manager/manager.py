@@ -153,13 +153,18 @@ class RemoteAccessManager:
         return None
 
     def _teamviewer_id_from_native_config(self) -> Optional[str]:
-        """Read TeamViewer ID from config or logs when app config is unavailable."""
+        """Read TeamViewer ID from config or logs when app config is unavailable.
+        Linux: /etc/teamviewer/global.conf or /opt/teamviewer/config/global.conf
+        use '[int32]' section with 'ClientID = <digits>'; logs under /var/log/teamviewer/
+        may contain id= or 'TeamViewer ID:' (see TeamViewer Linux headless docs).
+        """
         for conf_path in (TEAMVIEWER_GLOBAL_CONF, TEAMVIEWER_ETC_CONF):
             if conf_path.is_file():
                 try:
                     text = conf_path.read_text(
                         encoding="utf-8", errors="replace"
                     )
+                    # ClientID = 123... (with optional [int32] prefix on same line)
                     match = re.search(r"ClientID\s*=\s*(\d+)", text, re.IGNORECASE)
                     if match:
                         return _format_id(match.group(1))
@@ -170,7 +175,12 @@ class RemoteAccessManager:
                 for log in sorted(TEAMVIEWER_LOG_DIR.glob("*.log"), reverse=True):
                     try:
                         text = log.read_text(encoding="utf-8", errors="replace")
-                        match = re.search(r"id[=\s]+(\d{9,10})\b", text, re.IGNORECASE)
+                        # id=123... or "TeamViewer ID: 123..."
+                        match = re.search(
+                            r"(?:TeamViewer\s+ID\s*:\s*|id[=\s]+)(\d{9,10})\b",
+                            text,
+                            re.IGNORECASE,
+                        )
                         if match:
                             return _format_id(match.group(1))
                     except OSError:
@@ -199,18 +209,19 @@ class RemoteAccessManager:
         return self._anydesk_id_from_native_config()
 
     def _teamviewer_id(self) -> Optional[str]:
-        # 1) Live CLI 2) App config (remote_access.conf) 3) TeamViewer config/logs
+        # 1) Live CLI (teamviewer info or teamviewer --info on Linux) 2) App config 3) Native config/logs
         if shutil.which("teamviewer"):
-            result = subprocess.run(
-                ["teamviewer", "info"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode == 0 and result.stdout:
-                match = re.search(r"TeamViewer ID:\s*(\d+)", result.stdout)
-                if match:
-                    return _format_id(match.group(1))
+            for args in (["teamviewer", "info"], ["teamviewer", "--info"]):
+                result = subprocess.run(
+                    args,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if result.returncode == 0 and result.stdout:
+                    match = re.search(r"TeamViewer\s+ID\s*:\s*(\d+)", result.stdout, re.IGNORECASE)
+                    if match:
+                        return _format_id(match.group(1))
         config = self._get_remote_access_config()
         raw = config.get("teamviewer", {}).get("id") or ""
         if raw:

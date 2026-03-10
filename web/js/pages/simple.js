@@ -159,16 +159,19 @@ const REMOTE_TOOL_DISPLAY = {
 const REMOTE_PASSWORD_TOOLS = ["anydesk", "teamviewer"];
 let remotePasswordCache = {};
 
-/** Show only tools that are enabled/available (have connection info or are running). */
+/** Show tools that are enabled/available. AnyDesk and TeamViewer always shown so credentials/connection are visible. */
 function getEnabledRemoteTools(tools) {
   if (!tools || !Array.isArray(tools)) {
     return [];
   }
-  return tools.filter(
-    (t) =>
-      (t.connection_id && String(t.connection_id).trim() !== "") ||
-      t.status === "running"
-  );
+  return tools.filter((t) => {
+    const hasId = t.connection_id && String(t.connection_id).trim() !== "";
+    const running = t.status === "running";
+    if (t.name === "anydesk" || t.name === "teamviewer") {
+      return true;
+    }
+    return hasId || running;
+  });
 }
 
 function updateRemoteStatus(tools) {

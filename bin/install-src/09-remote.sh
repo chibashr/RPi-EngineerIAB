@@ -75,31 +75,36 @@ DISPLAYCONF
     log_info "Virtual display :0 with Openbox is ready for AnyDesk/TeamViewer."
 }
 
-# Configure LightDM to use X11 (openbox) instead of Wayland so AnyDesk/TeamViewer can capture display :0.
+# Configure LightDM to use X11 with a full desktop (LXDE: taskbar, menu) so the Pi has a native GUI and AnyDesk/TeamViewer can capture display :0.
 # AnyDesk 7.x on ARM64 Linux does not support Wayland; display_server_not_supported means Wayland session.
+# Openbox is used only for headless (virtual display); with a physical display we use LXDE for taskbar and application menu.
 configure_lightdm_for_x11() {
     [ -f /etc/lightdm/lightdm.conf ] || return 0
-    log_step "Configuring LightDM for X11 (AnyDesk/TeamViewer require X11, not Wayland)"
-    for pkg in lightdm-gtk-greeter openbox; do
+    log_step "Configuring LightDM for X11 desktop (AnyDesk/TeamViewer require X11; using LXDE for taskbar and menu)"
+    for pkg in lightdm-gtk-greeter lxde-core; do
         if ! dpkg -s "$pkg" >/dev/null 2>&1; then
             echo "  Installing $pkg..."
             DEBIAN_FRONTEND=noninteractive apt-get install -y "$pkg" >> "$INSTALL_LOG" 2>&1
         fi
     done
+    # Prefer LXDE-pi on Raspberry Pi OS if present, else LXDE (from lxde-core)
+    local x11_session="LXDE"
+    [ -f /usr/share/xsessions/lxde-pi.desktop ] && x11_session="lxde-pi"
+    [ -f /usr/share/xsessions/LXDE-pi.desktop ] && x11_session="LXDE-pi"
     sed -i.bak -e 's/^#* *greeter-session=.*/greeter-session=lightdm-gtk-greeter/' \
-        -e 's/^#* *user-session=.*/user-session=openbox/' \
-        -e 's/^#* *autologin-session=.*/autologin-session=openbox/' \
+        -e "s/^#* *user-session=.*/user-session=$x11_session/" \
+        -e "s/^#* *autologin-session=.*/autologin-session=$x11_session/" \
         /etc/lightdm/lightdm.conf 2>/dev/null || true
     if ! grep -q '^greeter-session=' /etc/lightdm/lightdm.conf; then
         sed -i '/^\[Seat:\*\]$/a greeter-session=lightdm-gtk-greeter' /etc/lightdm/lightdm.conf 2>/dev/null || true
     fi
     if ! grep -q '^user-session=' /etc/lightdm/lightdm.conf; then
-        sed -i '/^\[Seat:\*\]$/a user-session=openbox' /etc/lightdm/lightdm.conf 2>/dev/null || true
+        sed -i "/^\[Seat:\*\]$/a user-session=$x11_session" /etc/lightdm/lightdm.conf 2>/dev/null || true
     fi
     if ! grep -q '^autologin-session=' /etc/lightdm/lightdm.conf; then
-        sed -i '/^\[Seat:\*\]$/a autologin-session=openbox' /etc/lightdm/lightdm.conf 2>/dev/null || true
+        sed -i "/^\[Seat:\*\]$/a autologin-session=$x11_session" /etc/lightdm/lightdm.conf 2>/dev/null || true
     fi
-    log_info "LightDM set to X11 (openbox). Reboot or re-login for the change to take effect."
+    log_info "LightDM set to X11 ($x11_session). Reboot or re-login for taskbar and menu to take effect."
 }
 
 install_anydesk() {

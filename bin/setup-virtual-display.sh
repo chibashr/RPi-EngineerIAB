@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Create Xvfb + Openbox and AnyDesk/TeamViewer drop-ins for headless use.
-# If LightDM is present, configure it for X11 (openbox) so AnyDesk can capture :0 (Wayland not supported).
+# For a Pi with a physical display, run the full installer so LightDM uses X11 + LXDE (taskbar and menu). This script is for headless and sets LightDM to openbox when present.
 # Run on the device: sudo bash bin/setup-virtual-display.sh (or copy this file to the Pi and run there).
 
 set -e

@@ -142,6 +142,11 @@ The Remote Access feature enables network engineers to remotely connect to the R
 5. Script retrieves and stores connection ID(s)
 6. Script enables services to start on boot
 
+**Physical display desktop (Raspberry Pi OS)**:
+- AnyDesk/TeamViewer require X11; the installer configures LightDM to use an X11 session when remote access is enabled.
+- When a display is attached, the session is set to **LXDE** (or LXDE-pi if present): full desktop with **taskbar and application menu**, native to Raspberry Pi OS.
+- Headless units use a virtual display (Xvfb) with Openbox only; no taskbar is needed there.
+
 ### AnyDesk Installation
 
 **Installation Steps**:

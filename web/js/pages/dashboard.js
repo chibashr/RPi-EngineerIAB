@@ -328,11 +328,15 @@ function getEnabledRemoteTools(tools) {
   if (!tools || !Array.isArray(tools)) {
     return [];
   }
-  return tools.filter(
-    (t) =>
-      (t.connection_id && String(t.connection_id).trim() !== "") ||
-      t.status === "running"
-  );
+  return tools.filter((t) => {
+    const hasId = t.connection_id && String(t.connection_id).trim() !== "";
+    const running = t.status === "running";
+    // Always show AnyDesk and TeamViewer so credentials/connection are visible even when ID not yet available or daemon stopped
+    if (t.name === "anydesk" || t.name === "teamviewer") {
+      return true;
+    }
+    return hasId || running;
+  });
 }
 
 function escapeHtml(text) {
