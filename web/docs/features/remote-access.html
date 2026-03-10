@@ -29,7 +29,7 @@
 <h2>Troubleshooting</h2>
 <ul>
   <li><strong>TeamViewer ID missing on dashboard</strong> – See <a href="../troubleshooting/common-issues.html#teamviewer-running-but-connection-id-not-on-dashboard">TeamViewer running but connection ID not on dashboard</a>.</li>
-  <li><strong>AnyDesk: "display_server_not_supported"</strong> – See <a href="../troubleshooting/common-issues.html#anydesk-session-closed-display_server_not_supported">AnyDesk: Session closed / display_server_not_supported</a> (installer sets up a virtual display for new installs; existing installs can re-run setup or follow manual steps).</li>
+  <li><strong>AnyDesk: "display_server_not_supported"</strong> – See <a href="../troubleshooting/common-issues.html#anydesk-session-closed-display_server_not_supported">AnyDesk: Session closed / display_server_not_supported</a> (usually Wayland; installer configures X11/LightDM for new installs; existing installs run <code>bin/setup-virtual-display.sh</code> then reboot).</li>
 </ul>
 
 <h2>Related</h2>

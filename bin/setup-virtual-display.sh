@@ -1,12 +1,25 @@
 #!/usr/bin/env bash
 # Create Xvfb + Openbox and AnyDesk/TeamViewer drop-ins for headless use.
-# AnyDesk often needs a real X session (window manager), not just a bare Xvfb.
+# If LightDM is present, configure it for X11 (openbox) so AnyDesk can capture :0 (Wayland not supported).
 # Run on the device: sudo bash bin/setup-virtual-display.sh (or copy this file to the Pi and run there).
 
 set -e
 [ "$(id -u)" -eq 0 ] || { echo "Run as root (e.g. sudo $0)"; exit 1; }
 
 apt-get install -y xvfb openbox
+
+# LightDM with Wayland (e.g. rpd-labwc) causes AnyDesk "display_server_not_supported". Switch to X11 (openbox).
+if [ -f /etc/lightdm/lightdm.conf ]; then
+    apt-get install -y lightdm-gtk-greeter 2>/dev/null || true
+    sed -i.bak -e 's/^#* *greeter-session=.*/greeter-session=lightdm-gtk-greeter/' \
+        -e 's/^#* *user-session=.*/user-session=openbox/' \
+        -e 's/^#* *autologin-session=.*/autologin-session=openbox/' \
+        /etc/lightdm/lightdm.conf 2>/dev/null || true
+    grep -q '^greeter-session=' /etc/lightdm/lightdm.conf || sed -i '/^\[Seat:\*\]$/a greeter-session=lightdm-gtk-greeter' /etc/lightdm/lightdm.conf 2>/dev/null || true
+    grep -q '^user-session=' /etc/lightdm/lightdm.conf || sed -i '/^\[Seat:\*\]$/a user-session=openbox' /etc/lightdm/lightdm.conf 2>/dev/null || true
+    grep -q '^autologin-session=' /etc/lightdm/lightdm.conf || sed -i '/^\[Seat:\*\]$/a autologin-session=openbox' /etc/lightdm/lightdm.conf 2>/dev/null || true
+    echo "LightDM configured for X11 (openbox). Reboot or re-login for the change to take effect."
+fi
 
 cat > /etc/systemd/system/xvfb.service <<'EOF'
 [Unit]
@@ -68,4 +81,4 @@ systemctl enable --now xvfb xvfb-wm
 systemctl restart anydesk 2>/dev/null || true
 systemctl restart teamviewerd 2>/dev/null || true
 echo "Virtual display :0 with Openbox is ready. Restart AnyDesk/TeamViewer if they were already running."
-echo "If AnyDesk still shows 'display not supported', use TeamViewer or VNC for headless access."
+echo "On a Pi with a display: if LightDM was configured for X11, reboot so the session is X11 (AnyDesk cannot capture Wayland)."

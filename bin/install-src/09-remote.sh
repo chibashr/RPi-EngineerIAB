@@ -75,6 +75,33 @@ DISPLAYCONF
     log_info "Virtual display :0 with Openbox is ready for AnyDesk/TeamViewer."
 }
 
+# Configure LightDM to use X11 (openbox) instead of Wayland so AnyDesk/TeamViewer can capture display :0.
+# AnyDesk 7.x on ARM64 Linux does not support Wayland; display_server_not_supported means Wayland session.
+configure_lightdm_for_x11() {
+    [ -f /etc/lightdm/lightdm.conf ] || return 0
+    log_step "Configuring LightDM for X11 (AnyDesk/TeamViewer require X11, not Wayland)"
+    for pkg in lightdm-gtk-greeter openbox; do
+        if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+            echo "  Installing $pkg..."
+            DEBIAN_FRONTEND=noninteractive apt-get install -y "$pkg" >> "$INSTALL_LOG" 2>&1
+        fi
+    done
+    sed -i.bak -e 's/^#* *greeter-session=.*/greeter-session=lightdm-gtk-greeter/' \
+        -e 's/^#* *user-session=.*/user-session=openbox/' \
+        -e 's/^#* *autologin-session=.*/autologin-session=openbox/' \
+        /etc/lightdm/lightdm.conf 2>/dev/null || true
+    if ! grep -q '^greeter-session=' /etc/lightdm/lightdm.conf; then
+        sed -i '/^\[Seat:\*\]$/a greeter-session=lightdm-gtk-greeter' /etc/lightdm/lightdm.conf 2>/dev/null || true
+    fi
+    if ! grep -q '^user-session=' /etc/lightdm/lightdm.conf; then
+        sed -i '/^\[Seat:\*\]$/a user-session=openbox' /etc/lightdm/lightdm.conf 2>/dev/null || true
+    fi
+    if ! grep -q '^autologin-session=' /etc/lightdm/lightdm.conf; then
+        sed -i '/^\[Seat:\*\]$/a autologin-session=openbox' /etc/lightdm/lightdm.conf 2>/dev/null || true
+    fi
+    log_info "LightDM set to X11 (openbox). Reboot or re-login for the change to take effect."
+}
+
 install_anydesk() {
     log_step "Installing AnyDesk"
     if dpkg -s anydesk >/dev/null 2>&1; then
@@ -221,6 +248,8 @@ write_remote_access_config() {
   }
 }
 EOF
+    chmod 640 "$CONFIG_DIR/remote_access.conf"
+    chgrp "$SERVICE_USER" "$CONFIG_DIR/remote_access.conf"
 }
 
 setup_remote_access() {
@@ -252,6 +281,7 @@ setup_remote_access() {
     need_display=$(printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -E '^(anydesk|teamviewer)$' | head -1)
     if [ -n "$need_display" ]; then
         install_virtual_display
+        configure_lightdm_for_x11
     fi
     for tool in "${REMOTE_ACCESS_TOOLS[@]}"; do
         echo "Installing remote access tool: $tool"

@@ -106,12 +106,13 @@ chmod o+x /opt /opt/rpi-engineer</pre>
 
 <h2 id="anydesk-session-closed-display_server_not_supported">AnyDesk: "Session closed" / "display_server_not_supported"</h2>
 <p><strong>Symptom:</strong> Connecting with AnyDesk using the ID from the dashboard shows a dialog: <strong>Session Closed</strong>, <strong>Status: display_server_not_supported</strong>.</p>
-<p><strong>Cause:</strong> AnyDesk on Linux requires an active X11 session (display + window manager). On headless systems, a bare virtual display (Xvfb only) is often not enough; AnyDesk may still reject it.</p>
+<p><strong>Cause:</strong> AnyDesk 7.x on ARM64 Linux does <strong>not</strong> support Wayland display capture. This status usually means the Pi is using a Wayland session (e.g. <code>rpd-labwc</code>). AnyDesk needs an X11 session (display + window manager). On headless systems, a bare Xvfb is often not enough.</p>
 <p><strong>Resolution:</strong></p>
 <ul>
-  <li><strong>New installs:</strong> The installer sets up Xvfb plus a minimal window manager (Openbox) on virtual display <code>:0</code> when you select AnyDesk or TeamViewer. Ensure you chose AnyDesk or TeamViewer during setup.</li>
-  <li><strong>Existing installs:</strong> Run the project’s virtual-display script so the session includes a WM: <code>sudo bash bin/setup-virtual-display.sh</code> (from the repo on the device). This installs <code>xvfb</code> and <code>openbox</code>, creates <code>xvfb.service</code> and <code>xvfb-wm.service</code>, and configures AnyDesk/TeamViewer to use <code>DISPLAY=:0</code>. Then <code>sudo systemctl restart anydesk teamviewerd</code>.</li>
-  <li><strong>If it still fails:</strong> AnyDesk can be unreliable headless even with Xvfb+Openbox. Use <strong>TeamViewer</strong> or <strong>VNC</strong> for headless access, or attach a monitor (or HDMI dummy plug) and log in to an X11 desktop.</li>
+  <li><strong>New installs:</strong> When you select AnyDesk or TeamViewer, the installer sets up Xvfb + Openbox on <code>:0</code> and, if LightDM is present, configures it to use X11 (greeter <code>lightdm-gtk-greeter</code>, session <code>openbox</code>) so the real session is X11. Reboot after install so the session takes effect.</li>
+  <li><strong>Existing installs (with display):</strong> If the Pi runs LightDM with a Wayland session, switch to X11: <code>sudo bash bin/setup-virtual-display.sh</code> (from the repo on the device). It installs <code>xvfb</code> and <code>openbox</code>, configures LightDM to use <code>openbox</code> and <code>lightdm-gtk-greeter</code>, and sets AnyDesk/TeamViewer to <code>DISPLAY=:0</code>. Reboot, then <code>sudo systemctl restart anydesk teamviewerd</code>.</li>
+  <li><strong>Existing installs (headless):</strong> The same script creates <code>xvfb.service</code> and <code>xvfb-wm.service</code> and the AnyDesk/TeamViewer drop-in <code>display.conf</code>. Then <code>sudo systemctl restart anydesk teamviewerd</code>.</li>
+  <li><strong>If it still fails:</strong> Use <strong>TeamViewer</strong> or <strong>VNC</strong> for headless access, or attach a monitor and ensure you are logged in to an X11 desktop (openbox), not Wayland.</li>
 </ul>
 <p>See <a href="../features/remote-access.html">Remote access</a> for supported tools.</p>
 
@@ -122,4 +123,4 @@ chmod o+x /opt /opt/rpi-engineer</pre>
   <li><a href="serial-issues.html">Serial issues</a></li>
 </ul>
 
-<p><strong>Last updated:</strong> 2026-03-04</p>
+<p><strong>Last updated:</strong> 2026-03-09</p>

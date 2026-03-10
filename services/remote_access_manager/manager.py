@@ -90,15 +90,46 @@ class RemoteAccessManager:
         return out
 
     def _get_remote_access_config(self) -> Dict[str, Any]:
-        """Read remote_access.conf; return parsed JSON or empty dict."""
-        if not REMOTE_ACCESS_CONFIG_FILE.is_file():
-            return {}
+        """Read remote_access.conf; return parsed JSON or empty dict.
+        Tries direct read first; on permission error, tries sudo read-remote-config.sh.
+        """
         try:
-            with open(REMOTE_ACCESS_CONFIG_FILE, encoding="utf-8") as f:
-                return json.load(f)
-        except (OSError, json.JSONDecodeError) as e:
-            logger.debug("Could not read remote_access config: %s", e)
-            return {}
+            if REMOTE_ACCESS_CONFIG_FILE.is_file():
+                with open(REMOTE_ACCESS_CONFIG_FILE, encoding="utf-8") as f:
+                    return json.load(f)
+        except OSError as e:
+            if getattr(e, "errno", None) != 13:  # EACCES
+                logger.debug("Could not read remote_access config: %s", e)
+                return {}
+            # Permission denied: try sudo helper so dashboard can show passwords
+            config = self._read_remote_config_via_sudo()
+            if config is not None:
+                return config
+            logger.debug("Could not read remote_access config (permission denied): %s", e)
+        except json.JSONDecodeError as e:
+            logger.debug("Could not parse remote_access config: %s", e)
+        return {}
+
+    def _read_remote_config_via_sudo(self) -> Optional[Dict[str, Any]]:
+        """Read remote_access.conf via sudo read-remote-config.sh. Returns None on failure."""
+        root = Path(os.getenv("RPI_ENGINEER_ROOT", "/opt/rpi-engineer"))
+        script = root / "bin" / "read-remote-config.sh"
+        if not script.is_file():
+            return None
+        try:
+            result = subprocess.run(
+                ["sudo", str(script)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env={**os.environ, "RPI_ENGINEER_CONFIG_DIR": str(REMOTE_ACCESS_CONFIG_FILE.parent)},
+                check=False,
+            )
+            if result.returncode != 0 or not result.stdout:
+                return None
+            return json.loads(result.stdout)
+        except (OSError, json.JSONDecodeError, subprocess.TimeoutExpired):
+            return None
 
     def _anydesk_id_from_native_config(self) -> Optional[str]:
         """Read AnyDesk ID from /etc/anydesk/service.conf when app config is unavailable."""

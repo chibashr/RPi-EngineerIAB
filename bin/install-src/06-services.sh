@@ -179,6 +179,8 @@ Environment=RPI_ENGINEER_DRY_RUN=0"
     add_sudoers_rule "$INSTALL_DIR/bin/apply-web-permissions.sh" "apply-web-permissions"
     add_sudoers_rule "$INSTALL_DIR/bin/apply-update.sh" "apply-update"
     add_sudoers_rule "$INSTALL_DIR/bin/create-config-backup.sh" "create-config-backup"
+    add_sudoers_rule "$INSTALL_DIR/bin/read-remote-config.sh" "read-remote-config"
+    add_sudoers_rule "$INSTALL_DIR/bin/set-remote-password.sh" "set-remote-password"
     # Controlled privileged operations: tcpdump, ip, ethtool, systemctl restart (no password)
     mkdir -p /etc/sudoers.d
     cat <<EOFS >/etc/sudoers.d/rpi-engineer

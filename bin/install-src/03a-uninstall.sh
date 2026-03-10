@@ -76,6 +76,8 @@ run_uninstall() {
     rm -f /etc/sudoers.d/rpi-engineer-apply-web-permissions
     rm -f /etc/sudoers.d/rpi-engineer-apply-update
     rm -f /etc/sudoers.d/rpi-engineer-create-config-backup
+    rm -f /etc/sudoers.d/rpi-engineer-read-remote-config
+    rm -f /etc/sudoers.d/rpi-engineer-set-remote-password
     rm -f /etc/sudoers.d/rpi-engineer
 
     # Remove NetworkManager config
