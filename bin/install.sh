@@ -1735,6 +1735,48 @@ EOF
     mark_step_done "hotspot"
 }
 
+_iptables_flush_share_rules() {
+    # Remove all iptables rules containing rpi-engineer-share: in their comment,
+    # across filter FORWARD and nat POSTROUTING. Mirrors services.network_manager.manager._iptables_flush_share_rules.
+    if ! command -v iptables >/dev/null 2>&1; then
+        return 0
+    fi
+    local ipt
+    ipt="$(command -v iptables 2>/dev/null || echo /usr/sbin/iptables)"
+    local table chain cmd line rest clean output
+    for table in "" "nat"; do
+        if [ -z "$table" ]; then
+            chain="FORWARD"
+            cmd=("$ipt" -S "$chain")
+        else
+            chain="POSTROUTING"
+            cmd=("$ipt" -t "$table" -S "$chain")
+        fi
+        if ! output="$("${cmd[@]}" 2>/dev/null)"; then
+            continue
+        fi
+        while IFS= read -r line; do
+            case "$line" in
+                *"rpi-engineer-share:"*)
+                    case "$line" in
+                        "-A "*) ;;
+                        *) continue ;;
+                    esac
+                    ;;
+                *) continue ;;
+            esac
+            rest="${line#-A }"
+            [ -z "$rest" ] && continue
+            # Strip double quotes so comment matches literal value expected by iptables
+            clean="${rest//\"/}"
+            # shellcheck disable=SC2086
+            "$ipt" ${table:+-t "$table"} -D $clean 2>/dev/null || true
+        done <<EOF
+$output
+EOF
+    done
+}
+
 configure_firewall() {
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "firewall"; then log_info "Step 'firewall' already completed; skipping."; return 0; fi
     log_step "Configuring firewall"
