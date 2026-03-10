@@ -8,6 +8,7 @@ import re
 import shutil
 import socket
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -295,10 +296,20 @@ class RemoteAccessManager:
         script = root / "bin" / "set-remote-password.sh"
         if not script.is_file():
             return "Password reset script not found"
+        data_dir = Path(os.getenv("RPI_ENGINEER_DATA_DIR", "/var/lib/rpi-engineer"))
+        data_dir.mkdir(parents=True, exist_ok=True)
+        pw_file = None
         try:
+            fd, pw_file = tempfile.mkstemp(
+                prefix=".remote-pw-", suffix=".tmp", dir=str(data_dir)
+            )
+            try:
+                os.write(fd, password.encode("utf-8"))
+            finally:
+                os.close(fd)
+            os.chmod(pw_file, 0o600)
             result = subprocess.run(
-                ["sudo", str(script), tool],
-                input=password.encode("utf-8"),
+                ["sudo", str(script), "--password-file", pw_file, tool],
                 capture_output=True,
                 timeout=15,
                 check=False,
@@ -317,6 +328,12 @@ class RemoteAccessManager:
         except (OSError, subprocess.TimeoutExpired) as e:
             logger.warning("set_password failed for %s: %s", tool, e)
             return str(e)
+        finally:
+            if pw_file and os.path.exists(pw_file):
+                try:
+                    os.unlink(pw_file)
+                except OSError:
+                    pass
 
 
 def _format_id(raw: str) -> str:

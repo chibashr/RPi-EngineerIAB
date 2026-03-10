@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Set unattended password for AnyDesk or TeamViewer and update remote_access.conf.
-# Run as root (e.g. sudo); password read from stdin.
-# Usage: echo -n "newpassword" | sudo bin/set-remote-password.sh anydesk
-#        echo -n "newpassword" | sudo bin/set-remote-password.sh teamviewer
+# Run as root (e.g. sudo). Password via --password-file PATH (preferred) or stdin.
+# Usage: sudo bin/set-remote-password.sh --password-file /path/to/file anydesk
+#        echo -n "newpassword" | sudo bin/set-remote-password.sh anydesk
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -10,17 +10,44 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-TOOL="${1:-}"
+PASSWORD_FILE=""
+TOOL=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --password-file)
+      PASSWORD_FILE="${2:-}"
+      shift 2
+      ;;
+    anydesk|teamviewer)
+      TOOL="$1"
+      shift
+      break
+      ;;
+    *)
+      echo "Usage: $0 [--password-file PATH] anydesk|teamviewer" >&2
+      exit 1
+      ;;
+  esac
+done
+
 if [ "$TOOL" != "anydesk" ] && [ "$TOOL" != "teamviewer" ]; then
-  echo "Usage: echo -n \"password\" | $0 anydesk|teamviewer" >&2
+  echo "Usage: $0 [--password-file PATH] anydesk|teamviewer" >&2
   exit 1
 fi
 
 PASSWORD=""
-while IFS= read -r line; do
-  PASSWORD="$line"
-  break
-done
+if [ -n "$PASSWORD_FILE" ] && [ -f "$PASSWORD_FILE" ]; then
+  PASSWORD="$(cat "$PASSWORD_FILE")"
+  rm -f "$PASSWORD_FILE"
+elif [ -n "$PASSWORD_FILE" ]; then
+  echo "Password file not found or not readable." >&2
+  exit 1
+else
+  while IFS= read -r line; do
+    PASSWORD="$line"
+    break
+  done
+fi
 if [ -z "$PASSWORD" ]; then
   echo "No password read from stdin." >&2
   exit 1
