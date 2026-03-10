@@ -194,23 +194,26 @@ function deviceDisplayName(device) {
 }
 
 function updateConsoleEmptyState() {
-  const hasSessions = sessionMap.size > 0;
   const detailEmpty = elements.detailEmpty;
   const detailContent = elements.detailContent;
   const emptyConnectBtn = elements.emptyConnectBtn;
+  const emptyConfigureBtn = elements.emptyConfigureBtn;
+
+  const sessionForSelected = selectedDeviceId ? getSessionForDevice(selectedDeviceId) : null;
+  const showContent = (selectedDeviceId && sessionForSelected) || (!selectedDeviceId && sessionMap.size > 0);
+  const showEmptyState = !showContent;
+
   if (detailEmpty) {
-    detailEmpty.hidden = hasSessions;
+    detailEmpty.hidden = !showEmptyState;
   }
   if (detailContent) {
-    detailContent.hidden = !hasSessions;
+    detailContent.hidden = !showContent;
   }
   if (emptyConnectBtn) {
-    const showConnect = !hasSessions && selectedDeviceId;
-    emptyConnectBtn.hidden = !showConnect;
+    emptyConnectBtn.hidden = !(showEmptyState && selectedDeviceId);
   }
-  const emptyConfigureBtn = elements.emptyConfigureBtn;
   if (emptyConfigureBtn) {
-    emptyConfigureBtn.hidden = !selectedDeviceId;
+    emptyConfigureBtn.hidden = !(showEmptyState && selectedDeviceId);
   }
 }
 
