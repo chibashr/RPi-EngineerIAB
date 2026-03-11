@@ -16,10 +16,10 @@ setup_user_permissions() {
     chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR" "$DATA_DIR" "$LOG_DIR"
     chown -R "root:root" "$CONFIG_DIR"
     chmod -R u+rwX "$INSTALL_DIR"
-    find "$DATA_DIR" -type d -exec chmod 775 {} \;
-    find "$DATA_DIR" -type f -exec chmod 640 {} \;
-    find "$LOG_DIR" -type d -exec chmod 775 {} \;
-    find "$LOG_DIR" -type f -exec chmod 640 {} \;
+    find "$DATA_DIR" -type d -exec chmod 775 {} \; 2>/dev/null || true
+    find "$DATA_DIR" -type f -exec chmod 640 {} \; 2>/dev/null || true
+    find "$LOG_DIR" -type d -exec chmod 775 {} \; 2>/dev/null || true
+    find "$LOG_DIR" -type f -exec chmod 640 {} \; 2>/dev/null || true
     chmod 755 "$CONFIG_DIR"
     chmod 644 "$CONFIG_DIR/"* 2>/dev/null || true
     chmod 600 "$CONFIG_DIR/install.conf" 2>/dev/null || true
@@ -32,8 +32,8 @@ setup_user_permissions() {
     for subdir in network_profiles network_configs module_config; do
         if [ -d "$CONFIG_DIR/$subdir" ]; then
             chown -R "root:$SERVICE_GROUP" "$CONFIG_DIR/$subdir"
-            find "$CONFIG_DIR/$subdir" -type d -exec chmod 775 {} \;
-            find "$CONFIG_DIR/$subdir" -type f -exec chmod 664 {} \;
+            find "$CONFIG_DIR/$subdir" -type d -exec chmod 775 {} \; 2>/dev/null || true
+            find "$CONFIG_DIR/$subdir" -type f -exec chmod 664 {} \; 2>/dev/null || true
         fi
     done
     if [ -f "$CONFIG_DIR/version" ]; then
