@@ -801,8 +801,6 @@ wpa_key_mgmt=WPA-PSK
 
     def _apply_hotspot_share(self) -> None:
         """Apply ip_forward and iptables rules for interfaces sharing with hotspot."""
-        if not _which("iptables"):
-            return
         sysctl_path = _which("sysctl") or "/usr/sbin/sysctl"
         if sysctl_path:
             r = _run_priv([sysctl_path, "-w", "net.ipv4.ip_forward=1"])
