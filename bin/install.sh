@@ -2056,7 +2056,16 @@ install_vnc() {
     if dpkg -s tigervnc-standalone-server >/dev/null 2>&1; then
         log_info "TigerVNC already installed; skipping package install."
     else
-        apt-get install -y tigervnc-standalone-server tigervnc-common lxde-core >> "$INSTALL_LOG" 2>&1
+        if ! DEBIAN_FRONTEND=noninteractive apt-get install -y tigervnc-standalone-server tigervnc-common lxde-core >> "$INSTALL_LOG" 2>&1; then
+            log_error "Failed to install TigerVNC packages; skipping VNC setup (see $INSTALL_LOG)."
+            VNC_CONNECTION=""
+            return 0
+        fi
+    fi
+    if ! command -v vncserver >/dev/null 2>&1; then
+        log_warn "vncserver binary not found after install; skipping VNC systemd setup."
+        VNC_CONNECTION=""
+        return 0
     fi
     mkdir -p "$INSTALL_DIR/.vnc"
     if [ -n "$REMOTE_ACCESS_PASSWORD" ]; then
