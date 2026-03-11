@@ -153,7 +153,18 @@ install_teamviewer() {
     teamviewer setup >> "$INSTALL_LOG" 2>&1 || true
     systemctl enable teamviewerd >> "$INSTALL_LOG" 2>&1 || true
     systemctl start teamviewerd >> "$INSTALL_LOG" 2>&1 || true
-    TEAMVIEWER_ID="$(teamviewer info 2>/dev/null | awk '/ID/ {print $4; exit}')"
+    # Capture TeamViewer ID in a way that matches headless Linux output ("TeamViewer ID: 123456789")
+    TEAMVIEWER_ID=""
+    for args in info --info; do
+        output="$(teamviewer "$args" 2>/dev/null || true)"
+        if [ -n "$output" ]; then
+            id_line="$(printf '%s\n' "$output" | sed -n 's/.*TeamViewer[[:space:]]\+ID[[:space:]]*:[[:space:]]*\([0-9]\+\).*/\1/p' | head -n1)"
+            if [ -n "$id_line" ]; then
+                TEAMVIEWER_ID="$id_line"
+                break
+            fi
+        fi
+    done
 }
 
 install_vnc() {

@@ -425,20 +425,23 @@ prompt_remote_access() {
         echo "  4) Raspberry Pi Connect (Raspberry Pi OS only)"
         echo "  5) Install multiple (select after)"
         echo "  6) Skip (install manually later)"
-        interactive_read -r -p "Enter your choice (1-6) [6]: " choice
+        interactive_read -r -p "Enter your choice (1-6) [5]: " choice
     fi
-    case "${choice:-6}" in
+    case "${choice:-5}" in
         1) REMOTE_ACCESS_TOOLS=("anydesk") ;;
         2) REMOTE_ACCESS_TOOLS=("teamviewer") ;;
         3) REMOTE_ACCESS_TOOLS=("vnc") ;;
         4) REMOTE_ACCESS_TOOLS=("rpi_connect") ;;
         5)
-            echo "Select tools to install (comma-separated, e.g., 1,2):"
+            echo "Select tools to install (comma-separated, e.g., 1,2). Press Enter for all:"
             echo "  1) AnyDesk"
             echo "  2) TeamViewer"
             echo "  3) TigerVNC"
             echo "  4) Raspberry Pi Connect (Raspberry Pi OS only)"
-            interactive_read -r -p "Enter your choices: " multi_choice
+            interactive_read -r -p "Enter your choices (press Enter for all): " multi_choice
+            if [ -z "${multi_choice:-}" ]; then
+                multi_choice="1,2,3,4"
+            fi
             IFS=',' read -r -a selections <<< "${multi_choice:-}"
             REMOTE_ACCESS_TOOLS=()
             for selection in "${selections[@]}"; do
@@ -2048,7 +2051,18 @@ install_teamviewer() {
     teamviewer setup >> "$INSTALL_LOG" 2>&1 || true
     systemctl enable teamviewerd >> "$INSTALL_LOG" 2>&1 || true
     systemctl start teamviewerd >> "$INSTALL_LOG" 2>&1 || true
-    TEAMVIEWER_ID="$(teamviewer info 2>/dev/null | awk '/ID/ {print $4; exit}')"
+    # Capture TeamViewer ID in a way that matches headless Linux output ("TeamViewer ID: 123456789")
+    TEAMVIEWER_ID=""
+    for args in info --info; do
+        output="$(teamviewer "$args" 2>/dev/null || true)"
+        if [ -n "$output" ]; then
+            id_line="$(printf '%s\n' "$output" | sed -n 's/.*TeamViewer[[:space:]]\+ID[[:space:]]*:[[:space:]]*\([0-9]\+\).*/\1/p' | head -n1)"
+            if [ -n "$id_line" ]; then
+                TEAMVIEWER_ID="$id_line"
+                break
+            fi
+        fi
+    done
 }
 
 install_vnc() {
