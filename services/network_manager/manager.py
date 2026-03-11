@@ -774,13 +774,10 @@ wpa_key_mgmt=WPA-PSK
         Return list of interfaces that are *actually* sharing with the hotspot right now.
         Uses iptables rules with rpi-engineer-share:* comments as source of truth, falling
         back to the saved config file when iptables is unavailable.
+        No caching: always read iptables so the UI reflects current state after manual
+        changes or after another process modifies rules.
         """
-        cache_attr = "_share_interfaces_runtime_cache"
-        if hasattr(self, cache_attr):
-            return getattr(self, cache_attr)
-        interfaces = self._get_share_interfaces_runtime()
-        setattr(self, cache_attr, interfaces)
-        return interfaces
+        return self._get_share_interfaces_runtime()
 
     def _get_share_interfaces_runtime(self) -> List[str]:
         if not _which("iptables"):
@@ -811,7 +808,7 @@ wpa_key_mgmt=WPA-PSK
                         break
                     iface_chars.append(ch)
                 iface = "".join(iface_chars).strip()
-                if iface:
+                if iface and iface != "established":
                     found[iface] = True
         if found:
             return sorted(found.keys())
@@ -841,10 +838,6 @@ wpa_key_mgmt=WPA-PSK
         else:
             current = []
         self._set_share_interfaces(current)
-        # Invalidate cached runtime share state so subsequent interface listings reflect
-        # the actual, current iptables rules after _apply_hotspot_share() runs.
-        if hasattr(self, "_share_interfaces_runtime_cache"):
-            delattr(self, "_share_interfaces_runtime_cache")
         if dry_run:
             return {"interface": interface_id, "share_with_hotspot": enabled, "applied": False}
         if platform.system().lower() == "windows":
@@ -983,6 +976,17 @@ def _iptables_delete(table: Optional[str], chain: str, rule_args: List[str], com
     _run_priv(cmd)
 
 
+def _iptables_unquote_rule_parts(parts: List[str]) -> List[str]:
+    """Strip surrounding double-quotes from each part. iptables -S outputs comment values quoted; -D expects unquoted."""
+    out = []
+    for p in parts:
+        s = p
+        if len(s) >= 2 and s.startswith('"') and s.endswith('"'):
+            s = s[1:-1]
+        out.append(s)
+    return out
+
+
 def _iptables_flush_share_rules() -> None:
     """Remove all iptables rules containing rpi-engineer-share: in their comment, across filter FORWARD and nat POSTROUTING."""
     ipt = _which("iptables") or "/usr/sbin/iptables"
@@ -1000,6 +1004,8 @@ def _iptables_flush_share_rules() -> None:
             rule_parts = line[3:].split()
             if not rule_parts:
                 continue
+            # iptables -S outputs comment values in double-quotes; -D must get unquoted values to match
+            rule_parts = _iptables_unquote_rule_parts(rule_parts)
             _run_priv(base + ["-D"] + rule_parts)
 
 
