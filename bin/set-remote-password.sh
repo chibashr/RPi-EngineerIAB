@@ -56,15 +56,27 @@ fi
 CONFIG_DIR="${RPI_ENGINEER_CONFIG_DIR:-/etc/rpi-engineer}"
 CONFIG_FILE="$CONFIG_DIR/remote_access.conf"
 
+have_timeout() {
+  command -v timeout >/dev/null 2>&1
+}
+
 case "$TOOL" in
   anydesk)
     if command -v anydesk >/dev/null 2>&1; then
-      echo "$PASSWORD" | anydesk --set-password 2>/dev/null || true
+      if have_timeout; then
+        echo "$PASSWORD" | timeout 12s anydesk --set-password 2>/dev/null || true
+      else
+        echo "$PASSWORD" | anydesk --set-password 2>/dev/null || true
+      fi
     fi
     ;;
   teamviewer)
     if command -v teamviewer >/dev/null 2>&1; then
-      teamviewer passwd "$PASSWORD" 2>/dev/null || true
+      if have_timeout; then
+        timeout 12s teamviewer passwd "$PASSWORD" 2>/dev/null || true
+      else
+        teamviewer passwd "$PASSWORD" 2>/dev/null || true
+      fi
     fi
     ;;
 esac
