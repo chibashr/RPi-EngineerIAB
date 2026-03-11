@@ -209,7 +209,7 @@ configure_firewall() {
         log_warn "Container detected; skipping firewall configuration."
         return 0
     fi
-    # Enable IPv4 forwarding for hotspot->WAN sharing (persists across reboot)
+    # Enable IPv4 forwarding (hotspot/WAN sharing is managed dynamically by the API via iptables comments)
     if [ -d /etc/sysctl.d ]; then
         echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-rpi-engineer.conf
         sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
@@ -231,6 +231,8 @@ configure_firewall() {
     iptables -P INPUT DROP
     iptables -P FORWARD DROP
     iptables -P OUTPUT ACCEPT
+
+    # Base INPUT rules: loopback, established/related, hotspot and optional LAN HTTP(S)/SSH/DNS/DHCP
     ensure_rule INPUT -i lo -j ACCEPT
     ensure_rule INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
     ensure_rule INPUT -i wlan0 -p tcp -m multiport --dports 80,443 -s 192.168.50.0/24 -j ACCEPT
@@ -240,11 +242,18 @@ configure_firewall() {
     if [ -n "$LAN_SUBNET" ]; then
         ensure_rule INPUT -i eth0 -p tcp -m multiport --dports 80,443 -s "$LAN_SUBNET" -j ACCEPT
     fi
+
+    # Base FORWARD rule: allow return traffic only. Actual hotspot->WAN sharing is managed
+    # by the NetworkManager API using iptables rules with rpi-engineer-share:* comments so it
+    # can be toggled on/off from the UI without being overridden by static installer rules.
     ensure_rule FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-    ensure_rule FORWARD -i wlan0 -o eth0 -j ACCEPT
-    ensure_rule FORWARD -i wlan0 -o usb0 -j ACCEPT
-    ensure_nat_rule POSTROUTING -o eth0 -j MASQUERADE
-    ensure_nat_rule POSTROUTING -o usb0 -j MASQUERADE
+
+    # Clean up any legacy unconditional hotspot sharing rules from earlier installs so they
+    # do not keep forwarding traffic when the UI "share with hotspot" toggle is disabled.
+    iptables -D FORWARD -i wlan0 -o eth0 -j ACCEPT 2>/dev/null || true
+    iptables -D FORWARD -i wlan0 -o usb0 -j ACCEPT 2>/dev/null || true
+    iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE 2>/dev/null || true
+    iptables -t nat -D POSTROUTING -o usb0 -j MASQUERADE 2>/dev/null || true
     echo "Firewall rules configured."
     mark_step_done "firewall"
 }

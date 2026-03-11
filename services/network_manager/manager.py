@@ -322,7 +322,8 @@ wpa_key_mgmt=WPA-PSK
             ssid, password = self._get_hotspot_credentials()
             out["ssid"] = ssid
             out["password"] = password
-        out["share_with_hotspot"] = name in self._get_share_interfaces()
+        # Reflect the *runtime* hotspot sharing state based on iptables, not just config.
+        out["share_with_hotspot"] = name in self._share_interfaces_runtime()
         return out
 
     def _interface_addrs(self, name: str) -> Dict[str, Optional[str]]:
@@ -768,6 +769,55 @@ wpa_key_mgmt=WPA-PSK
         except (OSError, json.JSONDecodeError):
             return []
 
+    def _share_interfaces_runtime(self) -> List[str]:
+        """
+        Return list of interfaces that are *actually* sharing with the hotspot right now.
+        Uses iptables rules with rpi-engineer-share:* comments as source of truth, falling
+        back to the saved config file when iptables is unavailable.
+        """
+        cache_attr = "_share_interfaces_runtime_cache"
+        if hasattr(self, cache_attr):
+            return getattr(self, cache_attr)
+        interfaces = self._get_share_interfaces_runtime()
+        setattr(self, cache_attr, interfaces)
+        return interfaces
+
+    def _get_share_interfaces_runtime(self) -> List[str]:
+        if not _which("iptables"):
+            return self._get_share_interfaces()
+        ipt = _which("iptables") or "/usr/sbin/iptables"
+        if not ipt:
+            return self._get_share_interfaces()
+        found: Dict[str, bool] = {}
+        for table, chain in [(None, "FORWARD"), ("nat", "POSTROUTING")]:
+            base = [ipt] + (["-t", table] if table else [])
+            try:
+                result = _run_priv(base + ["-S", chain])
+            except Exception:
+                continue
+            if result.returncode != 0:
+                continue
+            for line in result.stdout.splitlines():
+                if "rpi-engineer-share:" not in line:
+                    continue
+                marker = "rpi-engineer-share:"
+                idx = line.find(marker)
+                if idx == -1:
+                    continue
+                suffix = line[idx + len(marker) :]
+                iface_chars = []
+                for ch in suffix:
+                    if ch in ('"', " ", "\t"):
+                        break
+                    iface_chars.append(ch)
+                iface = "".join(iface_chars).strip()
+                if iface:
+                    found[iface] = True
+        if found:
+            return sorted(found.keys())
+        # No runtime rules detected; fall back to config file.
+        return self._get_share_interfaces()
+
     def _set_share_interfaces(self, interfaces: List[str]) -> None:
         """Persist interfaces that share with hotspot."""
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -791,6 +841,10 @@ wpa_key_mgmt=WPA-PSK
         else:
             current = []
         self._set_share_interfaces(current)
+        # Invalidate cached runtime share state so subsequent interface listings reflect
+        # the actual, current iptables rules after _apply_hotspot_share() runs.
+        if hasattr(self, "_share_interfaces_runtime_cache"):
+            delattr(self, "_share_interfaces_runtime_cache")
         if dry_run:
             return {"interface": interface_id, "share_with_hotspot": enabled, "applied": False}
         if platform.system().lower() == "windows":
