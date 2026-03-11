@@ -27,7 +27,8 @@ if [ -z "$TCPDUMP" ]; then
     check "tcpdump present" "no" "install tcpdump for packet capture"
 else
     CAPS="$(getcap "$TCPDUMP" 2>/dev/null || true)"
-    if echo "$CAPS" | grep -q "cap_net_raw.*cap_net_admin"; then
+    # Accept capabilities in any order (cap_net_raw,cap_net_admin or cap_net_admin,cap_net_raw)
+    if echo "$CAPS" | grep -q "cap_net_raw" && echo "$CAPS" | grep -q "cap_net_admin"; then
         check "tcpdump capabilities" "yes"
     else
         check "tcpdump capabilities" "no" "run: sudo setcap cap_net_raw,cap_net_admin=eip $TCPDUMP (or sudo $INSTALL_DIR/bin/apply-web-permissions.sh)"
