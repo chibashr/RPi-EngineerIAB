@@ -23,5 +23,6 @@ data/captures/*
 *.pcap
 .DS_Store
 Thumbs.db
-.planning/*
-.cursor/*
+.planning/
+.cursor/
+claude/

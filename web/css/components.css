@@ -384,6 +384,96 @@
   flex-wrap: wrap;
 }
 
+/* Help modal: title row with close at top right */
+.modal-dialog-help {
+  max-width: min(480px, 100%);
+}
+
+.modal-dialog-help .modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1rem 0;
+}
+
+.modal-dialog-help .modal-title {
+  margin: 0;
+  flex: 1;
+}
+
+.modal-close-top {
+  flex-shrink: 0;
+  padding: 0.25rem;
+  min-height: 44px;
+  min-width: 44px;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.modal-help-body {
+  color: var(--color-fg);
+  line-height: 1.5;
+}
+
+.modal-help-steps {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.modal-help-steps li {
+  margin-bottom: 0.5rem;
+}
+
+.modal-help-steps li:last-child {
+  margin-bottom: 0;
+}
+
+.modal-help-recovery {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.modal-help-recovery-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  color: var(--color-fg);
+}
+
+.modal-help-recovery-list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.modal-help-recovery-list li {
+  margin-bottom: 0.35rem;
+}
+
+.modal-help-recovery-list li:last-child {
+  margin-bottom: 0;
+}
+
+.modal-help-section {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.modal-help-section:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.modal-help-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  color: var(--color-fg);
+}
+
 /* ── Navigation ──────────────────────────────────────── */
 
 .nav-sidebar {

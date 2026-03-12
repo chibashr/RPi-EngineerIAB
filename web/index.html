@@ -109,7 +109,27 @@
         >
           <div class="card-header">
             <h2>Network Interfaces</h2>
-            <span class="status-pill status-pill-info" id="wan-status-badge">Checking…</span>
+            <div class="card-header-actions">
+              <button
+                type="button"
+                class="btn btn-ghost btn-icon help-hotspot-btn"
+                id="help-hotspot-btn"
+                aria-label="How to set up the hotspot and connect a Jetpack"
+                title="How to set up the hotspot and connect a Jetpack"
+              >
+                ?
+              </button>
+              <button
+                type="button"
+                class="btn btn-ghost btn-icon help-capture-btn"
+                id="help-network-profile-btn"
+                aria-label="How to save and load a network profile"
+                title="How to save and load a network profile"
+              >
+                ?
+              </button>
+              <span class="status-pill status-pill-info" id="wan-status-badge">Checking…</span>
+            </div>
           </div>
           <div class="network-wan-summary" id="wan-summary">
             Checking WAN connection…
@@ -178,9 +198,29 @@
           <div class="connection-block">
             <div class="connection-header">
               <h3>Remote Access</h3>
-              <span class="status-pill status-pill-info" id="remote-status"
-                >Checking</span
-              >
+              <div class="connection-header-actions">
+                <span class="status-pill status-pill-info" id="remote-status"
+                  >Checking</span
+                >
+                <button
+                  type="button"
+                  class="btn btn-ghost help-capture-btn"
+                  id="help-anydesk-btn"
+                  aria-label="How to share AnyDesk access"
+                  title="How to share AnyDesk access"
+                >
+                  ?
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-ghost help-capture-btn"
+                  id="help-teamviewer-btn"
+                  aria-label="How to share TeamViewer access"
+                  title="How to share TeamViewer access"
+                >
+                  ?
+                </button>
+              </div>
             </div>
             <div id="remote-tools-list" class="remote-tools-list" aria-live="polite">
               <!-- Filled by JS: one entry per enabled tool (AnyDesk, TeamViewer, VNC, RPi Connect) -->
@@ -190,7 +230,18 @@
       </section>
 
       <section class="quick-actions">
-        <h2>Quick Actions</h2>
+        <div class="quick-actions-header">
+          <h2>Quick Actions</h2>
+          <button
+            type="button"
+            class="btn btn-ghost btn-icon help-capture-btn"
+            id="help-capture-btn"
+            aria-label="How to run a packet capture"
+            title="How to run a packet capture"
+          >
+            ?
+          </button>
+        </div>
         <div class="action-grid">
           <a class="action-card" href="/advanced/capture.html">
             <div class="action-title">Capture Packets</div>
@@ -198,12 +249,23 @@
               Requires active interfaces
             </div>
           </a>
-          <a class="action-card" href="/advanced/serial.html">
-            <div class="action-title">Serial Console</div>
-            <div class="action-meta" id="action-serial">
-              Devices: --
-            </div>
-          </a>
+          <div class="action-card-wrapper">
+            <a class="action-card" href="/advanced/serial.html">
+              <div class="action-title">Serial Console</div>
+              <div class="action-meta" id="action-serial">
+                Devices: --
+              </div>
+            </a>
+            <button
+              type="button"
+              class="btn btn-ghost help-serial-btn"
+              id="help-serial-btn"
+              aria-label="How to start a serial console session"
+              title="How to start a serial console session"
+            >
+              ?
+            </button>
+          </div>
           <a class="action-card" href="/advanced/logs.html">
             <div class="action-title">View Logs</div>
             <div class="action-meta" id="action-logs">Alerts: --</div>

@@ -349,6 +349,142 @@ export function modalForm(fields, title, options = {}) {
   return promise;
 }
 
+/**
+ * @typedef {{ recoveryTitle?: string, recoveryItems?: string[] }} ModalHelpOptions
+ */
+
+/**
+ * Show a help/info modal with a title, numbered steps, and a close button at top right.
+ * Optionally show a visually distinct recovery section (unnumbered list) below the steps.
+ * @param {string} title
+ * @param {string[]} steps - Plain-text step strings (will be escaped and shown as an ordered list)
+ * @param {ModalHelpOptions} [options] - Optional recovery block: { recoveryTitle, recoveryItems }
+ * @returns {Promise<void>}
+ */
+export function modalHelp(title, steps, options = {}) {
+  const container = getContainer();
+  container.setAttribute("aria-hidden", "false");
+  container.innerHTML = "";
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-labelledby", "modal-help-title");
+
+  const close = () => {
+    overlay.remove();
+    if (container.children.length === 0) {
+      container.setAttribute("aria-hidden", "true");
+    }
+  };
+
+  const stepsHtml =
+    steps && steps.length
+      ? "<ol class=\"modal-help-steps\">" +
+        steps.map((s) => "<li>" + escapeHtml(s) + "</li>").join("") +
+        "</ol>"
+      : "";
+
+  const recoveryTitle = options.recoveryTitle && options.recoveryItems?.length
+    ? escapeHtml(options.recoveryTitle)
+    : "";
+  const recoveryHtml =
+    recoveryTitle && options.recoveryItems?.length
+      ? "<div class=\"modal-help-recovery\">" +
+        "<h3 class=\"modal-help-recovery-title\">" + recoveryTitle + "</h3>" +
+        "<ul class=\"modal-help-recovery-list\">" +
+        options.recoveryItems.map((s) => "<li>" + escapeHtml(s) + "</li>").join("") +
+        "</ul></div>"
+      : "";
+
+  overlay.innerHTML = `
+    <div class="modal-dialog modal-dialog-help">
+      <div class="modal-header">
+        <h2 id="modal-help-title" class="modal-title">${escapeHtml(title)}</h2>
+        <button type="button" class="btn btn-ghost modal-close-top" aria-label="Close">×</button>
+      </div>
+      <div class="modal-help-body">${stepsHtml}${recoveryHtml}</div>
+    </div>
+  `;
+
+  overlay.querySelector(".modal-close-top").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+
+  bindEscape(overlay, close);
+  container.appendChild(overlay);
+  trapFocus(overlay.querySelector(".modal-dialog"));
+
+  return Promise.resolve();
+}
+
+/**
+ * Show a help modal with a title, multiple subsections (each with its own heading and numbered steps), and close at top right.
+ * @param {string} title - Modal title
+ * @param {{ title: string, steps: string[] }[]} sections - Array of { title, steps }; each step string is escaped
+ * @returns {Promise<void>}
+ */
+export function modalHelpSections(title, sections) {
+  const container = getContainer();
+  container.setAttribute("aria-hidden", "false");
+  container.innerHTML = "";
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-labelledby", "modal-help-title");
+
+  const close = () => {
+    overlay.remove();
+    if (container.children.length === 0) {
+      container.setAttribute("aria-hidden", "true");
+    }
+  };
+
+  const sectionsHtml =
+    sections && sections.length
+      ? sections
+          .map(
+            (sec) =>
+              "<div class=\"modal-help-section\">" +
+              "<h3 class=\"modal-help-section-title\">" +
+              escapeHtml(sec.title) +
+              "</h3>" +
+              (sec.steps && sec.steps.length
+                ? "<ol class=\"modal-help-steps\">" +
+                  sec.steps.map((s) => "<li>" + escapeHtml(s) + "</li>").join("") +
+                  "</ol>"
+                : "") +
+              "</div>"
+          )
+          .join("")
+      : "";
+
+  overlay.innerHTML = `
+    <div class="modal-dialog modal-dialog-help">
+      <div class="modal-header">
+        <h2 id="modal-help-title" class="modal-title">${escapeHtml(title)}</h2>
+        <button type="button" class="btn btn-ghost modal-close-top" aria-label="Close">×</button>
+      </div>
+      <div class="modal-help-body">${sectionsHtml}</div>
+    </div>
+  `;
+
+  overlay.querySelector(".modal-close-top").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+
+  bindEscape(overlay, close);
+  container.appendChild(overlay);
+  trapFocus(overlay.querySelector(".modal-dialog"));
+
+  return Promise.resolve();
+}
+
 function escapeHtml(str) {
   if (str == null) return "";
   const div = document.createElement("div");

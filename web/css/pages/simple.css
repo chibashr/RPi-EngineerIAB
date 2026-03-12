@@ -95,6 +95,31 @@
   gap: 1rem;
 }
 
+.network-interfaces-card .card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.help-hotspot-btn {
+  padding: 0.35rem 0.6rem;
+  min-height: 0;
+  min-width: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-muted);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.help-hotspot-btn:hover {
+  color: var(--color-accent);
+}
+
 .network-wan-summary {
   margin-top: 1rem;
   color: var(--color-muted);
@@ -346,6 +371,12 @@
   gap: 1rem;
 }
 
+.connection-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .connection-row {
   display: grid;
   grid-template-columns: 90px 1fr auto;
@@ -434,6 +465,61 @@
 
 .quick-actions {
   margin-top: 2rem;
+}
+
+.quick-actions-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.quick-actions-header h2 {
+  margin: 0;
+}
+
+.help-capture-btn {
+  padding: 0.35rem 0.6rem;
+  min-height: 0;
+  min-width: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-muted);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.help-capture-btn:hover {
+  color: var(--color-accent);
+}
+
+.action-card-wrapper {
+  position: relative;
+}
+
+.help-serial-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  min-height: 0;
+  min-width: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-muted);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.help-serial-btn:hover {
+  color: var(--color-accent);
 }
 
 .action-grid {

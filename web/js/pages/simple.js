@@ -1,6 +1,6 @@
 import { apiGet, apiPost, apiPut, extractData } from "../api.js";
 import { copyTextToClipboard } from "../components.js";
-import { modalPrompt } from "../modal.js";
+import { modalHelp, modalHelpSections, modalPrompt } from "../modal.js";
 import { applyStoredTheme, initThemeSelector } from "../theme.js";
 import { confirmModeSwitch, ensureSimpleMode, setMode } from "../mode.js";
 import { createWebSocketClient } from "../websocket.js";
@@ -563,6 +563,136 @@ function setupModeSwitch() {
   });
 }
 
+function setupCaptureHelp() {
+  const btn = document.getElementById("help-capture-btn");
+  if (!btn) return;
+  const steps = [
+    "Go to the Capture section on this page.",
+    "Select the network interface you want to capture traffic on from the dropdown.",
+    "Press Start Capture. The status will change to show the capture is running.",
+    "When you are done, press Stop Capture.",
+    "Your capture will appear in the completed captures list.",
+    "Press Export to download the capture file.",
+  ];
+  btn.addEventListener("click", () => {
+    modalHelp("How to Run a Packet Capture", steps);
+  });
+}
+
+function setupAnyDeskHelp() {
+  const btn = document.getElementById("help-anydesk-btn");
+  if (!btn) return;
+  const steps = [
+    "Go to the Remote Access section on this page.",
+    "Find the AnyDesk ID displayed on the page. It will be a 9-digit number.",
+    "If a password is shown or you need to reset it, use the Reset Password button in that section. Note the new password.",
+    "Share the AnyDesk ID and password with the person who needs to connect remotely.",
+    "When they connect, you may see a prompt to accept the connection — press Accept.",
+    "The remote user now has access to this device's desktop.",
+  ];
+  btn.addEventListener("click", () => {
+    modalHelp("How to Share AnyDesk Access", steps);
+  });
+}
+
+function setupTeamViewerHelp() {
+  const btn = document.getElementById("help-teamviewer-btn");
+  if (!btn) return;
+  const steps = [
+    "Go to the Remote Access section on this page.",
+    "Find the TeamViewer ID displayed on the page.",
+    "If a password is shown or you need to reset it, use the Reset Password button in that section. Note the new password.",
+    "Share the TeamViewer ID and password with the person who needs to connect remotely.",
+    "The remote user opens TeamViewer, enters your ID, and uses the password to connect.",
+    "The remote session will begin automatically.",
+  ];
+  btn.addEventListener("click", () => {
+    modalHelp("How to Share TeamViewer Access", steps);
+  });
+}
+
+function setupNetworkProfileHelp() {
+  const btn = document.getElementById("help-network-profile-btn");
+  if (!btn) return;
+  const sections = [
+    {
+      title: "Saving a profile",
+      steps: [
+        "Go to the Network section and configure your interfaces as needed.",
+        "When the settings are correct, find the Profiles area and press Save Profile.",
+        "Give the profile a name that describes the site or network (e.g. \"Site A - VLAN10\").",
+        "Press Confirm. The profile is now saved and will appear in your profiles list.",
+      ],
+    },
+    {
+      title: "Loading a profile",
+      steps: [
+        "In the Profiles area, find the profile you want to use in the list.",
+        "Press Load next to that profile.",
+        "The network settings will update to match the saved profile. Confirm any prompt that appears.",
+        "Check the interface list to verify the settings are now active.",
+      ],
+    },
+  ];
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    modalHelpSections("How to Save and Load a Network Profile", sections);
+  });
+}
+
+function setupSerialHelp() {
+  const btn = document.getElementById("help-serial-btn");
+  if (!btn) return;
+  const steps = [
+    "Plug your serial device into the Raspberry Pi via USB.",
+    "Go to the Serial section. Your device should appear in the device list.",
+    "Select the device and choose the correct baud rate and port settings for your device. If unsure, 9600 8N1 is a common default.",
+    "Press Connect. A terminal window will open.",
+    "You are now in a live serial session. Type commands and press Enter to send them.",
+  ];
+  const recovery = {
+    recoveryTitle: "Device not showing up?",
+    recoveryItems: [
+      "Unplug the USB cable and plug it back in.",
+      "Wait a few seconds, then press the Refresh Devices button.",
+      "If the device still does not appear, try a different USB port or cable.",
+    ],
+  };
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    modalHelp("How to Start a Serial Console Session", steps, recovery);
+  });
+}
+
+function setupHotspotHelp() {
+  const btn = document.getElementById("help-hotspot-btn");
+  if (!btn) return;
+  const steps = [
+    "Take the Jetpack device and connect it to the Raspberry Pi using a USB cable.",
+    "On the Jetpack itself, go to its settings menu and enable \"Share Internet via USB\" (sometimes labeled USB Tethering). This tells the Jetpack to pass its internet connection to the Raspberry Pi.",
+    "Wait 10–15 seconds. The Raspberry Pi should detect the Jetpack as a new WAN interface.",
+    "Go to the Network section and check the interfaces list. You should see a new interface (typically usb0 or similar) with an active connection. This is your WAN (internet) source.",
+    "Your LAN interface is the one connected to your local network or devices (typically eth0 or wlan0 and will not show a cellular or USB origin).",
+    "Go to the Hotspot section and select the LAN interface to share.",
+    "Press Enable Hotspot. Nearby devices can now connect to the hotspot and reach the network through the Raspberry Pi.",
+  ];
+  const recovery = {
+    recoveryTitle: "Not seeing the Jetpack interface?",
+    recoveryItems: [
+      "Make sure USB Tethering is enabled on the Jetpack (not just Wi-Fi hotspot mode).",
+      "Unplug and replug the USB cable.",
+      "Wait 15 seconds and refresh the interface list.",
+    ],
+  };
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    modalHelp("How to Set Up the Hotspot and Connect a Jetpack", steps, recovery);
+  });
+}
+
 function setupConnectionPrivacy() {
   const button = document.getElementById("toggle-connection-privacy");
   const card = document.getElementById("connection-card");
@@ -817,6 +947,12 @@ function init() {
   applyStoredTheme();
   initThemeSelector(document.getElementById("theme-select"));
   setupModeSwitch();
+  setupCaptureHelp();
+  setupAnyDeskHelp();
+  setupTeamViewerHelp();
+  setupNetworkProfileHelp();
+  setupSerialHelp();
+  setupHotspotHelp();
   setupQuickActionLinks();
   setupNetworkCardLink();
   setupConnectionPrivacy();
