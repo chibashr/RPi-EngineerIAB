@@ -190,135 +190,125 @@ async function loadUpdates() {
   }
 }
 
-/** Apply update: try WebSocket stream first; on connection failure fall back to REST so update still runs. */
-function applyUpdateWithLog(applyButton, logWrapper, logPre) {
-  if (!applyButton || !logWrapper || !logPre) return;
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const wsUrl = `${protocol}//${window.location.host}/ws/updates/apply`;
-  logWrapper.hidden = false;
-  logPre.textContent = "";
-  applyButton.disabled = true;
-  const originalLabel = applyButton.textContent;
-  applyButton.textContent = "Updating…";
+/** Show the restart overlay */
+function showRestartOverlay(message, hint) {
+  const overlay = document.getElementById("restart-overlay");
+  const msgEl = document.getElementById("restart-message");
+  const hintEl = document.getElementById("restart-hint");
+  if (overlay) {
+    if (message && msgEl) msgEl.textContent = message;
+    if (hint && hintEl) hintEl.textContent = hint;
+    overlay.hidden = false;
+  }
+}
 
-  const appendLog = (line) => {
-    logPre.textContent += line + "\n";
-    logPre.scrollTop = logPre.scrollHeight;
-  };
+/** Hide the restart overlay */
+function hideRestartOverlay() {
+  const overlay = document.getElementById("restart-overlay");
+  if (overlay) overlay.hidden = true;
+}
 
-  let finished = false;
-  const finish = (success, message) => {
-    if (finished) return;
-    finished = true;
-    applyButton.disabled = false;
-    applyButton.textContent = originalLabel;
-    if (message) showToast(message, success ? "success" : "error");
-    loadUpdates();
-  };
+/** Poll the server until it responds, then reload the page */
+async function waitForServerAndReload(maxWaitMs = 180000, pollIntervalMs = 3000) {
+  const startTime = Date.now();
+  const checkUrl = new URL("/api/v1/updates/check", window.location.origin);
 
-  /** Fallback when WebSocket is unavailable: apply via REST and show result in log. */
-  const applyViaRest = async () => {
-    const timeoutMs = 150000;
-    const url = new URL("/api/v1/updates/apply", window.location.origin);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const poll = async () => {
+    if (Date.now() - startTime > maxWaitMs) {
+      const hintEl = document.getElementById("restart-hint");
+      if (hintEl) {
+        hintEl.textContent = "Server did not respond in time. Please refresh the page manually or check the device.";
+      }
+      return;
+    }
     try {
-      const response = await fetch(url.toString(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: "{}",
-        signal: controller.signal,
+      const response = await fetch(checkUrl.toString(), {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(5000),
       });
-      clearTimeout(timeoutId);
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const msg = payload?.error?.message || `Request failed (${response.status})`;
-        appendLog("Error: " + msg);
-        finish(false, msg);
+      if (response.ok) {
+        window.location.reload();
         return;
       }
-      const data = extractData(payload) || {};
-      if (data.dry_run) {
-        appendLog("Dry run: update not applied. Set RPI_ENGINEER_DRY_RUN=0 to apply.");
-        finish(true, "Dry run: update not applied. Set RPI_ENGINEER_DRY_RUN=0 to apply.");
-      } else if (data.status === "applied") {
-        appendLog("Update applied successfully (configuration kept).");
-        appendLog("App recently updated. If you have issues, reboot.");
-        finish(true, "Update applied. If you have issues, reboot.");
-      } else if (data.status === "up_to_date") {
-        appendLog("Already up to date.");
-        finish(true, "System is already up to date.");
-      } else {
-        appendLog("Done: " + JSON.stringify(data));
-        finish(true, "Update completed.");
-      }
-    } catch (err) {
-      clearTimeout(timeoutId);
-      const msg = err?.name === "AbortError" ? "Request timed out (update may still be running)." : (err?.message || "Apply failed.");
-      appendLog("Error: " + msg);
-      finish(false, msg);
+    } catch {
+      // Server not ready yet
     }
+    setTimeout(poll, pollIntervalMs);
   };
 
-  let fallbackStarted = false;
-  const maybeFallback = () => {
-    if (finished || fallbackStarted) return;
-    fallbackStarted = true;
-    applyViaRest();
-  };
+  setTimeout(poll, pollIntervalMs);
+}
 
-  let ws;
+/** Apply update: fire request, show restart overlay, poll for server recovery */
+async function applyUpdate(applyButton) {
+  if (!applyButton) return;
+
+  const originalLabel = applyButton.textContent;
+  applyButton.disabled = true;
+  applyButton.textContent = "Updating…";
+
+  const url = new URL("/api/v1/updates/apply", window.location.origin);
+
   try {
-    ws = new WebSocket(wsUrl);
-  } catch (e) {
-    appendLog("WebSocket failed: " + e);
-    appendLog("Completing via REST...");
-    maybeFallback();
-    return;
-  }
+    const response = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: "{}",
+      signal: AbortSignal.timeout(30000),
+    });
 
-  ws.onmessage = (event) => {
-    try {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "progress" && msg.line != null) {
-        appendLog(msg.line);
-      } else if (msg.type === "done" && msg.result) {
-        const d = msg.result;
-        if (d.dry_run) {
-          appendLog("Dry run complete. Set RPI_ENGINEER_DRY_RUN=0 to apply.");
-          finish(true, "Dry run: update not applied. Set RPI_ENGINEER_DRY_RUN=0 to apply.");
-        } else if (d.status === "applied") {
-          appendLog("Update applied successfully.");
-          appendLog("App recently updated. If you have issues, reboot.");
-          finish(true, "Update applied. If you have issues, reboot.");
-        } else {
-          appendLog("Already up to date.");
-          finish(true, "System is already up to date.");
-        }
-      } else if (msg.type === "error") {
-        appendLog("Error: " + (msg.message || "Unknown error"));
-        finish(false, msg.message || "Update failed.");
-      }
-    } catch (e) {
-      appendLog("Parse error: " + e);
+    const payload = await response.json().catch(() => ({}));
+    const data = extractData(payload) || {};
+
+    if (!response.ok) {
+      const msg = payload?.error?.message || `Request failed (${response.status})`;
+      showToast(msg, "error");
+      applyButton.disabled = false;
+      applyButton.textContent = originalLabel;
+      return;
     }
-  };
 
-  ws.onerror = () => {
-    appendLog("Stream ended. Completing via REST...");
-    maybeFallback();
-  };
+    if (data.dry_run) {
+      showToast("Dry run: update not applied. Set RPI_ENGINEER_DRY_RUN=0 to apply.", "info");
+      applyButton.disabled = false;
+      applyButton.textContent = originalLabel;
+      return;
+    }
 
-  ws.onclose = (ev) => {
-    if (finished) return;
-    if (ev.code !== 1000 && !ev.wasClean) {
-      appendLog("Stream ended. Completing via REST...");
-      maybeFallback();
+    if (data.status === "up_to_date") {
+      showToast("System is already up to date.", "success");
+      applyButton.disabled = false;
+      applyButton.textContent = originalLabel;
+      return;
+    }
+
+    if (data.status === "applied") {
+      showRestartOverlay(
+        "Update applied. Services are restarting...",
+        "This page will refresh automatically when the server is back online."
+      );
+      waitForServerAndReload();
+      return;
+    }
+
+    showToast("Update completed.", "success");
+    applyButton.disabled = false;
+    applyButton.textContent = originalLabel;
+    loadUpdates();
+  } catch (err) {
+    if (err?.name === "TimeoutError" || err?.name === "AbortError") {
+      showRestartOverlay(
+        "Update in progress. Services are restarting...",
+        "The request timed out, which is expected during a restart. This page will refresh automatically."
+      );
+      waitForServerAndReload();
     } else {
+      showToast(err?.message || "Update failed.", "error");
       applyButton.disabled = false;
       applyButton.textContent = originalLabel;
     }
-  };
+  }
 }
 
 function setupActions() {
@@ -328,17 +318,9 @@ function setupActions() {
   }
 
   const applyButton = document.getElementById("apply-update");
-  const logWrapper = document.getElementById("update-log-wrapper");
-  const logPre = document.getElementById("update-log");
-  const logClose = document.getElementById("update-log-close");
   if (applyButton) {
     applyButton.addEventListener("click", () => {
-      applyUpdateWithLog(applyButton, logWrapper, logPre);
-    });
-  }
-  if (logClose && logWrapper) {
-    logClose.addEventListener("click", () => {
-      logWrapper.hidden = true;
+      applyUpdate(applyButton);
     });
   }
 
@@ -355,8 +337,7 @@ function setupActions() {
   if (rollbackButton) {
     rollbackButton.addEventListener("click", async () => {
       try {
-        const payload = await apiPost("/api/v1/updates/rollback", {});
-        const data = extractData(payload) || {};
+        await apiPost("/api/v1/updates/rollback", {});
         showToast("Rollback completed (configuration and version restored).", "success");
         await loadUpdates();
       } catch (error) {

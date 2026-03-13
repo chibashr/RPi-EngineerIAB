@@ -161,13 +161,6 @@
             <p class="section-muted mt-0">
               Rollback restores configuration and the version ref; it does not restore application code.
             </p>
-            <div class="update-log-wrapper" id="update-log-wrapper" hidden>
-              <div class="update-log-header">
-                <span class="update-log-title">Update log</span>
-                <button type="button" class="btn btn-ghost btn-sm" id="update-log-close" aria-label="Close log">×</button>
-              </div>
-              <pre class="update-log" id="update-log" aria-live="polite"></pre>
-            </div>
             <div class="info-grid">
               <div>
                 <div class="info-label">Update Branch</div>
@@ -261,6 +254,19 @@
     </div>
 
     <div class="toast-region" id="toast-region" aria-live="polite"></div>
+
+    <div class="restart-overlay" id="restart-overlay" hidden>
+      <div class="restart-overlay-content">
+        <div class="restart-spinner" aria-hidden="true"></div>
+        <h2 class="restart-title">Updating...</h2>
+        <p class="restart-message" id="restart-message">
+          Services are restarting. This page will refresh automatically when the server is back online.
+        </p>
+        <p class="restart-hint section-muted" id="restart-hint">
+          This usually takes 30–60 seconds. If the page doesn't refresh, try reloading manually.
+        </p>
+      </div>
+    </div>
 
     <script src="/js/nav.js" defer></script>
     <script type="module" src="/js/pages/advanced.js" defer></script>
