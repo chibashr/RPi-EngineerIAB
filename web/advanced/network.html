@@ -122,15 +122,15 @@
           </div>
 
           <div class="tabs" data-tabs>
-            <button class="tab-button" data-tab-target="interfaces">
+            <button class="btn btn-ghost tab-button" data-tab-target="interfaces">
               Interfaces
             </button>
-            <button class="tab-button" data-tab-target="vlans">VLANs</button>
-            <button class="tab-button" data-tab-target="routing">Routing</button>
-            <button class="tab-button" data-tab-target="profiles">
+            <button class="btn btn-ghost tab-button" data-tab-target="vlans">VLANs</button>
+            <button class="btn btn-ghost tab-button" data-tab-target="routing">Routing</button>
+            <button class="btn btn-ghost tab-button" data-tab-target="profiles">
               Profiles
             </button>
-            <button class="tab-button" data-tab-target="hotspot">
+            <button class="btn btn-ghost tab-button" data-tab-target="hotspot">
               Hotspot
             </button>
           </div>
@@ -220,39 +220,43 @@
               <button class="btn btn-primary" id="add-route">Add Route</button>
             </div>
             <h3 class="section-subtitle">Configured routes</h3>
-            <table class="status-table">
-              <thead>
-                <tr>
-                  <th>Destination</th>
-                  <th>Gateway</th>
-                  <th>Interface</th>
-                </tr>
-              </thead>
-              <tbody id="route-table-body">
-                <tr>
-                  <td colspan="3">Loading routes...</td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="table-container">
+              <table class="status-table">
+                <thead>
+                  <tr>
+                    <th>Destination</th>
+                    <th>Gateway</th>
+                    <th>Interface</th>
+                  </tr>
+                </thead>
+                <tbody id="route-table-body">
+                  <tr>
+                    <td colspan="3">Loading routes...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
             <h3 class="section-subtitle">Current routing table</h3>
-            <table class="status-table">
-              <thead>
-                <tr>
-                  <th>Destination</th>
-                  <th>Gateway</th>
-                  <th>Interface</th>
-                  <th>Source</th>
-                  <th>Metric</th>
-                  <th>Protocol</th>
-                  <th>Scope</th>
-                </tr>
-              </thead>
-              <tbody id="current-route-table-body">
-                <tr>
-                  <td colspan="7">Loading current routes...</td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="table-container">
+              <table class="status-table">
+                <thead>
+                  <tr>
+                    <th>Destination</th>
+                    <th>Gateway</th>
+                    <th>Interface</th>
+                    <th>Source</th>
+                    <th>Metric</th>
+                    <th>Protocol</th>
+                    <th>Scope</th>
+                  </tr>
+                </thead>
+                <tbody id="current-route-table-body">
+                  <tr>
+                    <td colspan="7">Loading current routes...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section class="card" data-tab-panel="profiles" hidden>
@@ -294,22 +298,24 @@
               </div>
             </div>
             <h3 class="section-subtitle">Connected clients</h3>
-            <table class="status-table">
-              <thead>
-                <tr>
-                  <th>Device</th>
-                  <th>IP</th>
-                  <th>MAC</th>
-                  <th>Signal</th>
-                  <th>Link</th>
-                </tr>
-              </thead>
-              <tbody id="hotspot-client-table-body">
-                <tr>
-                  <td colspan="5">No client data available.</td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="table-container">
+              <table class="status-table">
+                <thead>
+                  <tr>
+                    <th>Device</th>
+                    <th>IP</th>
+                    <th>MAC</th>
+                    <th>Signal</th>
+                    <th>Link</th>
+                  </tr>
+                </thead>
+                <tbody id="hotspot-client-table-body">
+                  <tr>
+                    <td colspan="5">No client data available.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section class="card factory-reset-card">

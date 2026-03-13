@@ -149,25 +149,25 @@
               <div class="form-row">
                 <label class="field" for="syslog-config-bind">
                   <span class="field-label">Bind address</span>
-                  <input type="text" id="syslog-config-bind" name="bind_address" placeholder="0.0.0.0" />
+                  <input type="text" id="syslog-config-bind" name="bind_address" placeholder="0.0.0.0" class="input" />
                 </label>
                 <label class="field" for="syslog-config-port-udp">
                   <span class="field-label">UDP port</span>
-                  <input type="number" id="syslog-config-port-udp" name="port_udp" min="1" max="65535" placeholder="1514" />
+                  <input type="number" id="syslog-config-port-udp" name="port_udp" min="1" max="65535" placeholder="1514" class="input" />
                 </label>
                 <label class="field" for="syslog-config-port-tcp">
                   <span class="field-label">TCP port</span>
-                  <input type="number" id="syslog-config-port-tcp" name="port_tcp" min="1" max="65535" placeholder="1514" />
+                  <input type="number" id="syslog-config-port-tcp" name="port_tcp" min="1" max="65535" placeholder="1514" class="input" />
                 </label>
               </div>
               <div class="form-row">
                 <label class="field" for="syslog-config-max-live">
                   <span class="field-label">Max live messages (memory)</span>
-                  <input type="number" id="syslog-config-max-live" name="max_live" min="1" max="100000" placeholder="1000" />
+                  <input type="number" id="syslog-config-max-live" name="max_live" min="1" max="100000" placeholder="1000" class="input" />
                 </label>
                 <label class="field" for="syslog-config-max-stored">
                   <span class="field-label">Max stored messages</span>
-                  <input type="number" id="syslog-config-max-stored" name="max_stored" min="0" max="1000000" placeholder="10000" />
+                  <input type="number" id="syslog-config-max-stored" name="max_stored" min="0" max="1000000" placeholder="10000" class="input" />
                 </label>
               </div>
             </form>
@@ -213,7 +213,7 @@
             <div class="section-header">
               <h2>Recent Messages</h2>
             </div>
-            <div class="table-wrap">
+            <div class="table-container table-wrap">
               <table class="receiver-table" id="syslog-recent-table">
                 <thead>
                   <tr>
@@ -235,7 +235,7 @@
             <div class="section-header">
               <h2>Stored Messages</h2>
             </div>
-            <div class="table-wrap">
+            <div class="table-container table-wrap">
               <table class="receiver-table" id="syslog-stored-table">
                 <thead>
                   <tr>
@@ -263,7 +263,7 @@
               <h3 class="storage-subtitle">Stored data</h3>
               <p class="storage-summary" id="syslog-storage-summary">Stored messages: -- (see Stored Messages table above)</p>
               <h3 class="storage-subtitle">Files</h3>
-              <div class="table-wrap">
+              <div class="table-container table-wrap">
                 <table class="receiver-table" id="syslog-storage-files">
                   <thead>
                     <tr>

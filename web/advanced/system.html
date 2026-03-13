@@ -127,16 +127,16 @@
           </div>
 
           <div class="tabs" data-tabs>
-            <button class="tab-button" data-tab-target="services">
+            <button class="btn btn-ghost tab-button" data-tab-target="services">
               Services
             </button>
-            <button class="tab-button" data-tab-target="power">
+            <button class="btn btn-ghost tab-button" data-tab-target="power">
               Power
             </button>
-            <button class="tab-button" data-tab-target="settings">
+            <button class="btn btn-ghost tab-button" data-tab-target="settings">
               Settings
             </button>
-            <button class="tab-button" data-tab-target="info">
+            <button class="btn btn-ghost tab-button" data-tab-target="info">
               System Info
             </button>
           </div>
@@ -162,22 +162,24 @@
                 </button>
               </div>
             </div>
-            <table class="status-table services-table">
-              <thead>
-                <tr>
-                  <th class="col-check"><span class="sr-only">Select</span></th>
-                  <th>Name</th>
-                  <th>Category</th>
-                  <th>Status</th>
-                  <th class="col-actions">Actions</th>
-                </tr>
-              </thead>
-              <tbody id="service-table-body">
-                <tr>
-                  <td colspan="5">Loading services...</td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="table-container">
+              <table class="status-table services-table">
+                <thead>
+                  <tr>
+                    <th class="col-check"><span class="sr-only">Select</span></th>
+                    <th>Name</th>
+                    <th>Category</th>
+                    <th>Status</th>
+                    <th class="col-actions">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="service-table-body">
+                  <tr>
+                    <td colspan="5">Loading services...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section class="card" data-tab-panel="power" hidden>

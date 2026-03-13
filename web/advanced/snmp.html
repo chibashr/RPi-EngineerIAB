@@ -149,21 +149,21 @@
               <div class="form-row">
                 <label class="field" for="snmp-config-bind">
                   <span class="field-label">Bind address</span>
-                  <input type="text" id="snmp-config-bind" name="bind_address" placeholder="0.0.0.0" />
+                  <input type="text" id="snmp-config-bind" name="bind_address" placeholder="0.0.0.0" class="input" />
                 </label>
                 <label class="field" for="snmp-config-port">
                   <span class="field-label">UDP port</span>
-                  <input type="number" id="snmp-config-port" name="port" min="1" max="65535" placeholder="1162" />
+                  <input type="number" id="snmp-config-port" name="port" min="1" max="65535" placeholder="1162" class="input" />
                 </label>
               </div>
               <div class="form-row">
                 <label class="field" for="snmp-config-max-live">
                   <span class="field-label">Max live traps (memory)</span>
-                  <input type="number" id="snmp-config-max-live" name="max_live" min="1" max="100000" placeholder="500" />
+                  <input type="number" id="snmp-config-max-live" name="max_live" min="1" max="100000" placeholder="500" class="input" />
                 </label>
                 <label class="field" for="snmp-config-max-stored">
                   <span class="field-label">Max stored traps</span>
-                  <input type="number" id="snmp-config-max-stored" name="max_stored" min="0" max="1000000" placeholder="10000" />
+                  <input type="number" id="snmp-config-max-stored" name="max_stored" min="0" max="1000000" placeholder="10000" class="input" />
                 </label>
               </div>
             </form>
@@ -201,7 +201,7 @@
             <div class="section-header">
               <h2>Recent Traps</h2>
             </div>
-            <div class="table-wrap">
+            <div class="table-container table-wrap">
               <table class="receiver-table" id="snmp-recent-table">
                 <thead>
                   <tr>
@@ -220,7 +220,7 @@
             <div class="section-header">
               <h2>Stored Traps</h2>
             </div>
-            <div class="table-wrap">
+            <div class="table-container table-wrap">
               <table class="receiver-table" id="snmp-stored-table">
                 <thead>
                   <tr>
@@ -245,7 +245,7 @@
               <h3 class="storage-subtitle">Stored data</h3>
               <p class="storage-summary" id="snmp-storage-summary">Stored traps: -- (see Stored Traps table above)</p>
               <h3 class="storage-subtitle">Files</h3>
-              <div class="table-wrap">
+              <div class="table-container table-wrap">
                 <table class="receiver-table" id="snmp-storage-files">
                   <thead>
                     <tr>
