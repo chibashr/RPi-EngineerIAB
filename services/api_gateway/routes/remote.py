@@ -4,7 +4,7 @@ from fastapi import APIRouter, Body, HTTPException
 
 from services.remote_access_manager import RemoteAccessManager
 
-from ..response import success_response
+from ..response import error_response, success_response
 
 remote_router = APIRouter(prefix="/api/v1/remote", tags=["remote"])
 _remote_manager = RemoteAccessManager()
@@ -32,3 +32,22 @@ def remote_set_password(body: dict = Body(default=None)):
     if err:
         raise HTTPException(status_code=500, detail=err)
     return success_response({"ok": True})
+
+
+@remote_router.post("/teamviewer/reset-password")
+def teamviewer_reset_password(body: dict = Body(default=None)):
+    """Set TeamViewer static password. Password must be 1-8 characters (TeamViewer Linux limit)."""
+    body = body or {}
+    password = body.get("password")
+    if not isinstance(password, str) or not password:
+        return error_response("INVALID_INPUT", "password is required", status_code=400)
+    if len(password) > 8:
+        return error_response(
+            "INVALID_INPUT",
+            "Password must be 1-8 characters (TeamViewer Linux limit)",
+            status_code=400,
+        )
+    err = _remote_manager.set_teamviewer_password(password)
+    if err:
+        return error_response("SET_PASSWORD_FAILED", err, status_code=500)
+    return success_response({"password": password})

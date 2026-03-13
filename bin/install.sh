@@ -1310,11 +1310,13 @@ EOF
 _write_rpi_engineer_sudoers() {
     # Controlled privileged operations: tcpdump, ip, ethtool, iptables, sysctl, systemctl (no password).
     # Cover /usr/sbin, /sbin, and /usr/bin for iptables and sysctl — path varies by distro and Debian version.
-    local iptables_path sysctl_path
+    local iptables_path sysctl_path teamviewer_path
     iptables_path="$(command -v iptables 2>/dev/null)"
     [ -n "$iptables_path" ] || iptables_path="/usr/sbin/iptables"
     sysctl_path="$(command -v sysctl 2>/dev/null)"
     [ -n "$sysctl_path" ] || sysctl_path="/usr/sbin/sysctl"
+    teamviewer_path="$(command -v teamviewer 2>/dev/null)"
+    [ -n "$teamviewer_path" ] || teamviewer_path="/usr/bin/teamviewer"
     mkdir -p /etc/sudoers.d
     {
         echo "$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/tcpdump"
@@ -1337,6 +1339,9 @@ _write_rpi_engineer_sudoers() {
             *) echo "$SERVICE_USER ALL=(root) NOPASSWD: $sysctl_path" ;;
         esac
         echo "$SERVICE_USER ALL=(root) NOPASSWD: /bin/systemctl restart rpi-engineer*"
+        # TeamViewer: info requires sudo to get ID from daemon; passwd sets static password
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: $teamviewer_path info"
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: $teamviewer_path passwd *"
     } > /etc/sudoers.d/rpi-engineer
     chmod 440 /etc/sudoers.d/rpi-engineer
 }

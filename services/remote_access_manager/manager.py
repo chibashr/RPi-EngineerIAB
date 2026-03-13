@@ -21,6 +21,7 @@ REMOTE_ACCESS_CONFIG_DIR = Path(
     os.getenv("RPI_ENGINEER_CONFIG_DIR", "/etc/rpi-engineer")
 )
 REMOTE_ACCESS_CONFIG_FILE = REMOTE_ACCESS_CONFIG_DIR / "remote_access.conf"
+TEAMVIEWER_PASSWORD_FILE = REMOTE_ACCESS_CONFIG_DIR / "teamviewer_password"
 # Native config paths for ID fallback when app config is missing/unreadable
 ANYDESK_SERVICE_CONF = Path("/etc/anydesk/service.conf")
 TEAMVIEWER_GLOBAL_CONF = Path("/opt/teamviewer/config/global.conf")
@@ -70,8 +71,7 @@ class RemoteAccessManager:
             connection_id = self._teamviewer_id() or ""
             status = "running" if self._process_running("teamviewerd") else "stopped"
             ready = bool(connection_id)
-            config = self._get_remote_access_config()
-            password = (config.get("teamviewer") or {}).get("password") or ""
+            password = self._get_teamviewer_password() or ""
         elif tool == "vnc":
             connection_id = self._vnc_connection_id() or ""
             status = "running" if self._process_running("x11vnc") else "stopped"
@@ -89,6 +89,63 @@ class RemoteAccessManager:
         if tool in ("anydesk", "teamviewer") and isinstance(password, str):
             out["password"] = password
         return out
+
+    def _get_teamviewer_password(self) -> Optional[str]:
+        """Read TeamViewer password from dedicated file. Falls back to remote_access.conf."""
+        if TEAMVIEWER_PASSWORD_FILE.is_file():
+            try:
+                return TEAMVIEWER_PASSWORD_FILE.read_text(encoding="utf-8").strip()
+            except OSError as e:
+                logger.debug("Could not read TeamViewer password file: %s", e)
+        config = self._get_remote_access_config()
+        return (config.get("teamviewer") or {}).get("password") or None
+
+    def set_teamviewer_password(self, new_password: str) -> Optional[str]:
+        """Set TeamViewer static password. Returns None on success, error message on failure.
+        
+        Password must be 1-8 characters (TeamViewer's limit on Linux static passwords).
+        """
+        if not new_password:
+            return "Password is required"
+        if len(new_password) > 8:
+            return "Password must be 1-8 characters (TeamViewer Linux limit)"
+        if not shutil.which("teamviewer"):
+            return "TeamViewer is not installed"
+        try:
+            # Note: teamviewer passwd requires the password as a CLI argument.
+            # This briefly exposes the password in process lists, but TeamViewer CLI
+            # does not support reading from stdin or a file for this command.
+            result = subprocess.run(
+                ["sudo", "teamviewer", "passwd", new_password],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            if result.returncode != 0:
+                err = (result.stderr or result.stdout or "").strip()
+                if "sudo" in err.lower() and ("terminal" in err.lower() or "password is required" in err.lower()):
+                    return (
+                        "Password reset requires passwordless sudo for 'teamviewer passwd'. "
+                        "Run the installer again, or add sudoers entry for teamviewer passwd."
+                    )
+                return err or "Failed to set TeamViewer password"
+            # Save password to dedicated file with restricted permissions from the start
+            TEAMVIEWER_PASSWORD_FILE.parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(
+                str(TEAMVIEWER_PASSWORD_FILE),
+                os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                0o600,
+            )
+            try:
+                os.write(fd, new_password.encode("utf-8"))
+            finally:
+                os.close(fd)
+            logger.info("TeamViewer password updated and saved to %s", TEAMVIEWER_PASSWORD_FILE)
+            return None
+        except (OSError, subprocess.TimeoutExpired) as e:
+            logger.warning("set_teamviewer_password failed: %s", e)
+            return str(e)
 
     def _get_remote_access_config(self) -> Dict[str, Any]:
         """Read remote_access.conf; return parsed JSON or empty dict.
@@ -209,19 +266,24 @@ class RemoteAccessManager:
         return self._anydesk_id_from_native_config()
 
     def _teamviewer_id(self) -> Optional[str]:
-        # 1) Live CLI (teamviewer info or teamviewer --info on Linux) 2) App config 3) Native config/logs
+        # 1) Live CLI via sudo (teamviewer info requires root for daemon response)
+        # 2) App config 3) Native config/logs
         if shutil.which("teamviewer"):
-            for args in (["teamviewer", "info"], ["teamviewer", "--info"]):
-                result = subprocess.run(
-                    args,
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                if result.returncode == 0 and result.stdout:
-                    match = re.search(r"TeamViewer\s+ID\s*:\s*(\d+)", result.stdout, re.IGNORECASE)
-                    if match:
-                        return _format_id(match.group(1))
+            for args in (["sudo", "teamviewer", "info"], ["sudo", "teamviewer", "--info"]):
+                try:
+                    result = subprocess.run(
+                        args,
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                        check=False,
+                    )
+                    if result.returncode == 0 and result.stdout:
+                        match = re.search(r"TeamViewer\s+ID\s*:\s*(\d+)", result.stdout, re.IGNORECASE)
+                        if match:
+                            return _format_id(match.group(1))
+                except (OSError, subprocess.TimeoutExpired) as e:
+                    logger.debug("Failed to run %s: %s", args, e)
         config = self._get_remote_access_config()
         raw = config.get("teamviewer", {}).get("id") or ""
         if raw:
@@ -303,6 +365,9 @@ class RemoteAccessManager:
             return f"Unsupported tool: {tool}"
         if not password:
             return "Password is required"
+        # For TeamViewer, delegate to set_teamviewer_password for consistent storage
+        if tool == "teamviewer":
+            return self.set_teamviewer_password(password)
         root = Path(os.getenv("RPI_ENGINEER_ROOT", "/opt/rpi-engineer"))
         script = root / "bin" / "set-remote-password.sh"
         if not script.is_file():
