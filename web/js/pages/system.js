@@ -81,7 +81,7 @@ function renderServices(servicesList) {
     checkCell.className = "col-check";
     const check = document.createElement("input");
     check.type = "checkbox";
-    check.className = "service-checkbox";
+    check.className = "service-checkbox checkbox-native";
     check.dataset.serviceName = name;
     check.setAttribute("aria-label", `Select ${name}`);
     checkCell.appendChild(check);

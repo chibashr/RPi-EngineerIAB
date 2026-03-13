@@ -790,8 +790,8 @@
   min-height: 40px;
 }
 
-/* All checkboxes restyled as toggles */
-input[type="checkbox"] {
+/* Toggle-style checkboxes (default for settings/preferences) */
+input[type="checkbox"]:not(.checkbox-native) {
   appearance: none;
   width: 40px;
   height: 22px;
@@ -803,7 +803,7 @@ input[type="checkbox"] {
   flex-shrink: 0;
 }
 
-input[type="checkbox"]::after {
+input[type="checkbox"]:not(.checkbox-native)::after {
   content: "";
   position: absolute;
   width: 16px;
@@ -815,12 +815,22 @@ input[type="checkbox"]::after {
   transition: transform 0.2s ease;
 }
 
-input[type="checkbox"]:checked {
+input[type="checkbox"]:not(.checkbox-native):checked {
   background: var(--color-accent);
 }
 
-input[type="checkbox"]:checked::after {
+input[type="checkbox"]:not(.checkbox-native):checked::after {
   transform: translateX(18px);
+}
+
+/* Native checkbox style for selection/bulk actions */
+input[type="checkbox"].checkbox-native {
+  appearance: auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  cursor: pointer;
+  accent-color: var(--color-accent);
 }
 
 /* ── Terminal ─────────────────────────────────────────── */
