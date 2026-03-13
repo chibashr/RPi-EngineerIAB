@@ -34,18 +34,15 @@ class ServiceStatus:
 
 
 # Service definitions: logical name, systemd unit (no .service suffix), category.
-# Core = app services from bin/install.sh configure_services(); system = nginx, hotspot, etc.;
+# Core = actual daemon services (have a main loop); system = nginx, hotspot, etc.;
 # optional = remote access tools that may not be installed.
+# Note: system_manager, serial_manager, capture_manager, update_manager, and
+# monitor_service are libraries used by the API gateway, not standalone daemons.
 SERVICE_DEFINITIONS = [
-    # Core app services (must match bin/install.sh configure_services())
+    # Core app services (actual daemons with main loops)
     ("api_gateway", "rpi-engineer-api", "core"),
-    ("system_manager", "rpi-engineer-system", "core"),
     ("network_manager", "rpi-engineer-network", "core"),
-    ("serial_manager", "rpi-engineer-serial", "core"),
-    ("capture_manager", "rpi-engineer-capture", "core"),
-    ("update_manager", "rpi-engineer-update", "core"),
     ("logging_service", "rpi-engineer-logging", "core"),
-    ("monitor_service", "rpi-engineer-monitor", "core"),
     ("rpi_engineer_master", "rpi-engineer", "core"),
     # System services the app and modules rely on
     ("nginx", "nginx", "system"),

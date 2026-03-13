@@ -54,9 +54,9 @@ if [ -x "$APPLY_WEB" ]; then
     "$APPLY_WEB" >> /tmp/rpi-engineer-apply-web.log 2>&1 || true
 fi
 
-# Restart services so they pick up the new code
+# Restart services so they pick up the new code.
+# Only restart actual daemon services (services with main loops).
 if [ -d /run/systemd/system ]; then
-    systemctl restart rpi-engineer rpi-engineer-api rpi-engineer-network rpi-engineer-serial \
-        rpi-engineer-capture rpi-engineer-system rpi-engineer-monitor rpi-engineer-update \
+    systemctl restart rpi-engineer rpi-engineer-api rpi-engineer-network \
         rpi-engineer-logging 2>/dev/null || true
 fi

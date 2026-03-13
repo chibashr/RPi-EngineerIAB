@@ -41,15 +41,13 @@ enable_services() {
     fi
     log_info "Reloading systemd to pick up hotspot unit files."
     systemctl daemon-reload
+    # Only enable actual daemon services (services with main loops).
+    # system_manager, serial_manager, capture_manager, update_manager, and monitor_service
+    # are libraries used by the API gateway, not standalone daemons.
     local services=(
         rpi-engineer
         rpi-engineer-api
         rpi-engineer-network
-        rpi-engineer-serial
-        rpi-engineer-capture
-        rpi-engineer-system
-        rpi-engineer-monitor
-        rpi-engineer-update
         rpi-engineer-logging
         nginx
         rpi-engineer-wlan0

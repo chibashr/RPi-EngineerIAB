@@ -190,13 +190,11 @@ configure_services() {
     create_master_service
     local api_env="Environment=RPI_ENGINEER_ROOT=${INSTALL_DIR}
 Environment=RPI_ENGINEER_DRY_RUN=0"
+    # Only create systemd units for actual daemon services (services with main loops).
+    # system_manager, serial_manager, capture_manager, update_manager, and monitor_service
+    # are libraries used by the API gateway, not standalone daemons.
     create_service_unit "rpi-engineer-api" "RPi Engineer API Gateway" "$INSTALL_DIR/venv/bin/python -m uvicorn services.api_gateway.main:app --host 0.0.0.0 --port 5000 --workers 1 --loop asyncio" "$SERVICE_USER" "$api_env" "allow_capabilities"
     create_service_unit "rpi-engineer-network" "RPi Engineer Network Manager" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/network_manager/manager.py" "root"
-    create_service_unit "rpi-engineer-serial" "RPi Engineer Serial Manager" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/serial_manager/manager.py" "$SERVICE_USER"
-    create_service_unit "rpi-engineer-capture" "RPi Engineer Capture Manager" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/capture_manager/manager.py" "root"
-    create_service_unit "rpi-engineer-system" "RPi Engineer System Manager" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/system_manager/manager.py" "$SERVICE_USER"
-    create_service_unit "rpi-engineer-monitor" "RPi Engineer Monitor Service" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/monitor_service/manager.py" "$SERVICE_USER"
-    create_service_unit "rpi-engineer-update" "RPi Engineer Update Manager" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/update_manager/manager.py" "$SERVICE_USER"
     create_service_unit "rpi-engineer-logging" "RPi Engineer Logging Service" "$INSTALL_DIR/venv/bin/python $INSTALL_DIR/services/logging_service/manager.py" "$SERVICE_USER"
     if [ -d /run/systemd/system ]; then
         systemctl daemon-reload
