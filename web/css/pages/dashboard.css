@@ -120,19 +120,6 @@
   font-size: 0.85rem;
 }
 
-.status-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-}
-
-.status-table th,
-.status-table td {
-  text-align: left;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--color-border);
-}
-
 .status-list {
   list-style: none;
   padding: 0;
@@ -151,12 +138,14 @@
   display: block;
   text-decoration: none;
   color: inherit;
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
 .panel-link:hover {
   border-color: var(--color-accent);
   box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 
 .panel-link .panel-header h2 {
@@ -186,14 +175,17 @@
 .logs-type-link {
   padding: 0.4rem 0.75rem;
   border-radius: 8px;
-  background: rgba(90, 100, 114, 0.08);
+  background: color-mix(in srgb, var(--color-muted) 8%, transparent);
   color: var(--color-accent);
   text-decoration: none;
   font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease;
 }
 
 .logs-type-link:hover {
-  background: rgba(47, 111, 237, 0.12);
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  transform: translateY(-1px);
 }
 
 .status-item {
@@ -203,7 +195,12 @@
   gap: 1rem;
   padding: 0.5rem 0.75rem;
   border-radius: 10px;
-  background: rgba(90, 100, 114, 0.06);
+  background: color-mix(in srgb, var(--color-muted) 6%, transparent);
+  transition: background-color 0.2s ease;
+}
+
+.status-item:hover {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
 }
 
 .status-item .status-label {
@@ -259,7 +256,7 @@
   border: 1px solid var(--color-card-border, var(--color-border));
   border-radius: 8px;
   padding: 0.75rem 1rem;
-  background: rgba(90, 100, 114, 0.04);
+  background: color-mix(in srgb, var(--color-muted) 4%, transparent);
   min-width: 0;
 }
 

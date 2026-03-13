@@ -173,19 +173,6 @@
   margin-top: 0.5rem;
 }
 
-.status-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-}
-
-.status-table th,
-.status-table td {
-  text-align: left;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--color-border);
-}
-
 .device-actions {
   display: flex;
   flex-wrap: wrap;
@@ -193,7 +180,7 @@
 }
 
 .status-pill-muted {
-  background: rgba(90, 100, 114, 0.15);
+  background: color-mix(in srgb, var(--color-muted) 15%, transparent);
   color: var(--color-muted);
 }
 
@@ -396,7 +383,7 @@
   border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
   border-radius: 10px;
   padding: 0.5rem 0.75rem;
-  background: rgba(90, 100, 114, 0.04);
+  background: color-mix(in srgb, var(--color-muted) 4%, transparent);
 }
 
 .console-settings summary {

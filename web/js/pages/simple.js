@@ -440,7 +440,8 @@ async function loadSystemStatusWithOptions(options) {
     const data = extractData(statusPayload) || {};
     const info = extractData(infoPayload) || {};
     clearApiConnectionError();
-    setStatusIndicator(data.health ?? data.status);
+    const healthStatus = typeof data.health === "object" ? data.health?.status : data.health;
+    setStatusIndicator(healthStatus ?? data.status);
     setMetric("cpu", data.resources?.cpu_percent, "%", elements.meters.cpu);
     setMetric(
       "memory",
@@ -870,7 +871,8 @@ function initStatusWebSocket() {
   });
   statusWs.on("system_metrics", (message) => {
     const data = message.data || {};
-    setStatusIndicator(data.health ?? data.status);
+    const healthStatus = typeof data.health === "object" ? data.health?.status : data.health;
+    setStatusIndicator(healthStatus ?? data.status);
     setMetric("cpu", data.resources?.cpu_percent, "%", elements.meters.cpu);
     setMetric("memory", data.resources?.memory_percent, "%", elements.meters.memory);
     setMetric("temp", data.resources?.temperature_c, " C", elements.meters.temp);

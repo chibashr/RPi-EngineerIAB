@@ -101,7 +101,7 @@
   gap: 0.5rem;
 }
 
-.help-hotspot-btn {
+.help-btn {
   padding: 0.35rem 0.6rem;
   min-height: 0;
   min-width: 0;
@@ -114,10 +114,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease;
 }
 
-.help-hotspot-btn:hover {
+.help-btn:hover {
   color: var(--color-accent);
+  background-color: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
 .network-wan-summary {
@@ -139,7 +142,7 @@
   border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 0.75rem 1rem;
-  background: rgba(90, 100, 114, 0.04);
+  background: color-mix(in srgb, var(--color-muted) 4%, transparent);
   font-size: 0.9rem;
 }
 
@@ -361,7 +364,7 @@
   border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 1rem;
-  background: rgba(90, 100, 114, 0.04);
+  background: color-mix(in srgb, var(--color-muted) 4%, transparent);
 }
 
 .connection-header {
@@ -477,49 +480,15 @@
   margin: 0;
 }
 
-.help-capture-btn {
-  padding: 0.35rem 0.6rem;
-  min-height: 0;
-  min-width: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-muted);
-  border-radius: 50%;
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.help-capture-btn:hover {
-  color: var(--color-accent);
-}
 
 .action-card-wrapper {
   position: relative;
 }
 
-.help-serial-btn {
+.help-btn-positioned {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
-  padding: 0.35rem 0.6rem;
-  min-height: 0;
-  min-width: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-muted);
-  border-radius: 50%;
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.help-serial-btn:hover {
-  color: var(--color-accent);
 }
 
 .action-grid {
@@ -535,12 +504,14 @@
   padding: 1rem;
   background: var(--color-surface);
   box-shadow: var(--shadow-sm);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .action-card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
+  border-color: var(--color-accent);
 }
 
 .action-title {

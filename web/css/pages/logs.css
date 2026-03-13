@@ -25,7 +25,7 @@
 .log-content {
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  background: rgba(90, 100, 114, 0.05);
+  background: color-mix(in srgb, var(--color-muted) 5%, transparent);
   padding: 1rem;
   min-height: 240px;
   max-height: 420px;
@@ -103,7 +103,7 @@
 }
 
 .alerts-table-container .status-table tbody tr:hover {
-  background: rgba(90, 100, 114, 0.04);
+  background: color-mix(in srgb, var(--color-muted) 4%, transparent);
 }
 
 .alerts-table-container .status-table td.empty-state {
@@ -114,7 +114,7 @@
 }
 
 .status-pill-muted {
-  background: rgba(90, 100, 114, 0.2);
+  background: color-mix(in srgb, var(--color-muted) 20%, transparent);
   color: var(--color-muted);
 }
 

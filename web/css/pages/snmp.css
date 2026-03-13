@@ -60,7 +60,7 @@
 }
 
 .receiver-table tbody tr:hover {
-  background: rgba(90, 100, 114, 0.04);
+  background: color-mix(in srgb, var(--color-muted) 4%, transparent);
 }
 
 /* Configuration form */
