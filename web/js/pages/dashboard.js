@@ -452,8 +452,9 @@ function setupRemotePasswordDelegation() {
       showToast(ok ? "Password copied." : "Nothing to copy.", ok ? "success" : "error");
     } else if (resetBtn) {
       const label = tool === "anydesk" ? "AnyDesk" : "TeamViewer";
+      const minLen = tool === "teamviewer" ? 6 : 1;
       const maxLen = tool === "teamviewer" ? 8 : 64;
-      const hint = tool === "teamviewer" ? " (max 8 characters)" : "";
+      const hint = tool === "teamviewer" ? " (6-8 characters)" : "";
       const newPassword = await modalPrompt(`Set new unattended access password for ${label}${hint}`, "", {
         label: "New password",
         inputType: "password",
@@ -463,8 +464,8 @@ function setupRemotePasswordDelegation() {
         showToast("Password cannot be empty.", "error");
         return;
       }
-      if (newPassword.length > maxLen) {
-        showToast(`Password must be 1-${maxLen} characters.`, "error");
+      if (newPassword.length < minLen || newPassword.length > maxLen) {
+        showToast(`Password must be ${minLen}-${maxLen} characters.`, "error");
         return;
       }
       resetBtn.disabled = true;

@@ -20,8 +20,12 @@ logger = get_service_logger(__name__)
 REMOTE_ACCESS_CONFIG_DIR = Path(
     os.getenv("RPI_ENGINEER_CONFIG_DIR", "/etc/rpi-engineer")
 )
+REMOTE_ACCESS_DATA_DIR = Path(
+    os.getenv("RPI_ENGINEER_DATA_DIR", "/var/lib/rpi-engineer")
+)
 REMOTE_ACCESS_CONFIG_FILE = REMOTE_ACCESS_CONFIG_DIR / "remote_access.conf"
-TEAMVIEWER_PASSWORD_FILE = REMOTE_ACCESS_CONFIG_DIR / "teamviewer_password"
+# Store password in data dir (writable by rpi-engineer user) not config dir (root-owned)
+TEAMVIEWER_PASSWORD_FILE = REMOTE_ACCESS_DATA_DIR / "teamviewer_password"
 # Native config paths for ID fallback when app config is missing/unreadable
 ANYDESK_SERVICE_CONF = Path("/etc/anydesk/service.conf")
 TEAMVIEWER_GLOBAL_CONF = Path("/opt/teamviewer/config/global.conf")
@@ -103,12 +107,14 @@ class RemoteAccessManager:
     def set_teamviewer_password(self, new_password: str) -> Optional[str]:
         """Set TeamViewer static password. Returns None on success, error message on failure.
         
-        Password must be 1-8 characters (TeamViewer's limit on Linux static passwords).
+        Password must be 6-8 characters (TeamViewer Linux static password requirements).
         """
         if not new_password:
             return "Password is required"
+        if len(new_password) < 6:
+            return "Password must be at least 6 characters (TeamViewer requirement)"
         if len(new_password) > 8:
-            return "Password must be 1-8 characters (TeamViewer Linux limit)"
+            return "Password must be at most 8 characters (TeamViewer Linux limit)"
         if not shutil.which("teamviewer"):
             return "TeamViewer is not installed"
         try:
@@ -122,12 +128,18 @@ class RemoteAccessManager:
                 timeout=15,
                 check=False,
             )
-            if result.returncode != 0:
-                err = (result.stderr or result.stdout or "").strip()
+            output = (result.stderr or "") + (result.stdout or "")
+            if result.returncode != 0 or "invalid" in output.lower():
+                err = output.strip()
                 if "sudo" in err.lower() and ("terminal" in err.lower() or "password is required" in err.lower()):
                     return (
                         "Password reset requires passwordless sudo for 'teamviewer passwd'. "
                         "Run the installer again, or add sudoers entry for teamviewer passwd."
+                    )
+                if "invalid" in err.lower() or "E14" in err:
+                    return (
+                        "TeamViewer rejected the password. Requirements: 6-8 characters, "
+                        "alphanumeric recommended. Try a different password."
                     )
                 return err or "Failed to set TeamViewer password"
             # Save password to dedicated file with restricted permissions from the start
@@ -266,10 +278,16 @@ class RemoteAccessManager:
         return self._anydesk_id_from_native_config()
 
     def _teamviewer_id(self) -> Optional[str]:
-        # 1) Live CLI via sudo (teamviewer info requires root for daemon response)
+        # 1) Live CLI (teamviewer info) - try with and without sudo
         # 2) App config 3) Native config/logs
         if shutil.which("teamviewer"):
-            for args in (["sudo", "teamviewer", "info"], ["sudo", "teamviewer", "--info"]):
+            # Try both sudo and non-sudo variants; some systems work without sudo
+            for args in (
+                ["teamviewer", "info"],
+                ["sudo", "teamviewer", "info"],
+                ["teamviewer", "--info"],
+                ["sudo", "teamviewer", "--info"],
+            ):
                 try:
                     result = subprocess.run(
                         args,
@@ -279,9 +297,21 @@ class RemoteAccessManager:
                         check=False,
                     )
                     if result.returncode == 0 and result.stdout:
-                        match = re.search(r"TeamViewer\s+ID\s*:\s*(\d+)", result.stdout, re.IGNORECASE)
+                        # Match "TeamViewer ID:" followed by any whitespace and digits
+                        # Handle formats like "TeamViewer ID:                        325070453"
+                        match = re.search(
+                            r"TeamViewer\s+ID\s*:\s*(\d{6,12})",
+                            result.stdout,
+                            re.IGNORECASE,
+                        )
                         if match:
                             return _format_id(match.group(1))
+                        # Fallback: look for a standalone 9-10 digit number on its own line
+                        # (TeamViewer sometimes prints the ID twice, once as label and once alone)
+                        for line in result.stdout.splitlines():
+                            line = line.strip()
+                            if re.fullmatch(r"\d{9,10}", line):
+                                return _format_id(line)
                 except (OSError, subprocess.TimeoutExpired) as e:
                     logger.debug("Failed to run %s: %s", args, e)
         config = self._get_remote_access_config()

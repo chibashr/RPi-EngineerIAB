@@ -36,15 +36,21 @@ def remote_set_password(body: dict = Body(default=None)):
 
 @remote_router.post("/teamviewer/reset-password")
 def teamviewer_reset_password(body: dict = Body(default=None)):
-    """Set TeamViewer static password. Password must be 1-8 characters (TeamViewer Linux limit)."""
+    """Set TeamViewer static password. Password must be 6-8 characters (TeamViewer Linux requirements)."""
     body = body or {}
     password = body.get("password")
     if not isinstance(password, str) or not password:
         return error_response("INVALID_INPUT", "password is required", status_code=400)
+    if len(password) < 6:
+        return error_response(
+            "INVALID_INPUT",
+            "Password must be at least 6 characters (TeamViewer requirement)",
+            status_code=400,
+        )
     if len(password) > 8:
         return error_response(
             "INVALID_INPUT",
-            "Password must be 1-8 characters (TeamViewer Linux limit)",
+            "Password must be at most 8 characters (TeamViewer Linux limit)",
             status_code=400,
         )
     err = _remote_manager.set_teamviewer_password(password)
