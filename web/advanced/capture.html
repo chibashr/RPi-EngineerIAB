@@ -162,11 +162,11 @@
               </p>
             </div>
             <div class="toolbar">
-              <button class="btn btn-secondary" id="refresh-capture">
-                Refresh
-              </button>
-              <button class="btn btn-primary" id="new-capture">
-                New Capture
+              <button class="btn btn-primary btn-with-icon btn-with-icon-responsive" id="new-capture">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+                </svg>
+                <span class="btn-label">New Capture</span>
               </button>
             </div>
           </div>
@@ -192,8 +192,11 @@
                   placeholder="tcp port 22"
                 />
               </label>
-              <button class="btn btn-primary" type="button" id="start-capture">
-                Start Capture
+              <button class="btn btn-primary btn-with-icon" type="button" id="start-capture">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clip-rule="evenodd"/>
+                </svg>
+                <span class="btn-label">Start Capture</span>
               </button>
             </form>
           </section>

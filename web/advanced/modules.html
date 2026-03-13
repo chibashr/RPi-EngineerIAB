@@ -157,11 +157,11 @@
               </p>
             </div>
             <div class="toolbar">
-              <button class="btn btn-secondary" id="refresh-modules">
-                Refresh
-              </button>
-              <button class="btn btn-primary" id="upload-module">
-                Install Module
+              <button class="btn btn-primary btn-with-icon btn-with-icon-responsive" id="upload-module">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+                </svg>
+                <span class="btn-label">Install Module</span>
               </button>
             </div>
           </div>
@@ -178,8 +178,10 @@
           <section class="card" data-tab-panel="installed">
             <div class="section-header">
               <h2>Installed Modules</h2>
-              <button class="btn btn-secondary" id="check-module-updates">
-                Check for module updates
+              <button class="btn btn-secondary btn-icon" id="check-module-updates" aria-label="Check For Module Updates" title="Check For Module Updates">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/>
+                </svg>
               </button>
             </div>
             <ul class="module-grid" id="installed-modules"></ul>
@@ -188,8 +190,10 @@
           <section class="card" data-tab-panel="available" hidden>
             <div class="section-header">
               <h2>Available Modules</h2>
-              <button class="btn btn-secondary" id="refresh-available">
-                Refresh
+              <button class="btn btn-secondary btn-icon" id="refresh-available" aria-label="Refresh" title="Refresh">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/>
+                </svg>
               </button>
             </div>
             <p class="section-muted">

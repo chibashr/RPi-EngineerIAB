@@ -117,15 +117,29 @@ function renderRows(tableBody, items) {
   });
 }
 
+const PLAY_ICON = '<path fill-rule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clip-rule="evenodd"/>';
+const STOP_ICON = '<path fill-rule="evenodd" d="M4.5 7.5a3 3 0 0 1 3-3h9a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3v-9Z" clip-rule="evenodd"/>';
+
 function updateControlButtons(running) {
-  const startBtn = document.getElementById("syslog-start");
-  const stopBtn = document.getElementById("syslog-stop");
+  const toggleBtn = document.getElementById("syslog-toggle");
+  const toggleIcon = document.getElementById("syslog-toggle-icon");
+  const toggleLabel = document.getElementById("syslog-toggle-label");
   const restartBtn = document.getElementById("syslog-restart");
-  if (startBtn) startBtn.disabled = !!running;
-  if (stopBtn) stopBtn.disabled = !running;
+
+  if (toggleBtn && toggleIcon && toggleLabel) {
+    if (running) {
+      toggleBtn.dataset.state = "running";
+      toggleIcon.innerHTML = STOP_ICON;
+      toggleLabel.textContent = "Stop";
+    } else {
+      toggleBtn.dataset.state = "stopped";
+      toggleIcon.innerHTML = PLAY_ICON;
+      toggleLabel.textContent = "Start";
+    }
+  }
+
   if (restartBtn) {
     restartBtn.disabled = !running;
-    restartBtn.style.display = running ? "" : "none";
   }
 }
 
@@ -281,19 +295,24 @@ document.addEventListener("DOMContentLoaded", () => {
   loadStorage();
   setInterval(refresh, 5000);
 
-  const refreshBtn = document.getElementById("refresh-syslog");
-  if (refreshBtn) refreshBtn.addEventListener("click", () => refresh());
-
   const clearBtn = document.getElementById("clear-syslog");
   if (clearBtn) clearBtn.addEventListener("click", clearBuffers);
 
   const saveConfigBtn = document.getElementById("syslog-save-config");
   if (saveConfigBtn) saveConfigBtn.addEventListener("click", saveConfig);
 
-  const startBtn = document.getElementById("syslog-start");
-  if (startBtn) startBtn.addEventListener("click", startReceiver);
-  const stopBtn = document.getElementById("syslog-stop");
-  if (stopBtn) stopBtn.addEventListener("click", stopReceiver);
+  const toggleBtn = document.getElementById("syslog-toggle");
+  if (toggleBtn) {
+    toggleBtn.addEventListener("click", () => {
+      const isRunning = toggleBtn.dataset.state === "running";
+      if (isRunning) {
+        stopReceiver();
+      } else {
+        startReceiver();
+      }
+    });
+  }
+
   const restartBtn = document.getElementById("syslog-restart");
   if (restartBtn) restartBtn.addEventListener("click", restartReceiver);
 

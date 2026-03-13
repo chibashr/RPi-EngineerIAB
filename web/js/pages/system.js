@@ -104,25 +104,46 @@ function renderServices(servicesList) {
     actionsCell.className = "col-actions service-actions";
     const run = isRunning(status);
     const transitioning = isTransitioning(status);
-    const toggleBtn = document.createElement("button");
-    toggleBtn.type = "button";
-    toggleBtn.className = "btn btn-ghost btn-service-action btn-service-toggle";
-    toggleBtn.textContent = run ? "Stop" : "Start";
-    toggleBtn.dataset.serviceName = name;
-    toggleBtn.dataset.action = run ? "stop" : "start";
-    if (transitioning) {
-      toggleBtn.disabled = true;
-      toggleBtn.setAttribute("aria-label", `Service is ${status}`);
+
+    const startBtn = document.createElement("button");
+    startBtn.type = "button";
+    startBtn.className = "btn btn-icon btn-service-action btn-service-start";
+    startBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clip-rule="evenodd"/></svg>`;
+    startBtn.dataset.serviceName = name;
+    startBtn.dataset.action = "start";
+    startBtn.setAttribute("aria-label", `Start ${name}`);
+    startBtn.title = "Start";
+    if (run || transitioning) {
+      startBtn.disabled = true;
     }
-    actionsCell.appendChild(toggleBtn);
+    actionsCell.appendChild(startBtn);
+
+    const stopBtn = document.createElement("button");
+    stopBtn.type = "button";
+    stopBtn.className = "btn btn-icon btn-service-action btn-service-stop";
+    stopBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4.5 7.5a3 3 0 0 1 3-3h9a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3v-9Z" clip-rule="evenodd"/></svg>`;
+    stopBtn.dataset.serviceName = name;
+    stopBtn.dataset.action = "stop";
+    stopBtn.setAttribute("aria-label", `Stop ${name}`);
+    stopBtn.title = "Stop";
+    if (!run || transitioning) {
+      stopBtn.disabled = true;
+    }
+    actionsCell.appendChild(stopBtn);
+
     const restartBtn = document.createElement("button");
     restartBtn.type = "button";
-    restartBtn.className = "btn btn-ghost btn-service-action";
-    restartBtn.textContent = "Restart";
+    restartBtn.className = "btn btn-icon btn-service-action btn-service-restart";
+    restartBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>`;
     restartBtn.dataset.serviceName = name;
     restartBtn.dataset.action = "restart";
-    if (transitioning) restartBtn.disabled = true;
+    restartBtn.setAttribute("aria-label", `Restart ${name}`);
+    restartBtn.title = "Restart";
+    if (transitioning) {
+      restartBtn.disabled = true;
+    }
     actionsCell.appendChild(restartBtn);
+
     row.appendChild(actionsCell);
 
     elements.serviceTable.appendChild(row);
@@ -307,10 +328,6 @@ function setupActions() {
 
 function init() {
   initTabs(document.querySelector("[data-tabs]"));
-  const refresh = document.getElementById("refresh-system");
-  if (refresh) {
-    refresh.addEventListener("click", loadSystemData);
-  }
   setupActions();
   loadSystemData();
 }

@@ -157,11 +157,8 @@
               </p>
             </div>
             <div class="toolbar">
-              <button class="btn btn-secondary" id="refresh-syslog">
-                Refresh
-              </button>
               <button class="btn btn-ghost" id="clear-syslog">
-                Clear buffers
+                Clear Buffers
               </button>
             </div>
           </div>
@@ -170,10 +167,23 @@
             <div class="section-header">
               <h2>Configuration</h2>
               <div class="receiver-actions">
-                <button class="btn btn-primary" id="syslog-start" type="button">Start</button>
-                <button class="btn btn-secondary" id="syslog-stop" type="button">Stop</button>
-                <button class="btn btn-secondary" id="syslog-restart" type="button">Restart</button>
-                <button class="btn btn-primary" id="syslog-save-config" type="button">Save</button>
+                <button class="btn btn-primary btn-with-icon" id="syslog-toggle" type="button" data-state="stopped">
+                  <svg id="syslog-toggle-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path fill-rule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clip-rule="evenodd"/>
+                  </svg>
+                  <span id="syslog-toggle-label">Start</span>
+                </button>
+                <button class="btn btn-secondary btn-icon" id="syslog-restart" type="button" aria-label="Restart" title="Restart">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/>
+                  </svg>
+                </button>
+                <button class="btn btn-primary btn-with-icon" id="syslog-save-config" type="button">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+                  </svg>
+                  <span class="btn-label">Save</span>
+                </button>
               </div>
             </div>
             <form id="syslog-config-form" class="syslog-config-form">
@@ -293,7 +303,11 @@
           <section class="card" id="syslog-storage-section">
             <div class="section-header">
               <h2>Persistence storage</h2>
-              <button class="btn btn-ghost" id="syslog-refresh-storage" type="button">Refresh</button>
+              <button class="btn btn-ghost btn-icon" id="syslog-refresh-storage" type="button" aria-label="Refresh Storage" title="Refresh Storage">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/>
+                </svg>
+              </button>
             </div>
             <p class="storage-path" id="syslog-storage-path">--</p>
             <div class="storage-explorer">
