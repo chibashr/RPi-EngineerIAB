@@ -16,6 +16,7 @@ import shutil
 import socket
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -44,7 +45,13 @@ class NetworkManager:
     """Manage network interfaces, routing, and profiles."""
 
     def list_interfaces(self) -> Dict[str, List[Dict[str, object]]]:
-        interfaces = [self._build_interface(iface) for iface in self._interface_names()]
+        names = self._interface_names()
+        connectivity = self._check_all_interface_connectivity(names)
+        dns_ok = self._check_dns()  # Check DNS once, not per-interface
+        interfaces = [
+            self._build_interface(iface, connectivity=connectivity, dns_ok=dns_ok)
+            for iface in names
+        ]
         return {"interfaces": interfaces}
 
     def get_interface(self, interface_id: str) -> Dict[str, object]:
@@ -296,7 +303,11 @@ wpa_key_mgmt=WPA-PSK
                 pass
         return []
 
-    def _build_interface(self, name: str) -> Dict[str, object]:
+    def _build_interface(
+        self, name: str,
+        connectivity: Optional[Dict[str, bool]] = None,
+        dns_ok: Optional[bool] = None,
+    ) -> Dict[str, object]:
         addrs = self._interface_addrs(name)
         stats = self._interface_stats(name)
         ip_address = addrs.get("ip_address")
@@ -312,7 +323,7 @@ wpa_key_mgmt=WPA-PSK
             "netmask": addrs.get("netmask"),
             "gateway": gateway,
             "metric": metric,
-            "role": self._role_for(name, iface_type),
+            "role": self._role_for(name, iface_type, connectivity=connectivity, dns_ok=dns_ok),
             "mac_address": addrs.get("mac_address"),
             "mtu": stats.get("mtu"),
             "speed_mbps": stats.get("speed"),
@@ -480,11 +491,37 @@ wpa_key_mgmt=WPA-PSK
         if interface_id not in self._interface_names():
             return False
         ping = subprocess.run(
-            ["ping", "-c", "1", "-W", "2", "-I", interface_id, self._CONNECTIVITY_IP],
+            ["ping", "-c", "1", "-W", "1", "-I", interface_id, self._CONNECTIVITY_IP],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
         return ping.returncode == 0
+
+    def _check_all_interface_connectivity(self, names: List[str]) -> Dict[str, bool]:
+        """Check connectivity for all interfaces in parallel using ThreadPoolExecutor."""
+        if platform.system().lower() == "windows":
+            return {name: False for name in names}
+        # Filter to only check non-wlan interfaces (wlan is always lan/hotspot)
+        candidates = [n for n in names if not n.startswith("wlan")]
+        if not candidates:
+            return {name: False for name in names}
+
+        def check_single(iface: str) -> Tuple[str, bool]:
+            try:
+                ping = subprocess.run(
+                    ["ping", "-c", "1", "-W", "1", "-I", iface, self._CONNECTIVITY_IP],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                return (iface, ping.returncode == 0)
+            except OSError:
+                return (iface, False)
+
+        results: Dict[str, bool] = {name: False for name in names}
+        with ThreadPoolExecutor(max_workers=min(len(candidates), 8)) as executor:
+            for iface, connected in executor.map(check_single, candidates):
+                results[iface] = connected
+        return results
 
     def _ordered_wan_candidates(self) -> List[str]:
         """Return interface names in WAN preference order: USB first, then ethernet. Excludes wlan (hotspot)."""
@@ -640,13 +677,27 @@ wpa_key_mgmt=WPA-PSK
                 neighbors.append({"ip": ip_address, "mac": mac, "interface": interface or ""})
         return neighbors
 
-    def _role_for(self, name: str, iface_type: str) -> str:
+    def _role_for(
+        self,
+        name: str,
+        iface_type: str,
+        connectivity: Optional[Dict[str, bool]] = None,
+        dns_ok: Optional[bool] = None,
+    ) -> str:
         """WAN = interface can reach internet (9.9.9.9 + quad9.net DNS). LAN = hotspot or no internet."""
         if iface_type == "wifi" and name.startswith("wlan"):
             return "lan"
         if platform.system().lower() == "windows":
             return "wan"  # heuristic when connectivity checks unavailable
-        if self._check_connectivity_via_interface(name) and self._check_dns():
+        # Use pre-computed connectivity if available
+        if connectivity is not None:
+            has_connectivity = connectivity.get(name, False)
+        else:
+            has_connectivity = self._check_connectivity_via_interface(name)
+        # Use pre-computed DNS result if available
+        if dns_ok is None:
+            dns_ok = self._check_dns()
+        if has_connectivity and dns_ok:
             return "wan"
         return "lan"
 

@@ -75,9 +75,11 @@ class SystemManager:
 
     def __init__(self) -> None:
         self._service_names = list(SERVICE_UNIT_MAP.keys())
+        if psutil:
+            psutil.cpu_percent()  # Warm up baseline for interval=None calls
 
     def get_status(self) -> Dict[str, object]:
-        services = {svc: self._get_service_state(svc) for svc in self._service_names}
+        services = self._get_all_service_states()
         resources = {
             "cpu_percent": self._cpu_percent(),
             "memory_percent": self._memory_percent(),
@@ -100,10 +102,11 @@ class SystemManager:
         }
 
     def list_services(self) -> Dict[str, List[Dict[str, str]]]:
+        states = self._get_all_service_states()
         services = [
             {
                 "name": name,
-                "status": self._get_service_state(name),
+                "status": states.get(name, "unknown"),
                 "category": _category_for_service(name),
             }
             for name in self._service_names
@@ -221,21 +224,48 @@ class SystemManager:
             timeout=5,
         )
         out = (result.stdout or "").strip().lower()
-        if out == "active":
+        return self._parse_active_state(out)
+
+    def _get_all_service_states(self) -> Dict[str, str]:
+        """Get states of all services with a single systemctl call."""
+        if not self._systemctl_available():
+            return {svc: "unknown" for svc in self._service_names}
+        units = [self._normalize_unit(svc) for svc in self._service_names]
+        try:
+            result = subprocess.run(
+                ["systemctl", "show", "--property=ActiveState", "--value"] + units,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            lines = (result.stdout or "").strip().splitlines()
+            states = {}
+            for i, svc in enumerate(self._service_names):
+                if i < len(lines):
+                    states[svc] = self._parse_active_state(lines[i].strip().lower())
+                else:
+                    states[svc] = "unknown"
+            return states
+        except (subprocess.TimeoutExpired, OSError):
+            return {svc: "unknown" for svc in self._service_names}
+
+    def _parse_active_state(self, state: str) -> str:
+        """Convert systemctl ActiveState to friendly status string."""
+        if state == "active":
             return "running"
-        if out == "inactive":
+        if state == "inactive":
             return "stopped"
-        if out == "failed":
+        if state == "failed":
             return "failed"
-        if out == "activating":
+        if state == "activating":
             return "starting"
-        if out == "deactivating":
+        if state == "deactivating":
             return "stopping"
         return "unknown"
 
     def _cpu_percent(self) -> float:
         if psutil:
-            return float(psutil.cpu_percent(interval=0.1))
+            return float(psutil.cpu_percent(interval=None))
         return 0.0
 
     def _memory_percent(self) -> float:
