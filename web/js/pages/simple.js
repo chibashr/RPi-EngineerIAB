@@ -1,6 +1,6 @@
 import { apiGet, apiPost, apiPut, extractData } from "../api.js";
 import { copyTextToClipboard } from "../components.js";
-import { modalHelp, modalHelpSections, modalPrompt } from "../modal.js";
+import { modalForm, modalHelp, modalHelpSections, modalPrompt } from "../modal.js";
 import { applyStoredTheme, initThemeSelector } from "../theme.js";
 import { confirmModeSwitch, ensureSimpleMode, setMode } from "../mode.js";
 import { createWebSocketClient } from "../websocket.js";
@@ -306,16 +306,29 @@ function updateRemoteStatus(tools) {
     const hasPassword = REMOTE_PASSWORD_TOOLS.includes(tool.name);
     const password = hasPassword && tool.password ? String(tool.password) : "";
     if (hasPassword) remotePasswordCache[tool.name] = password;
+    const isTeamViewer = tool.name === "teamviewer";
+    const generateBtn = isTeamViewer
+      ? `<button class="btn btn-ghost btn-copy" type="button" data-teamviewer-generate>Generate</button>`
+      : "";
     const passwordRow = hasPassword
       ? `
       <div class="connection-row">
         <span class="connection-label">Password</span>
         <span class="connection-value" id="remote-pw-value-${tool.name}" data-reveal="false">${password ? "••••••••" : "—"}</span>
         <span class="remote-pw-actions">
+          ${generateBtn}
           ${password ? `<button class="btn btn-ghost btn-copy" type="button" data-remote-reveal="${tool.name}">Show</button>` : ""}
           ${password ? `<button class="btn btn-ghost btn-copy" type="button" data-copy-password="${tool.name}">Copy</button>` : ""}
           <button class="btn btn-ghost btn-copy" type="button" data-remote-reset-password="${tool.name}">Reset</button>
         </span>
+      </div>`
+      : "";
+    const accountRow = isTeamViewer
+      ? `
+      <div class="connection-row">
+        <span class="connection-label">Account</span>
+        <span class="connection-value" id="remote-account-teamviewer">${tool.account_email ? escapeHtml(tool.account_email) : "Not connected"}</span>
+        <button class="btn btn-ghost btn-copy" type="button" data-teamviewer-setup>Connect</button>
       </div>`
       : "";
     const entry = document.createElement("div");
@@ -331,6 +344,7 @@ function updateRemoteStatus(tools) {
         <button class="btn btn-ghost btn-copy" type="button" data-copy-target="${idAttr}">Copy</button>
       </div>
       ${passwordRow}
+      ${accountRow}
     `;
     listEl.appendChild(entry);
   });
@@ -739,11 +753,62 @@ function setupRemotePasswordDelegation() {
     const revealBtn = e.target.closest("[data-remote-reveal]");
     const copyPwBtn = e.target.closest("[data-copy-password]");
     const resetBtn = e.target.closest("[data-remote-reset-password]");
-    const button = revealBtn || copyPwBtn || resetBtn;
+    const generateBtn = e.target.closest("[data-teamviewer-generate]");
+    const setupBtn = e.target.closest("[data-teamviewer-setup]");
+    const button = revealBtn || copyPwBtn || resetBtn || generateBtn || setupBtn;
     if (!button || !elements.remote.list?.contains(button)) return;
     e.preventDefault();
     e.stopPropagation();
     const tool = button.dataset.remoteReveal || button.dataset.copyPassword || button.dataset.remoteResetPassword;
+
+    if (generateBtn) {
+      generateBtn.disabled = true;
+      generateBtn.textContent = "...";
+      try {
+        const resp = await apiPost("/api/v1/remote/teamviewer/generate-password");
+        const data = extractData(resp);
+        showToast(`Password set: ${data.password}`, "success");
+        loadRemoteStatusWithOptions({ suppressError: true });
+      } catch (err) {
+        showToast(err?.message || "Failed to generate password.", "error");
+      } finally {
+        generateBtn.disabled = false;
+        generateBtn.textContent = "Generate";
+      }
+      return;
+    }
+
+    if (setupBtn) {
+      const result = await modalForm(
+        [
+          { name: "email", label: "TeamViewer Account Email", type: "email", placeholder: "your@email.com" },
+          { name: "password", label: "TeamViewer Account Password", type: "password" },
+        ],
+        "Connect to TeamViewer Account"
+      );
+      if (!result) return;
+      if (!result.email || !result.password) {
+        showToast("Email and password are required.", "error");
+        return;
+      }
+      setupBtn.disabled = true;
+      setupBtn.textContent = "...";
+      try {
+        await apiPost("/api/v1/remote/teamviewer/setup-account", {
+          email: result.email,
+          password: result.password,
+        });
+        showToast("Device connected to TeamViewer account.", "success");
+        loadRemoteStatusWithOptions({ suppressError: true });
+      } catch (err) {
+        showToast(err?.message || "Failed to connect account.", "error");
+      } finally {
+        setupBtn.disabled = false;
+        setupBtn.textContent = "Connect";
+      }
+      return;
+    }
+
     if (!tool) return;
 
     if (revealBtn) {

@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import shutil
 import socket
+import string
 import subprocess
 import tempfile
 from pathlib import Path
@@ -31,6 +33,19 @@ ANYDESK_SERVICE_CONF = Path("/etc/anydesk/service.conf")
 TEAMVIEWER_GLOBAL_CONF = Path("/opt/teamviewer/config/global.conf")
 TEAMVIEWER_ETC_CONF = Path("/etc/teamviewer/global.conf")  # Debian/TeamViewer host package
 TEAMVIEWER_LOG_DIR = Path("/var/log/teamviewer")
+
+
+def generate_teamviewer_password() -> str:
+    """Generate a TeamViewer-compliant password (8 chars, mixed case + digits)."""
+    chars = [
+        secrets.choice(string.ascii_uppercase),
+        secrets.choice(string.ascii_lowercase),
+        secrets.choice(string.digits),
+    ]
+    alphabet = string.ascii_letters + string.digits
+    chars += [secrets.choice(alphabet) for _ in range(5)]
+    secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)
 
 
 class RemoteAccessManager:
@@ -157,6 +172,39 @@ class RemoteAccessManager:
             return None
         except (OSError, subprocess.TimeoutExpired) as e:
             logger.warning("set_teamviewer_password failed: %s", e)
+            return str(e)
+
+    def setup_teamviewer_account(self, email: str, password: str) -> Optional[str]:
+        """Connect device to TeamViewer account. Returns None on success, error on failure."""
+        if not shutil.which("teamviewer"):
+            return "TeamViewer is not installed"
+        if not email or not password:
+            return "Email and password are required"
+        try:
+            result = subprocess.run(
+                ["sudo", "teamviewer", "setup"],
+                input=f"{email}\n{password}\n",
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            output = (result.stdout or "") + (result.stderr or "")
+            if "successfully" in output.lower() or result.returncode == 0:
+                logger.info("TeamViewer account setup completed for %s", email)
+                return None
+            err = output.strip()
+            if "sudo" in err.lower() and ("terminal" in err.lower() or "password is required" in err.lower()):
+                return (
+                    "Account setup requires passwordless sudo for 'teamviewer setup'. "
+                    "Run the installer again, or add sudoers entry for teamviewer setup."
+                )
+            return err or "Setup failed"
+        except subprocess.TimeoutExpired:
+            logger.warning("setup_teamviewer_account timed out")
+            return "Setup timed out - TeamViewer may be waiting for interactive input"
+        except OSError as e:
+            logger.warning("setup_teamviewer_account failed: %s", e)
             return str(e)
 
     def _get_remote_access_config(self) -> Dict[str, Any]:

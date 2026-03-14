@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Body, HTTPException
 
 from services.remote_access_manager import RemoteAccessManager
+from services.remote_access_manager.manager import generate_teamviewer_password
 
 from ..response import error_response, success_response
 
@@ -57,3 +58,27 @@ def teamviewer_reset_password(body: dict = Body(default=None)):
     if err:
         return error_response("SET_PASSWORD_FAILED", err, status_code=500)
     return success_response({"password": password})
+
+
+@remote_router.post("/teamviewer/generate-password")
+def teamviewer_generate_password():
+    """Generate and set a random TeamViewer-compliant password."""
+    password = generate_teamviewer_password()
+    err = _remote_manager.set_teamviewer_password(password)
+    if err:
+        return error_response("SET_PASSWORD_FAILED", err, status_code=500)
+    return success_response({"password": password})
+
+
+@remote_router.post("/teamviewer/setup-account")
+def teamviewer_setup_account(body: dict = Body(default=None)):
+    """Connect device to TeamViewer account for unattended access."""
+    body = body or {}
+    email = body.get("email", "").strip()
+    password = body.get("password", "")
+    if not email or not password:
+        return error_response("INVALID_INPUT", "email and password required", status_code=400)
+    err = _remote_manager.setup_teamviewer_account(email, password)
+    if err:
+        return error_response("SETUP_FAILED", err, status_code=500)
+    return success_response({"message": "Device connected to account"})

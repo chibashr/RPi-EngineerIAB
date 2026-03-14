@@ -1339,9 +1339,10 @@ _write_rpi_engineer_sudoers() {
             *) echo "$SERVICE_USER ALL=(root) NOPASSWD: $sysctl_path" ;;
         esac
         echo "$SERVICE_USER ALL=(root) NOPASSWD: /bin/systemctl restart rpi-engineer*"
-        # TeamViewer: info requires sudo to get ID from daemon; passwd sets static password
+        # TeamViewer: info requires sudo to get ID from daemon; passwd sets static password; setup connects to account
         echo "$SERVICE_USER ALL=(root) NOPASSWD: $teamviewer_path info"
         echo "$SERVICE_USER ALL=(root) NOPASSWD: $teamviewer_path passwd *"
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: $teamviewer_path setup"
     } > /etc/sudoers.d/rpi-engineer
     chmod 440 /etc/sudoers.d/rpi-engineer
 }
