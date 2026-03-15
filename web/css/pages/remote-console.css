@@ -1,0 +1,25 @@
+/* Remote Console (SSH/Telnet) – type badges and list styling */
+
+.remote-type-badge {
+  display: inline-block;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.remote-type-badge.ssh {
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  color: var(--color-accent);
+}
+
+.remote-type-badge.telnet {
+  background: color-mix(in srgb, var(--color-muted) 40%, transparent);
+  color: var(--color-fg);
+}
+
+.serial-list-item .remote-type-badge {
+  margin-left: auto;
+}

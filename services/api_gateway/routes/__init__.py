@@ -12,6 +12,7 @@ from services.api_gateway.routes.logs import logs_router
 from services.api_gateway.routes.modules import modules_router
 from services.api_gateway.routes.network import network_router
 from services.api_gateway.routes.remote import remote_router
+from services.api_gateway.routes.remote_console import router as remote_console_router
 from services.api_gateway.routes.serial import router as serial_router
 from services.api_gateway.routes.system import router as system_router
 from services.api_gateway.routes.updates import updates_router
@@ -32,4 +33,5 @@ def register_routes(app: FastAPI) -> None:
     app.include_router(backup_router)
     app.include_router(logs_router)
     app.include_router(serial_router)
+    app.include_router(remote_console_router)
     app.include_router(dashboard_router)

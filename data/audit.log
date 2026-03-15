@@ -118,3 +118,15 @@
 {"event": "module_install_blocked", "module": "disallowed", "reason": "not in allowlist", "timestamp": "2026-03-15T17:54:31.197Z"}
 {"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install-from-repo", "timestamp": "2026-03-15T17:54:31.256Z"}
 {"event": "module_repo_blocked", "url": "https://github.com/chibashr/RPi-EngineerIAB.git", "reason": "repo not in allowlist", "timestamp": "2026-03-15T17:54:31.258Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/targets", "timestamp": "2026-03-15T21:39:09.759Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/targets/00000000-0000-0000-0000-000000000000", "timestamp": "2026-03-15T21:39:09.819Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/targets", "timestamp": "2026-03-15T21:39:09.939Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/targets", "timestamp": "2026-03-15T21:39:09.994Z"}
+{"event": "remote_console_target_created", "target_id": "3d74557c", "timestamp": "2026-03-15T21:39:09.997Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/targets/00000000-0000-0000-0000-000000000000", "timestamp": "2026-03-15T21:39:10.053Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/sessions", "timestamp": "2026-03-15T21:39:10.109Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/sessions", "timestamp": "2026-03-15T21:39:10.169Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/sessions", "timestamp": "2026-03-15T21:39:10.224Z"}
+{"event": "remote_console_session_created", "session_id": "06bc0c0f", "host": "192.168.1.101", "timestamp": "2026-03-15T21:39:10.226Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/sessions/00000000-0000-0000-0000-000000000000", "timestamp": "2026-03-15T21:39:10.283Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/sessions/00000000-0000-0000-0000-000000000000", "timestamp": "2026-03-15T21:39:10.339Z"}

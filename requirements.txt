@@ -8,3 +8,4 @@ pyudev
 slowapi
 python-pam
 bcrypt
+paramiko>=3.4.0

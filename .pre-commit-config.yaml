@@ -1,3 +1,7 @@
+# Pre-commit runs on staged files. If you have unstaged changes, it stashes them,
+# runs hooks (ruff/black may modify files), then restores the stash. If the
+# hook changes conflict with the stash, fixes are rolled back and the commit
+# fails. To avoid: stage all changes before committing (e.g. git add -u).
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.5.0

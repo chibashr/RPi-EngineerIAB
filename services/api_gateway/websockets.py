@@ -22,6 +22,7 @@ from services.capture_manager import capture_manager
 from services.logging_service import logging_service
 from services.monitor_service import MonitorService
 from services.network_manager import NetworkManager
+from services.remote_console_manager import remote_console_manager
 from services.serial_manager import serial_manager
 from services.system_manager import SystemManager
 from services.update_manager import update_manager
@@ -304,8 +305,6 @@ def register_websockets(app: FastAPI) -> None:
 
         def _send_break(port, dur: float) -> None:
             port.break_condition = True
-            import time
-
             time.sleep(dur)
             port.break_condition = False
 
@@ -338,6 +337,303 @@ def register_websockets(app: FastAPI) -> None:
             except Exception:
                 pass
             serial_manager.release_session(session_id)
+
+    @app.websocket("/ws/remote-console/{session_id}")
+    async def remote_console_ws(websocket: WebSocket, session_id: str) -> None:
+        client = websocket.client.host if websocket.client else "unknown"
+        logger.info(
+            "WS connect path=/ws/remote-console client=%s session=%s",
+            client,
+            session_id,
+        )
+        start = time.monotonic()
+        rx_tx: list[int] = [0, 0]
+        await websocket.accept()
+        stop_event = asyncio.Event()
+        try:
+            session = remote_console_manager.get_session_record(session_id)
+        except KeyError:
+            await websocket.send_json({"type": "error", "message": "Session not found"})
+            duration = time.monotonic() - start
+            logger.info(
+                "WS disconnect path=/ws/remote-console session=%s client=%s duration_s=%.1f rx=%d tx=%d",
+                session_id,
+                client,
+                duration,
+                rx_tx[0],
+                rx_tx[1],
+            )
+            return
+
+        try:
+            conn_type = session.type
+            host = session.host
+            port = session.port
+            username = session.username or ""
+            password = session.password
+            private_key_path = session.private_key_path
+
+            if conn_type == "ssh":
+                try:
+                    import paramiko
+                except ImportError:
+                    await websocket.send_json({"type": "error", "message": "paramiko not installed"})
+                    duration = time.monotonic() - start
+                    logger.info(
+                        "WS disconnect path=/ws/remote-console session=%s client=%s duration_s=%.1f",
+                        session_id,
+                        client,
+                        duration,
+                    )
+                    return
+                ssh_client = None
+                channel = None
+
+                def connect_ssh():
+                    nonlocal ssh_client, channel
+                    c = paramiko.SSHClient()
+                    c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    if private_key_path:
+                        c.connect(
+                            hostname=host,
+                            port=port,
+                            username=username,
+                            key_filename=private_key_path,
+                            timeout=15,
+                        )
+                    else:
+                        c.connect(
+                            hostname=host,
+                            port=port,
+                            username=username,
+                            password=password or None,
+                            timeout=15,
+                        )
+                    ssh_client = c
+                    channel = c.invoke_shell(term="xterm")
+                    channel.settimeout(0.0)
+                    return True
+
+                try:
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, connect_ssh)
+                except Exception as exc:
+                    logger.warning("SSH connect failed session=%s %s:%s: %s", session_id[:8], host, port, exc)
+                    await websocket.send_json({"type": "error", "message": str(exc)})
+                    duration = time.monotonic() - start
+                    logger.info(
+                        "WS disconnect path=/ws/remote-console session=%s client=%s duration_s=%.1f",
+                        session_id,
+                        client,
+                        duration,
+                    )
+                    return
+
+                def read_available_ssh():
+                    if channel.recv_ready():
+                        data = channel.recv(256)
+                        return data.decode(errors="replace") if data else ""
+                    return ""
+
+                async def reader():
+                    loop = asyncio.get_running_loop()
+                    while not stop_event.is_set():
+                        try:
+                            text = await loop.run_in_executor(None, read_available_ssh)
+                            if not text:
+                                await asyncio.sleep(0.02)
+                                continue
+                            remote_console_manager.record_rx(session_id, len(text.encode("utf-8")))
+                            await websocket.send_json({"type": "data", "data": text})
+                            rx_tx[1] += 1
+                        except (WebSocketDisconnect, ConnectionError, OSError):
+                            break
+                        except Exception as exc:
+                            logger.warning("Remote console SSH reader error session=%s: %s", session_id[:8], exc)
+                            break
+
+                async def writer():
+                    while not stop_event.is_set():
+                        try:
+                            msg = await websocket.receive_text()
+                            rx_tx[0] += 1
+                            data = json.loads(msg) if msg else {}
+                            msg_type = data.get("type")
+                            if msg_type == "ping":
+                                await websocket.send_json({"type": "pong"})
+                                rx_tx[1] += 1
+                            elif msg_type == "data":
+                                payload = data.get("data", "")
+                                if isinstance(payload, str):
+                                    out = payload.encode("utf-8", errors="replace")
+                                    loop = asyncio.get_running_loop()
+                                    await loop.run_in_executor(None, lambda o=out: channel.send(o))
+                                    remote_console_manager.record_tx(session_id, len(out))
+                        except WebSocketDisconnect:
+                            break
+                        except Exception as exc:
+                            logger.debug("Remote console writer error: %s", exc)
+                            break
+
+                async def status_emitter():
+                    while not stop_event.is_set():
+                        await asyncio.sleep(1.0)
+                        try:
+                            s = remote_console_manager.get_session(session_id)
+                            await websocket.send_json(
+                                {
+                                    "type": "status",
+                                    "bytes_tx": s.get("bytes_tx", 0),
+                                    "bytes_rx": s.get("bytes_rx", 0),
+                                }
+                            )
+                            rx_tx[1] += 1
+                        except (WebSocketDisconnect, KeyError):
+                            break
+
+                try:
+                    reader_task = asyncio.create_task(reader())
+                    writer_task = asyncio.create_task(writer())
+                    status_task = asyncio.create_task(status_emitter())
+                    await asyncio.gather(reader_task, writer_task, status_task)
+                except Exception as exc:
+                    logger.error(
+                        "WS error path=/ws/remote-console session=%s error=%s",
+                        session_id,
+                        str(exc),
+                        exc_info=True,
+                    )
+                    raise
+                finally:
+                    try:
+                        if channel:
+                            channel.close()
+                        if ssh_client:
+                            ssh_client.close()
+                    except Exception:
+                        pass
+
+            else:
+                import telnetlib
+
+                tn = None
+
+                def connect_telnet():
+                    nonlocal tn
+                    tn = telnetlib.Telnet(host, port, timeout=15)
+                    return True
+
+                try:
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, connect_telnet)
+                except Exception as exc:
+                    logger.warning("Telnet connect failed session=%s %s:%s: %s", session_id[:8], host, port, exc)
+                    await websocket.send_json({"type": "error", "message": str(exc)})
+                    duration = time.monotonic() - start
+                    logger.info(
+                        "WS disconnect path=/ws/remote-console session=%s client=%s duration_s=%.1f",
+                        session_id,
+                        client,
+                        duration,
+                    )
+                    return
+
+                def read_available_telnet():
+                    try:
+                        data = tn.read_very_eager()
+                        return data.decode(errors="replace") if data else ""
+                    except (EOFError, OSError):
+                        return "\r\n[Connection closed]\r\n"
+
+                async def reader():
+                    loop = asyncio.get_running_loop()
+                    while not stop_event.is_set():
+                        try:
+                            text = await loop.run_in_executor(None, read_available_telnet)
+                            if not text:
+                                await asyncio.sleep(0.02)
+                                continue
+                            remote_console_manager.record_rx(session_id, len(text.encode("utf-8")))
+                            await websocket.send_json({"type": "data", "data": text})
+                            rx_tx[1] += 1
+                        except (WebSocketDisconnect, ConnectionError, OSError):
+                            break
+                        except Exception as exc:
+                            logger.warning("Remote console Telnet reader error session=%s: %s", session_id[:8], exc)
+                            break
+
+                async def writer():
+                    while not stop_event.is_set():
+                        try:
+                            msg = await websocket.receive_text()
+                            rx_tx[0] += 1
+                            data = json.loads(msg) if msg else {}
+                            msg_type = data.get("type")
+                            if msg_type == "ping":
+                                await websocket.send_json({"type": "pong"})
+                                rx_tx[1] += 1
+                            elif msg_type == "data":
+                                payload = data.get("data", "")
+                                if isinstance(payload, str):
+                                    out = payload.encode("utf-8", errors="replace")
+                                    if tn:
+                                        loop = asyncio.get_running_loop()
+                                        await loop.run_in_executor(None, lambda o=out: tn.write(o))
+                                    remote_console_manager.record_tx(session_id, len(out))
+                        except WebSocketDisconnect:
+                            break
+                        except Exception as exc:
+                            logger.debug("Remote console writer error: %s", exc)
+                            break
+
+                async def status_emitter():
+                    while not stop_event.is_set():
+                        await asyncio.sleep(1.0)
+                        try:
+                            s = remote_console_manager.get_session(session_id)
+                            await websocket.send_json(
+                                {
+                                    "type": "status",
+                                    "bytes_tx": s.get("bytes_tx", 0),
+                                    "bytes_rx": s.get("bytes_rx", 0),
+                                }
+                            )
+                            rx_tx[1] += 1
+                        except (WebSocketDisconnect, KeyError):
+                            break
+
+                try:
+                    reader_task = asyncio.create_task(reader())
+                    writer_task = asyncio.create_task(writer())
+                    status_task = asyncio.create_task(status_emitter())
+                    await asyncio.gather(reader_task, writer_task, status_task)
+                except Exception as exc:
+                    logger.error(
+                        "WS error path=/ws/remote-console session=%s error=%s",
+                        session_id,
+                        str(exc),
+                        exc_info=True,
+                    )
+                    raise
+                finally:
+                    try:
+                        if tn:
+                            tn.close()
+                    except Exception:
+                        pass
+
+        finally:
+            duration = time.monotonic() - start
+            logger.info(
+                "WS disconnect path=/ws/remote-console session=%s client=%s duration_s=%.1f rx=%d tx=%d",
+                session_id,
+                client,
+                duration,
+                rx_tx[0],
+                rx_tx[1],
+            )
+            stop_event.set()
+            remote_console_manager.release_session(session_id)
 
     @app.websocket("/ws/updates/apply")
     async def updates_apply_stream(websocket: WebSocket, token: str = Query(None)) -> None:

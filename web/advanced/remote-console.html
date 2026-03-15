@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RPi Engineer-in-a-Box - Syslog</title>
-    <meta name="description" content="Syslog receiver status and history." />
+    <title>RPi Engineer-in-a-Box - Remote Console</title>
+    <meta name="description" content="SSH and Telnet console sessions." />
     <script>
       (function () {
         try {
@@ -12,9 +12,7 @@
           if (storedTheme) {
             document.documentElement.setAttribute("data-theme", storedTheme);
           }
-        } catch (error) {
-          // Ignore storage failures.
-        }
+        } catch (error) {}
       })();
     </script>
     <link rel="stylesheet" href="/vendor/tailwind/tailwind.min.css" />
@@ -23,7 +21,10 @@
     <link rel="stylesheet" href="/css/layout.css" />
     <link rel="stylesheet" href="/css/components.css" />
     <link rel="stylesheet" href="/css/pages/advanced.css" />
-    <link rel="stylesheet" href="/css/pages/syslog.css" />
+    <link rel="stylesheet" href="/css/console.css" />
+    <link rel="stylesheet" href="/css/pages/serial.css" />
+    <link rel="stylesheet" href="/css/pages/remote-console.css" />
+    <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to main content</a>
@@ -57,7 +58,7 @@
             </svg>
             Serial
           </a>
-          <a class="nav-item" href="/advanced/remote-console.html" data-page="remote-console">
+          <a class="nav-item active" href="/advanced/remote-console.html" data-page="remote-console">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 0 1-3-3m3 3a3 3 0 1 0 0 6h13.5a3 3 0 1 0 0-6m-16.5-3a3 3 0 0 1 3-3h13.5a3 3 0 0 1 3 3m-19.5 0a4.5 4.5 0 0 1 .9-2.7L5.737 5.1a3.375 3.375 0 0 1 2.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 0 1 .9 2.7m0 0a3 3 0 0 1-3 3m0 3h.008v.008h-.008v-.008Zm0-6h.008v.008h-.008v-.008Zm-3 6h.008v.008h-.008v-.008Zm0-6h.008v.008h-.008v-.008Z"/>
             </svg>
@@ -102,7 +103,7 @@
           </a>
           <a class="nav-item" href="/advanced/modules.html" data-page="modules">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875s-2.25.84-2.25 1.875c0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 0 1-.657.643 48.39 48.39 0 0 1-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 0 1-.658.663v0c-.355 0-.676-.186-.959-.401a1.647 1.647 0 0 0-1.003-.349c-1.036 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31 0 .555.26.532.57a48.039 48.039 0 0 1-.642 5.056c1.518.19 3.058.309 4.616.354a.64.64 0 0 0 .657-.643v0c0-.355-.186-.676-.401-.959a1.647 1.647 0 0 1-.349-1.003c0-1.035 1.008-1.875 2.25-1.875 1.243 0 2.25.84 2.25 1.875 0 .369-.128.713-.349 1.003-.215.283-.4.604-.4.959v0c0 .333.277.599.61.58a48.1 48.1 0 0 0 5.427-.63 48.05 48.05 0 0 0 .582-4.717.532.532 0 0 0-.533-.57v0c-.355 0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.035 0-1.875-1.007-1.875-2.25s.84-2.25 1.875-2.25c.37 0 .713.128 1.003.349.283.215.604.401.96.401v0a.656.656 0 0 0 .658-.663 48.422 48.422 0 0 0-.37-5.36c-1.886.342-3.81.574-5.766.689a.578.578 0 0 1-.61-.58v0Z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875s-2.25.84-2.25 1.875c0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 0 1-.657.643 48.39 48.39 0 0 1-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 0 1-.658.663v0c-.355 0-.676-.186-.959-.401a1.647 1.647 0 0 0-1.003-.349c-1.036 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31 0 .555.26.532.57a48.039 48.039 0 0 1-.642 5.056c1.518.19 3.058.309 4.616.354a.578.578 0 0 1-.61-.58v0Z"/>
             </svg>
             Modules
           </a>
@@ -120,28 +121,21 @@
           </a>
         </div>
         <div class="sidebar-footer">
-          <button class="btn btn-secondary" id="switch-simple">
-            Switch to Simple Mode
-          </button>
+          <button class="btn btn-secondary" id="switch-simple">Switch to Simple Mode</button>
         </div>
       </nav>
-
       <div class="nav-overlay" aria-hidden="true"></div>
-
       <div class="shell-content">
         <header class="topbar">
           <button class="nav-mobile-toggle" aria-label="Open navigation menu" aria-expanded="false" aria-controls="sidebar">
             <svg class="icon-menu" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-              <line x1="3" y1="6" x2="21" y2="6"/>
-              <line x1="3" y1="12" x2="21" y2="12"/>
-              <line x1="3" y1="18" x2="21" y2="18"/>
+              <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
             </svg>
             <svg class="icon-close hidden" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
-          <div class="breadcrumb" id="breadcrumb">Syslog</div>
+          <div class="breadcrumb" id="breadcrumb">Remote Console</div>
           <div class="topbar-actions">
             <label class="field theme-field" for="theme-select">
               <span class="field-label">Theme</span>
@@ -153,195 +147,62 @@
             </label>
           </div>
         </header>
-
         <main id="main-content" class="main-content">
           <div class="page-header">
             <div>
-              <h1>Syslog Receiver</h1>
+              <h1>Remote Console</h1>
               <p class="page-subtitle">
-                Review incoming UDP/TCP syslog messages with live and stored history. Enable and configure the module from the Modules page.
+                SSH and Telnet sessions to remote hosts. Connect from a saved target or quick connect.
               </p>
             </div>
-            <div class="toolbar">
-              <button class="btn btn-ghost" id="clear-syslog">
-                Clear Buffers
-              </button>
-            </div>
           </div>
-
-          <section class="card" id="syslog-config-section">
+          <section class="card serial-card">
             <div class="section-header">
-              <h2>Configuration</h2>
-              <div class="receiver-actions">
-                <button class="btn btn-primary btn-with-icon" id="syslog-toggle" type="button" data-state="stopped">
-                  <svg id="syslog-toggle-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    <path fill-rule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clip-rule="evenodd"/>
-                  </svg>
-                  <span id="syslog-toggle-label">Start</span>
-                </button>
-                <button class="btn btn-secondary btn-icon" id="syslog-restart" type="button" aria-label="Restart" title="Restart">
+              <h2>Targets &amp; Sessions</h2>
+              <div class="section-actions">
+                <button class="btn btn-secondary btn-icon" id="refresh-remote-console" aria-label="Refresh" title="Refresh">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/>
                   </svg>
                 </button>
-                <button class="btn btn-primary btn-with-icon" id="syslog-save-config" type="button">
+                <button class="btn btn-secondary" id="add-target-btn">Add Target</button>
+                <button class="btn btn-primary btn-with-icon btn-with-icon-responsive" id="new-remote-session">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
                   </svg>
-                  <span class="btn-label">Save</span>
+                  <span class="btn-label">New Session</span>
                 </button>
               </div>
             </div>
-            <form id="syslog-config-form" class="syslog-config-form">
-              <div class="form-row">
-                <label class="field" for="syslog-config-persist">
-                  <span class="field-label">Persist to storage</span>
-                  <input type="checkbox" id="syslog-config-persist" name="persist" />
-                </label>
-              </div>
-              <div class="form-row">
-                <label class="field" for="syslog-config-bind">
-                  <span class="field-label">Bind address</span>
-                  <input type="text" id="syslog-config-bind" name="bind_address" placeholder="0.0.0.0" class="input" />
-                </label>
-                <label class="field" for="syslog-config-port-udp">
-                  <span class="field-label">UDP port</span>
-                  <input type="number" id="syslog-config-port-udp" name="port_udp" min="1" max="65535" placeholder="1514" class="input" />
-                </label>
-                <label class="field" for="syslog-config-port-tcp">
-                  <span class="field-label">TCP port</span>
-                  <input type="number" id="syslog-config-port-tcp" name="port_tcp" min="1" max="65535" placeholder="1514" class="input" />
-                </label>
-              </div>
-              <div class="form-row">
-                <label class="field" for="syslog-config-max-live">
-                  <span class="field-label">Max live messages (memory)</span>
-                  <input type="number" id="syslog-config-max-live" name="max_live" min="1" max="100000" placeholder="1000" class="input" />
-                </label>
-                <label class="field" for="syslog-config-max-stored">
-                  <span class="field-label">Max stored messages</span>
-                  <input type="number" id="syslog-config-max-stored" name="max_stored" min="0" max="1000000" placeholder="10000" class="input" />
-                </label>
-              </div>
-            </form>
-          </section>
-
-          <section class="card">
-            <div class="section-header">
-              <h2>Status</h2>
-            </div>
-            <div class="receiver-status">
-              <div class="status-item">
-                <span class="status-label">State</span>
-                <span class="status-value" id="syslog-status-state">Loading...</span>
-              </div>
-              <div class="status-item">
-                <span class="status-label">Bind</span>
-                <span class="status-value" id="syslog-status-bind">--</span>
-              </div>
-              <div class="status-item">
-                <span class="status-label">UDP Port</span>
-                <span class="status-value" id="syslog-status-udp">--</span>
-              </div>
-              <div class="status-item">
-                <span class="status-label">TCP Port</span>
-                <span class="status-value" id="syslog-status-tcp">--</span>
-              </div>
-              <div class="status-item">
-                <span class="status-label">Received</span>
-                <span class="status-value" id="syslog-status-received">--</span>
-              </div>
-              <div class="status-item">
-                <span class="status-label">Stored</span>
-                <span class="status-value" id="syslog-status-stored">--</span>
-              </div>
-              <div class="status-item">
-                <span class="status-label">Last</span>
-                <span class="status-value" id="syslog-status-last">--</span>
-              </div>
-            </div>
-          </section>
-
-          <section class="card">
-            <div class="section-header">
-              <h2>Recent Messages</h2>
-            </div>
-            <div class="table-container table-wrap">
-              <table class="receiver-table" id="syslog-recent-table">
-                <thead>
-                  <tr>
-                    <th>Received</th>
-                    <th>Source</th>
-                    <th>Host</th>
-                    <th>Facility</th>
-                    <th>Severity</th>
-                    <th>App</th>
-                    <th>Message</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </section>
-
-          <section class="card">
-            <div class="section-header">
-              <h2>Stored Messages</h2>
-            </div>
-            <div class="table-container table-wrap">
-              <table class="receiver-table" id="syslog-stored-table">
-                <thead>
-                  <tr>
-                    <th>Received</th>
-                    <th>Source</th>
-                    <th>Host</th>
-                    <th>Facility</th>
-                    <th>Severity</th>
-                    <th>App</th>
-                    <th>Message</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </section>
-
-          <section class="card" id="syslog-storage-section">
-            <div class="section-header">
-              <h2>Persistence storage</h2>
-              <button class="btn btn-ghost btn-icon" id="syslog-refresh-storage" type="button" aria-label="Refresh Storage" title="Refresh Storage">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/>
-                </svg>
-              </button>
-            </div>
-            <p class="storage-path" id="syslog-storage-path">--</p>
-            <div class="storage-explorer">
-              <h3 class="storage-subtitle">Stored data</h3>
-              <p class="storage-summary" id="syslog-storage-summary">Stored messages: -- (see Stored Messages table above)</p>
-              <h3 class="storage-subtitle">Files</h3>
-              <div class="table-container table-wrap">
-                <table class="receiver-table" id="syslog-storage-files">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Size</th>
-                      <th>Modified</th>
-                    </tr>
-                  </thead>
-                  <tbody></tbody>
-                </table>
+            <div class="serial-panel-body">
+              <aside class="serial-list-panel" aria-label="Saved targets and sessions">
+                <ul class="serial-list" id="remote-target-list" role="listbox">
+                  <li class="serial-list-placeholder" id="remote-list-placeholder">Loading...</li>
+                </ul>
+              </aside>
+              <div class="serial-detail-panel" id="remote-detail-panel" aria-live="polite">
+                <div class="serial-detail-empty" id="remote-detail-empty">
+                  <svg class="empty-state-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 0 1-3-3m3 3a3 3 0 1 0 0 6h13.5a3 3 0 1 0 0-6m-16.5-3a3 3 0 0 1 3-3h13.5a3 3 0 0 1 3 3m-19.5 0a4.5 4.5 0 0 1 .9-2.7L5.737 5.1a3.375 3.375 0 0 1 2.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 0 1 .9 2.7m0 0a3 3 0 0 1-3 3m0 3h.008v.008h-.008v-.008Zm0-6h.008v.008h-.008v-.008Zm-3 6h.008v.008h-.008v-.008Zm0-6h.008v.008h-.008v-.008Z"/>
+                  </svg>
+                  <p class="empty-state-desc">Add a target or start a new session to open an SSH or Telnet console.</p>
+                </div>
+                <div class="serial-detail-content" id="remote-detail-content" hidden>
+                  <div class="serial-detail-header">
+                    <span class="panel-meta" id="remote-sessions-meta" aria-live="polite"></span>
+                  </div>
+                  <div class="console-tab-panels" id="remote-console-panels"></div>
+                </div>
               </div>
             </div>
           </section>
         </main>
       </div>
     </div>
-
     <div class="toast-region" id="toast-region" aria-live="polite"></div>
-
-    <script type="module" src="/modules/syslog_receiver/module.js"></script>
+    <script src="/vendor/xterm/xterm.js"></script>
     <script src="/js/nav.js" defer></script>
     <script type="module" src="/js/pages/advanced.js" defer></script>
+    <script type="module" src="/js/pages/remote-console.js" defer></script>
   </body>
 </html>

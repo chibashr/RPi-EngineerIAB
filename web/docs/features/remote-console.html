@@ -1,0 +1,42 @@
+<h1>Remote Console (SSH / Telnet)</h1>
+<p>
+  Open SSH and Telnet sessions from this device to remote hosts. Use a browser-based terminal (like the Serial console) to connect to routers, switches, or servers.
+</p>
+
+<h2>Before you start</h2>
+<ul>
+  <li>You are in <strong>Advanced mode</strong> and logged in as admin.</li>
+  <li>The remote host is reachable from this device (network path and firewall allow SSH or Telnet).</li>
+  <li>For SSH: <strong>paramiko</strong> is installed (see <code>requirements.txt</code>).</li>
+</ul>
+
+<h2>Open a session</h2>
+<ol>
+  <li>Open <strong>Advanced → Remote Console</strong>.</li>
+  <li>Either:
+    <ul>
+      <li><strong>New Session</strong> → choose a saved target (or use Quick connect with host, port, type, username, password).</li>
+      <li>Click a saved target in the list, then enter password if required and connect.</li>
+    </ul>
+  </li>
+  <li>The terminal opens in a new tab. Type as in a normal SSH or Telnet client.</li>
+</ol>
+
+<h2>Saved targets</h2>
+<p>
+  Use <strong>Add Target</strong> to save a connection (host, port, SSH or Telnet, optional username and key path). Passwords are not stored; enter them when you connect. You can edit or delete targets from the API if needed.
+</p>
+
+<h2>Security</h2>
+<ul>
+  <li>All Remote Console API and sessions require <strong>admin login</strong>.</li>
+  <li>Only outbound connections are made (this device acts as the client).</li>
+  <li>Restrict targets to trusted hosts and use strong authentication.</li>
+</ul>
+
+<h2>Related</h2>
+<ul>
+  <li><a href="serial-console.html">Serial console</a></li>
+</ul>
+
+<p><strong>Last updated:</strong> 2026-03-15</p>
