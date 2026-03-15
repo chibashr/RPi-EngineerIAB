@@ -11,6 +11,7 @@ authors = [
 [tool.ruff]
 line-length = 120
 target-version = "py310"
+exclude = ["tests", ".planning", ".refactor", ".reports", ".claude", ".cursor"]
 
 [tool.ruff.lint]
 select = [
