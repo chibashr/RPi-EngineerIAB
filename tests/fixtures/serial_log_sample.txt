@@ -1,2 +1,0 @@
-2026-02-02T12:00:00Z TX show version
-2026-02-02T12:00:01Z RX Cisco IOS Software, Version 15.2
