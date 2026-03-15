@@ -579,7 +579,7 @@ prompt_remote_access() {
     if [ "${#REMOTE_ACCESS_TOOLS[@]}" -gt 0 ]; then
         local t
         for t in "${REMOTE_ACCESS_TOOLS[@]}"; do
-            [ "$t" = "anydesk" ] || [ "$t" = "teamviewer" ] && need_password=1 && break
+            [ "$t" = "anydesk" ] || [ "$t" = "teamviewer" ] || [ "$t" = "vnc" ] && need_password=1 && break
         done
     fi
     if [ "$need_password" -eq 1 ] && [ "${NONINTERACTIVE:-0}" != "1" ]; then
@@ -2237,10 +2237,10 @@ install_anydesk() {
     if [ -n "$REMOTE_ACCESS_PASSWORD" ]; then
         echo "$REMOTE_ACCESS_PASSWORD" | anydesk --set-password >> "$INSTALL_LOG" 2>&1 || true
     fi
-    _print_remote_tool_summary "AnyDesk" "${ANYDESK_ID:-unknown}" "$REMOTE_ACCESS_PASSWORD_SOURCE"
     systemctl enable anydesk >> "$INSTALL_LOG" 2>&1 || true
     systemctl start anydesk >> "$INSTALL_LOG" 2>&1 || true
     ANYDESK_ID="$(anydesk --get-id 2>/dev/null || true)"
+    _print_remote_tool_summary "AnyDesk" "${ANYDESK_ID:-unknown}" "$REMOTE_ACCESS_PASSWORD_SOURCE"
 }
 
 # TeamViewer headless install per https://www.teamviewer.com/en-us/global/support/knowledge-base/teamviewer-remote/download-and-installation/linux/install-teamviewer-classic-on-linux-without-graphical-user-interface/
@@ -2265,7 +2265,6 @@ install_teamviewer() {
     if [ -n "$REMOTE_ACCESS_PASSWORD" ]; then
         teamviewer passwd "$REMOTE_ACCESS_PASSWORD" >> "$INSTALL_LOG" 2>&1 || true
     fi
-    _print_remote_tool_summary "TeamViewer" "${TEAMVIEWER_ID:-unknown}" "$REMOTE_ACCESS_PASSWORD_SOURCE"
     teamviewer setup >> "$INSTALL_LOG" 2>&1 || true
     systemctl enable teamviewerd >> "$INSTALL_LOG" 2>&1 || true
     systemctl start teamviewerd >> "$INSTALL_LOG" 2>&1 || true
@@ -2281,6 +2280,7 @@ install_teamviewer() {
             fi
         fi
     done
+    _print_remote_tool_summary "TeamViewer" "${TEAMVIEWER_ID:-unknown}" "$REMOTE_ACCESS_PASSWORD_SOURCE"
 }
 
 install_vnc() {
@@ -2306,8 +2306,13 @@ install_vnc() {
     fi
     mkdir -p "$INSTALL_DIR/.vnc"
     if [ -n "$REMOTE_ACCESS_PASSWORD" ]; then
-        echo "$REMOTE_ACCESS_PASSWORD" | vncpasswd -f > "$INSTALL_DIR/.vnc/passwd"
-        chmod 600 "$INSTALL_DIR/.vnc/passwd"
+        if ! echo "$REMOTE_ACCESS_PASSWORD" | vncpasswd -f > "$INSTALL_DIR/.vnc/passwd" 2>> "$INSTALL_LOG"; then
+            log_warn "VNC password not set or rejected (see $INSTALL_LOG); set it later with: vncpasswd"
+        fi
+        [ -f "$INSTALL_DIR/.vnc/passwd" ] && chmod 600 "$INSTALL_DIR/.vnc/passwd" || true
+    fi
+    if [ ! -f "$INSTALL_DIR/.vnc/passwd" ]; then
+        log_warn "No VNC password file; TigerVNC may not start until you run: sudo -u $SERVICE_USER vncpasswd"
     fi
     cat > "$INSTALL_DIR/.vnc/xstartup" <<'EOF'
 #!/bin/bash
@@ -2315,7 +2320,7 @@ unset SESSION_MANAGER
 unset DBUS_SESSION_BUS_ADDRESS
 startlxde &
 EOF
-    chmod +x "$INSTALL_DIR/.vnc/xstartup"
+    chmod +x "$INSTALL_DIR/.vnc/xstartup" || true
     cat > /etc/systemd/system/vncserver@.service <<EOF
 [Unit]
 Description=TigerVNC Server
@@ -2336,6 +2341,7 @@ EOF
     systemctl enable vncserver@1 >> "$INSTALL_LOG" 2>&1 || true
     systemctl start vncserver@1 >> "$INSTALL_LOG" 2>&1 || true
     VNC_CONNECTION="${DEFAULT_HOTSPOT_IP}:5901"
+    _print_remote_tool_summary "TigerVNC" "${VNC_CONNECTION:-$DEFAULT_HOTSPOT_IP:5901}" "${REMOTE_ACCESS_PASSWORD_SOURCE:-auto}"
 }
 
 install_rpi_connect() {

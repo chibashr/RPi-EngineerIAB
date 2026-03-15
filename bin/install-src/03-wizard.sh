@@ -236,7 +236,7 @@ prompt_remote_access() {
     if [ "${#REMOTE_ACCESS_TOOLS[@]}" -gt 0 ]; then
         local t
         for t in "${REMOTE_ACCESS_TOOLS[@]}"; do
-            [ "$t" = "anydesk" ] || [ "$t" = "teamviewer" ] && need_password=1 && break
+            [ "$t" = "anydesk" ] || [ "$t" = "teamviewer" ] || [ "$t" = "vnc" ] && need_password=1 && break
         done
     fi
     if [ "$need_password" -eq 1 ] && [ "${NONINTERACTIVE:-0}" != "1" ]; then
