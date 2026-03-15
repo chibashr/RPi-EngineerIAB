@@ -44,3 +44,33 @@ MODULES_INSTALLED="no"
 # When run via 'curl | bash', BASH_SOURCE[0] is unset; use $0 so dirname yields current directory.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Shared service name list — single source of truth; used by uninstall, quick-sync, enable_services
+ALL_SERVICES=(
+    rpi-engineer
+    rpi-engineer-api
+    rpi-engineer-network
+    rpi-engineer-serial
+    rpi-engineer-capture
+    rpi-engineer-system
+    rpi-engineer-monitor
+    rpi-engineer-update
+    rpi-engineer-logging
+    rpi-engineer-wlan0
+)
+
+DAEMON_SERVICES=(
+    rpi-engineer
+    rpi-engineer-api
+    rpi-engineer-network
+    rpi-engineer-logging
+    nginx
+    rpi-engineer-wlan0
+    hostapd
+    dnsmasq
+)
+
+HOTSPOT_SERVICES=(rpi-engineer-wlan0 hostapd dnsmasq)
+
+# Remote access password source: "auto" or "custom"
+REMOTE_ACCESS_PASSWORD_SOURCE="auto"

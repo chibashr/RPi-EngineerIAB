@@ -107,6 +107,19 @@ configure_lightdm_for_x11() {
     log_info "LightDM set to X11 ($x11_session). Reboot or re-login for taskbar and menu to take effect."
 }
 
+_print_remote_tool_summary() {
+    local tool="$1" id="$2" pass_source="$3"
+    print_section_header "$tool Configuration Summary"
+    echo "  Tool    : $tool"
+    echo "  ID      : $id"
+    if [ "$pass_source" = "custom" ]; then
+        echo "  Password: custom (set by user)"
+    else
+        echo "  Password: auto-generated (see $CONFIG_DIR/remote_access.conf)"
+    fi
+    echo ""
+}
+
 install_anydesk() {
     log_step "Installing AnyDesk"
     if dpkg -s anydesk >/dev/null 2>&1; then
@@ -123,6 +136,7 @@ install_anydesk() {
     if [ -n "$REMOTE_ACCESS_PASSWORD" ]; then
         echo "$REMOTE_ACCESS_PASSWORD" | anydesk --set-password >> "$INSTALL_LOG" 2>&1 || true
     fi
+    _print_remote_tool_summary "AnyDesk" "${ANYDESK_ID:-unknown}" "$REMOTE_ACCESS_PASSWORD_SOURCE"
     systemctl enable anydesk >> "$INSTALL_LOG" 2>&1 || true
     systemctl start anydesk >> "$INSTALL_LOG" 2>&1 || true
     ANYDESK_ID="$(anydesk --get-id 2>/dev/null || true)"
@@ -150,6 +164,7 @@ install_teamviewer() {
     if [ -n "$REMOTE_ACCESS_PASSWORD" ]; then
         teamviewer passwd "$REMOTE_ACCESS_PASSWORD" >> "$INSTALL_LOG" 2>&1 || true
     fi
+    _print_remote_tool_summary "TeamViewer" "${TEAMVIEWER_ID:-unknown}" "$REMOTE_ACCESS_PASSWORD_SOURCE"
     teamviewer setup >> "$INSTALL_LOG" 2>&1 || true
     systemctl enable teamviewerd >> "$INSTALL_LOG" 2>&1 || true
     systemctl start teamviewerd >> "$INSTALL_LOG" 2>&1 || true
@@ -302,8 +317,9 @@ setup_remote_access() {
         echo "Remote access: skipped (none selected)."
         return 0
     fi
-    if [ -z "$REMOTE_ACCESS_PASSWORD" ]; then
-        REMOTE_ACCESS_PASSWORD="$HOTSPOT_PASSWORD"
+    if [ -z "$REMOTE_ACCESS_PASSWORD" ] && [ "$REMOTE_ACCESS_PASSWORD_SOURCE" != "custom" ]; then
+        REMOTE_ACCESS_PASSWORD="$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9!@#$%^&*' | head -c 20)"
+        log_info "Auto-generated remote access password."
     fi
     # AnyDesk requires Xvfb on headless; TeamViewer can use framebuffer console (no Xorg) per headless docs.
     need_xvfb=$(printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -q '^anydesk$' && echo 1)

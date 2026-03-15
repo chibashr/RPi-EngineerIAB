@@ -1,19 +1,53 @@
 #!/usr/bin/env bash
 
+if [ -t 1 ]; then
+    C_RESET='\033[0m'; C_BOLD='\033[1m'
+    C_CYAN='\033[0;36m'; C_GREEN='\033[0;32m'
+    C_YELLOW='\033[0;33m'; C_RED='\033[0;31m'
+else
+    C_RESET=''; C_BOLD=''; C_CYAN=''; C_GREEN=''; C_YELLOW=''; C_RED=''
+fi
+
+print_section_header() {
+    local title="$1"
+    local width=50
+    local padding=$(( (width - ${#title}) / 2 ))
+    [ "$padding" -lt 0 ] && padding=0
+    local line_top="+$(printf '%*s' "$width" '' | tr ' ' '-')+"
+    local line_mid="|$(printf '%*s' "$padding" '')${title}$(printf '%*s' "$(( width - padding - ${#title} ))" '')|"
+    echo "$line_top"
+    echo "$line_mid"
+    echo "$line_top"
+    echo "$line_top" >> "$INSTALL_LOG"
+    echo "$line_mid" >> "$INSTALL_LOG"
+    echo "$line_top" >> "$INSTALL_LOG"
+}
+
+step_counter_bar() {
+    local current="$1"
+    local total="$2"
+    local label="${3:-}"
+    echo -e "${C_CYAN}[${current}/${total}] ${label}${C_RESET}"
+    echo "[INFO] Progress: ${current}/${total} ${label}" >> "$INSTALL_LOG"
+}
+
 log_info() {
     echo "[INFO] $1" | tee -a "$INSTALL_LOG"
 }
 
 log_warn() {
-    echo "[WARN] $1" | tee -a "$INSTALL_LOG"
+    echo -e "${C_YELLOW}[WARN] $1${C_RESET}"
+    echo "[WARN] $1" >> "$INSTALL_LOG"
 }
 
 log_error() {
-    echo "[ERROR] $1" | tee -a "$INSTALL_LOG"
+    echo -e "${C_RED}[ERROR] $1${C_RESET}"
+    echo "[ERROR] $1" >> "$INSTALL_LOG"
 }
 
 log_step() {
-    echo "[STEP] $1" | tee -a "$INSTALL_LOG"
+    echo -e "${C_BOLD}${C_CYAN}[STEP] $1${C_RESET}"
+    echo "[STEP] $1" >> "$INSTALL_LOG"
 }
 
 show_progress() {

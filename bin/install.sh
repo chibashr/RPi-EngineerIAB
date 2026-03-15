@@ -46,20 +46,84 @@ MODULES_INSTALLED="no"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Shared service name list — single source of truth; used by uninstall, quick-sync, enable_services
+ALL_SERVICES=(
+    rpi-engineer
+    rpi-engineer-api
+    rpi-engineer-network
+    rpi-engineer-serial
+    rpi-engineer-capture
+    rpi-engineer-system
+    rpi-engineer-monitor
+    rpi-engineer-update
+    rpi-engineer-logging
+    rpi-engineer-wlan0
+)
+
+DAEMON_SERVICES=(
+    rpi-engineer
+    rpi-engineer-api
+    rpi-engineer-network
+    rpi-engineer-logging
+    nginx
+    rpi-engineer-wlan0
+    hostapd
+    dnsmasq
+)
+
+HOTSPOT_SERVICES=(rpi-engineer-wlan0 hostapd dnsmasq)
+
+# Remote access password source: "auto" or "custom"
+REMOTE_ACCESS_PASSWORD_SOURCE="auto"
+
+if [ -t 1 ]; then
+    C_RESET='\033[0m'; C_BOLD='\033[1m'
+    C_CYAN='\033[0;36m'; C_GREEN='\033[0;32m'
+    C_YELLOW='\033[0;33m'; C_RED='\033[0;31m'
+else
+    C_RESET=''; C_BOLD=''; C_CYAN=''; C_GREEN=''; C_YELLOW=''; C_RED=''
+fi
+
+print_section_header() {
+    local title="$1"
+    local width=50
+    local padding=$(( (width - ${#title}) / 2 ))
+    [ "$padding" -lt 0 ] && padding=0
+    local line_top="+$(printf '%*s' "$width" '' | tr ' ' '-')+"
+    local line_mid="|$(printf '%*s' "$padding" '')${title}$(printf '%*s' "$(( width - padding - ${#title} ))" '')|"
+    echo "$line_top"
+    echo "$line_mid"
+    echo "$line_top"
+    echo "$line_top" >> "$INSTALL_LOG"
+    echo "$line_mid" >> "$INSTALL_LOG"
+    echo "$line_top" >> "$INSTALL_LOG"
+}
+
+step_counter_bar() {
+    local current="$1"
+    local total="$2"
+    local label="${3:-}"
+    echo -e "${C_CYAN}[${current}/${total}] ${label}${C_RESET}"
+    echo "[INFO] Progress: ${current}/${total} ${label}" >> "$INSTALL_LOG"
+}
+
 log_info() {
     echo "[INFO] $1" | tee -a "$INSTALL_LOG"
 }
 
 log_warn() {
-    echo "[WARN] $1" | tee -a "$INSTALL_LOG"
+    echo -e "${C_YELLOW}[WARN] $1${C_RESET}"
+    echo "[WARN] $1" >> "$INSTALL_LOG"
 }
 
 log_error() {
-    echo "[ERROR] $1" | tee -a "$INSTALL_LOG"
+    echo -e "${C_RED}[ERROR] $1${C_RESET}"
+    echo "[ERROR] $1" >> "$INSTALL_LOG"
 }
 
 log_step() {
-    echo "[STEP] $1" | tee -a "$INSTALL_LOG"
+    echo -e "${C_BOLD}${C_CYAN}[STEP] $1${C_RESET}"
+    echo "[STEP] $1" >> "$INSTALL_LOG"
 }
 
 show_progress() {
@@ -312,48 +376,96 @@ determine_install_mode() {
         return 0
     fi
     if [ "${NONINTERACTIVE:-0}" = "1" ] && [ "$INSTALL_MODE" = "quick_update" ]; then
-        log_info "Install mode: quick update (from environment)"
+        INSTALL_MODE="sync"
+        log_info "Install mode: sync (from environment, was quick_update)"
+        return 0
+    fi
+    if [ "${NONINTERACTIVE:-0}" = "1" ] && [ "$INSTALL_MODE" = "sync" ]; then
+        log_info "Install mode: sync (from environment)"
         return 0
     fi
     if [ -d "$INSTALL_DIR" ] || [ -d "$CONFIG_DIR" ]; then
         log_warn "Existing installation detected."
-        if [ "${NONINTERACTIVE:-0}" != "1" ]; then
-            echo "Select install mode:"
-            echo "  1) Upgrade (update files and services)"
-            echo "  2) Quick update (update repo only, no wizard)"
-            echo "  3) Reconfigure (wizard and config only)"
-            echo "  4) Uninstall"
-            echo "  5) Abort"
-            interactive_read -r -p "Enter choice (1-5) [1]: " choice
-        fi
-        case "${choice:-1}" in
-            1) INSTALL_MODE="upgrade" ;;
-            2) INSTALL_MODE="quick_update" ;;
-            3) INSTALL_MODE="reconfigure" ;;
-            4) INSTALL_MODE="uninstall" ;;
-            5) log_error "Installation aborted by user."; exit 1 ;;
-            *) INSTALL_MODE="upgrade" ;;
-        esac
-        if [ "$INSTALL_MODE" = "upgrade" ]; then
-            if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+            if [ -z "${INSTALL_MODE:-}" ] || [ "$INSTALL_MODE" = "fresh" ]; then
+                INSTALL_MODE="upgrade"
                 UPGRADE_SKIP_CONFIG="1"
-                log_info "Non-interactive upgrade: using existing configuration."
-            else
-                echo "Upgrade configuration:"
-                echo "  1) Use existing configuration (only choose modules)"
-                echo "  2) Re-run full configuration wizard"
-                interactive_read -r -p "Enter choice (1-2) [1]: " upgrade_choice
-                case "${upgrade_choice:-1}" in
-                    1) UPGRADE_SKIP_CONFIG="1"; log_info "Upgrade: using existing configuration (upgrade in place)." ;;
-                    2) UPGRADE_SKIP_CONFIG="0"; log_info "Upgrade: re-running full wizard." ;;
-                    *) UPGRADE_SKIP_CONFIG="1" ;;
-                esac
+                log_info "Non-interactive: defaulting to full upgrade (skip config)."
             fi
+        else
+            echo "+--------------------------------------------------+"
+            echo "|           Existing Installation Found            |"
+            echo "+--------------------------------------------------+"
+            echo "  1) Update         — Sync files or run full upgrade"
+            echo "  2) Repair         — Check and fix installation issues"
+            echo "  3) Uninstall      — Remove application and config"
+            echo "  4) Abort"
+            interactive_read -r -p "Enter choice (1-4): " choice
+            case "${choice}" in
+                1) determine_update_mode ;;
+                2) INSTALL_MODE="repair" ;;
+                3) INSTALL_MODE="uninstall" ;;
+                4) log_error "Installation aborted by user."; exit 1 ;;
+                *) log_error "Invalid choice."; exit 1 ;;
+            esac
         fi
     else
         INSTALL_MODE="fresh"
     fi
     log_info "Install mode: $INSTALL_MODE"
+}
+
+determine_update_mode() {
+    echo "+--------------------------------------------------+"
+    echo "|                  Update Options                  |"
+    echo "+--------------------------------------------------+"
+    echo "  1) Sync files     — Pull latest code, restart services"
+    echo "  2) Full upgrade  — Sync files + reinstall dependencies"
+    echo "  3) Reconfigure   — Re-apply selected config sections only"
+    interactive_read -r -p "Enter choice (1-3): " choice
+    case "${choice}" in
+        1) INSTALL_MODE="sync" ;;
+        2) INSTALL_MODE="upgrade"; UPGRADE_SKIP_CONFIG="1"; log_info "Full upgrade: using existing config (prompt only if missing)." ;;
+        3) INSTALL_MODE="reconfigure" ;;
+        *) log_error "Invalid choice."; exit 1 ;;
+    esac
+}
+
+prompt_reconfigure_sections() {
+    RECONF_SECTIONS=()
+    echo "Which sections do you want to reconfigure?"
+    echo "  1) Hotspot"
+    echo "  2) Firewall"
+    echo "  3) Remote Access"
+    echo "  4) Modules"
+    interactive_read -r -p "Enter numbers (comma-separated) or Enter for all: " input
+    if [ -z "${input:-}" ]; then
+        RECONF_SECTIONS=(hotspot firewall remote_access modules)
+        log_info "Reconfigure sections: all"
+    else
+        local selections
+        IFS=',' read -r -a selections <<< "$input"
+        local s
+        for s in "${selections[@]}"; do
+            s="$(echo "$s" | tr -d ' ')"
+            case "$s" in
+                1) RECONF_SECTIONS+=(hotspot) ;;
+                2) RECONF_SECTIONS+=(firewall) ;;
+                3) RECONF_SECTIONS+=(remote_access) ;;
+                4) RECONF_SECTIONS+=(modules) ;;
+            esac
+        done
+        log_info "Reconfigure sections: ${RECONF_SECTIONS[*]:-none}"
+    fi
+}
+
+reconf_includes() {
+    local section_name="$1"
+    local s
+    for s in "${RECONF_SECTIONS[@]:-}"; do
+        [ "$s" = "$section_name" ] && return 0
+    done
+    return 1
 }
 
 # Offer repair/continue when a previous run was interrupted (progress file left behind)
@@ -417,6 +529,8 @@ EOF
 
 prompt_remote_access() {
     log_step "Remote access configuration"
+    REMOTE_ACCESS_PASSWORD=""
+    REMOTE_ACCESS_PASSWORD_SOURCE=""
     if [ "${NONINTERACTIVE:-0}" != "1" ]; then
         echo "Select the remote access tool you want to install:"
         echo "  1) AnyDesk (Recommended)"
@@ -460,6 +574,39 @@ prompt_remote_access() {
         log_info "Selected remote access tool: skip"
     else
         log_info "Selected remote access tools: ${REMOTE_ACCESS_TOOLS[*]}"
+    fi
+    local need_password=0
+    if [ "${#REMOTE_ACCESS_TOOLS[@]}" -gt 0 ]; then
+        local t
+        for t in "${REMOTE_ACCESS_TOOLS[@]}"; do
+            [ "$t" = "anydesk" ] || [ "$t" = "teamviewer" ] && need_password=1 && break
+        done
+    fi
+    if [ "$need_password" -eq 1 ] && [ "${NONINTERACTIVE:-0}" != "1" ]; then
+        echo "Remote access password:"
+        echo "  1) Auto-generate a secure password (recommended)"
+        echo "  2) Set a custom password"
+        interactive_read -r -p "Enter choice (1-2) [1]: " pw_choice
+        case "${pw_choice:-1}" in
+            1) REMOTE_ACCESS_PASSWORD_SOURCE="auto"; REMOTE_ACCESS_PASSWORD="" ;;
+            2)
+                REMOTE_ACCESS_PASSWORD_SOURCE="custom"
+                while true; do
+                    interactive_read -r -s -p "Enter remote access password: " REMOTE_ACCESS_PASSWORD
+                    echo
+                    interactive_read -r -s -p "Confirm password: " password_confirm
+                    echo
+                    if [ "$REMOTE_ACCESS_PASSWORD" = "$password_confirm" ]; then
+                        break
+                    fi
+                    log_warn "Passwords do not match."
+                done
+                ;;
+            *) REMOTE_ACCESS_PASSWORD_SOURCE="auto"; REMOTE_ACCESS_PASSWORD="" ;;
+        esac
+    elif [ "$need_password" -eq 1 ] && [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        REMOTE_ACCESS_PASSWORD_SOURCE="auto"
+        REMOTE_ACCESS_PASSWORD=""
     fi
 }
 
@@ -660,9 +807,9 @@ load_install_conf() {
     log_info "Loaded previous choices from $conf (hostname=$TARGET_HOSTNAME, ssid=$HOTSPOT_SSID)."
 }
 
-# Quick update: git fetch + reset in install dir only. No wizard, no deps, no service reconfig.
-run_quick_update() {
-    log_step "Quick update (repo only)"
+# Sync files: git fetch + reset in install dir only. No wizard, no deps, no service reconfig.
+run_sync_files() {
+    log_step "Sync files (repo only)"
     if [ ! -d "$INSTALL_DIR/.git" ]; then
         log_error "Install directory is not a git repository. Use Upgrade instead."
         exit 1
@@ -678,11 +825,117 @@ run_quick_update() {
     fi
     write_version_file
     log_info "Restarting services..."
-    if [ -d /run/systemd/system ]; then
-        systemctl restart rpi-engineer rpi-engineer-api rpi-engineer-network \
-            rpi-engineer-logging nginx >> "$INSTALL_LOG" 2>&1 || true
+    if [ -d /run/systemd/system ] && [ "${#ALL_SERVICES[@]}" -gt 0 ]; then
+        systemctl restart "${ALL_SERVICES[@]}" >> "$INSTALL_LOG" 2>&1 || true
     fi
-    echo "Quick update complete. Repository updated to latest $BRANCH."
+    echo "Sync complete. Repository updated to latest $BRANCH."
+}
+
+run_repair() {
+    local issues=()
+    local svc
+
+    # Scan phase
+    [ ! -d "$INSTALL_DIR/.git" ] && issues+=( "Install directory is not a git repository" )
+    [ ! -f "$INSTALL_DIR/venv/bin/python" ] && issues+=( "Python virtual environment missing" )
+    [ ! -f "$CONFIG_DIR/install.conf" ] && issues+=( "install.conf missing" )
+    [ ! -f "$CONFIG_DIR/system.conf" ] && issues+=( "system.conf missing" )
+    for svc in "${DAEMON_SERVICES[@]}"; do
+        if ! systemctl is-active "$svc" &>/dev/null; then
+            issues+=( "Service not running: $svc" )
+        fi
+    done
+    [ ! -f "$INSTALL_DIR/web/index.html" ] && issues+=( "Web assets missing (web/index.html not found)" )
+    [ ! -f "$INSTALL_DIR/services/api_gateway/main.py" ] && issues+=( "API source missing" )
+
+    # Report phase
+    print_section_header "Repair Scan Results"
+    if [ "${#issues[@]}" -eq 0 ]; then
+        echo "No issues detected."
+        return 0
+    fi
+    for svc in "${issues[@]}"; do
+        echo "[!] $svc"
+    done
+
+    # Confirm phase
+    local reply
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        reply="y"
+    else
+        read -r -p "Attempt to repair these issues? (y/n) [y]: " reply
+        reply="${reply:-y}"
+    fi
+    if [[ ! "$reply" =~ ^[Yy]$ ]]; then
+        exit 0
+    fi
+
+    # Repair phase
+    local fixed=()
+
+    if [[ " ${issues[*]} " == *" Install directory is not a git repository "* ]]; then
+        if declare -f run_sync_files &>/dev/null; then
+            ( run_sync_files ) || true
+        else
+            log_warn "run_sync_files not available; cannot repair git repository."
+        fi
+    fi
+    if [[ " ${issues[*]} " == *" Python virtual environment missing "* ]]; then
+        if declare -f install_python_dependencies &>/dev/null; then
+            install_python_dependencies || true
+        else
+            log_warn "install_python_dependencies not available; cannot repair venv."
+        fi
+    fi
+    if [[ " ${issues[*]} " == *" install.conf missing "* ]] || [[ " ${issues[*]} " == *" system.conf missing "* ]]; then
+        if declare -f generate_configs &>/dev/null; then
+            generate_configs || true
+        else
+            log_warn "generate_configs not available; cannot repair config files."
+        fi
+    fi
+    for svc in "${DAEMON_SERVICES[@]}"; do
+        if systemctl is-active "$svc" &>/dev/null; then
+            continue
+        fi
+        if systemctl restart "$svc" 2>/dev/null; then
+            fixed+=( "Service now running: $svc" )
+        fi
+    done
+    if [[ " ${issues[*]} " == *" Web assets missing "* ]] || [[ " ${issues[*]} " == *" API source missing "* ]]; then
+        if declare -f deploy_files &>/dev/null; then
+            deploy_files >> "$INSTALL_LOG" 2>&1 || log_warn "deploy_files failed."
+        else
+            log_warn "deploy_files not available; cannot repair web/API files."
+        fi
+    fi
+
+    # Re-scan and summary
+    issues=()
+    [ ! -d "$INSTALL_DIR/.git" ] && issues+=( "Install directory is not a git repository" )
+    [ ! -f "$INSTALL_DIR/venv/bin/python" ] && issues+=( "Python virtual environment missing" )
+    [ ! -f "$CONFIG_DIR/install.conf" ] && issues+=( "install.conf missing" )
+    [ ! -f "$CONFIG_DIR/system.conf" ] && issues+=( "system.conf missing" )
+    for svc in "${DAEMON_SERVICES[@]}"; do
+        if ! systemctl is-active "$svc" &>/dev/null; then
+            issues+=( "Service not running: $svc" )
+        fi
+    done
+    [ ! -f "$INSTALL_DIR/web/index.html" ] && issues+=( "Web assets missing (web/index.html not found)" )
+    [ ! -f "$INSTALL_DIR/services/api_gateway/main.py" ] && issues+=( "API source missing" )
+
+    print_section_header "Repair Summary"
+    if [ "${#fixed[@]}" -gt 0 ]; then
+        echo "Fixed:"
+        for svc in "${fixed[@]}"; do echo "  $svc"; done
+    fi
+    if [ "${#issues[@]}" -gt 0 ]; then
+        echo "Still failing:"
+        for svc in "${issues[@]}"; do echo "  [!] $svc"; done
+    fi
+    if [ "${#fixed[@]}" -gt 0 ] && [ "${#issues[@]}" -eq 0 ]; then
+        echo "All detected issues were repaired."
+    fi
 }
 
 # Uninstall: stop services, remove configs, remove app and data.
@@ -702,11 +955,9 @@ run_uninstall() {
     fi
 
     # Stop and disable services
-    if [ -d /run/systemd/system ]; then
+    if [ -d /run/systemd/system ] && [ "${#ALL_SERVICES[@]}" -gt 0 ]; then
         log_info "Stopping and disabling services..."
-        for svc in rpi-engineer rpi-engineer-api rpi-engineer-network rpi-engineer-serial \
-            rpi-engineer-capture rpi-engineer-system rpi-engineer-monitor rpi-engineer-update \
-            rpi-engineer-logging rpi-engineer-wlan0; do
+        for svc in "${ALL_SERVICES[@]}"; do
             systemctl stop "$svc" 2>/dev/null || true
             systemctl disable "$svc" 2>/dev/null || true
         done
@@ -714,9 +965,7 @@ run_uninstall() {
     fi
 
     # Remove systemd unit files
-    for unit in rpi-engineer rpi-engineer-api rpi-engineer-network rpi-engineer-serial \
-        rpi-engineer-capture rpi-engineer-system rpi-engineer-monitor rpi-engineer-update \
-        rpi-engineer-logging rpi-engineer-wlan0; do
+    for unit in "${ALL_SERVICES[@]}"; do
         rm -f "/etc/systemd/system/${unit}.service"
     done
     rm -rf /etc/systemd/system/hostapd.service.d
@@ -875,7 +1124,7 @@ install_required_packages() {
         python3 python3-pip python3-venv
         network-manager dnsmasq hostapd iptables bridge-utils vlan
         cu minicom screen
-        tcpdump tshark wireshark-common
+        tcpdump tshark wireshark wireshark-common
         libcap2-bin
         git curl wget jq bc lsof
         usbutils usb-modeswitch usb-modeswitch-data
@@ -1309,40 +1558,20 @@ EOF
 
 _write_rpi_engineer_sudoers() {
     # Controlled privileged operations: tcpdump, ip, ethtool, iptables, sysctl, systemctl (no password).
-    # Cover /usr/sbin, /sbin, and /usr/bin for iptables and sysctl — path varies by distro and Debian version.
-    local iptables_path sysctl_path teamviewer_path
+    # Use detected paths for iptables/sysctl (may be in /usr/sbin or /sbin depending on distro).
+    local iptables_path sysctl_path
     iptables_path="$(command -v iptables 2>/dev/null)"
     [ -n "$iptables_path" ] || iptables_path="/usr/sbin/iptables"
     sysctl_path="$(command -v sysctl 2>/dev/null)"
     [ -n "$sysctl_path" ] || sysctl_path="/usr/sbin/sysctl"
-    teamviewer_path="$(command -v teamviewer 2>/dev/null)"
-    [ -n "$teamviewer_path" ] || teamviewer_path="/usr/bin/teamviewer"
     mkdir -p /etc/sudoers.d
     {
         echo "$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/tcpdump"
         echo "$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/ip"
         echo "$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/ethtool"
-        # Cover all three common iptables locations so the runtime path always matches
-        echo "$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/iptables"
-        echo "$SERVICE_USER ALL=(root) NOPASSWD: /usr/bin/iptables"
-        echo "$SERVICE_USER ALL=(root) NOPASSWD: /sbin/iptables"
-        # Add detected path if it differs from the above (e.g. iptables-legacy wrapper)
-        case "$iptables_path" in
-            /usr/sbin/iptables|/usr/bin/iptables|/sbin/iptables) ;;
-            *) echo "$SERVICE_USER ALL=(root) NOPASSWD: $iptables_path" ;;
-        esac
-        # Broaden sysctl: allow any sysctl -w call, not just ip_forward
-        echo "$SERVICE_USER ALL=(root) NOPASSWD: /usr/sbin/sysctl"
-        echo "$SERVICE_USER ALL=(root) NOPASSWD: /sbin/sysctl"
-        case "$sysctl_path" in
-            /usr/sbin/sysctl|/sbin/sysctl) ;;
-            *) echo "$SERVICE_USER ALL=(root) NOPASSWD: $sysctl_path" ;;
-        esac
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: $iptables_path"
+        echo "$SERVICE_USER ALL=(root) NOPASSWD: $sysctl_path -w net.ipv4.ip_forward=1"
         echo "$SERVICE_USER ALL=(root) NOPASSWD: /bin/systemctl restart rpi-engineer*"
-        # TeamViewer: info requires sudo to get ID from daemon; passwd sets static password; setup connects to account
-        echo "$SERVICE_USER ALL=(root) NOPASSWD: $teamviewer_path info"
-        echo "$SERVICE_USER ALL=(root) NOPASSWD: $teamviewer_path passwd *"
-        echo "$SERVICE_USER ALL=(root) NOPASSWD: $teamviewer_path setup"
     } > /etc/sudoers.d/rpi-engineer
     chmod 440 /etc/sudoers.d/rpi-engineer
 }
@@ -1741,48 +1970,6 @@ EOF
     mark_step_done "hotspot"
 }
 
-_iptables_flush_share_rules() {
-    # Remove all iptables rules containing rpi-engineer-share: in their comment,
-    # across filter FORWARD and nat POSTROUTING. Mirrors services.network_manager.manager._iptables_flush_share_rules.
-    if ! command -v iptables >/dev/null 2>&1; then
-        return 0
-    fi
-    local ipt
-    ipt="$(command -v iptables 2>/dev/null || echo /usr/sbin/iptables)"
-    local table chain cmd line rest clean output
-    for table in "" "nat"; do
-        if [ -z "$table" ]; then
-            chain="FORWARD"
-            cmd=("$ipt" -S "$chain")
-        else
-            chain="POSTROUTING"
-            cmd=("$ipt" -t "$table" -S "$chain")
-        fi
-        if ! output="$("${cmd[@]}" 2>/dev/null)"; then
-            continue
-        fi
-        while IFS= read -r line; do
-            case "$line" in
-                *"rpi-engineer-share:"*)
-                    case "$line" in
-                        "-A "*) ;;
-                        *) continue ;;
-                    esac
-                    ;;
-                *) continue ;;
-            esac
-            rest="${line#-A }"
-            [ -z "$rest" ] && continue
-            # Strip double quotes so comment matches literal value expected by iptables
-            clean="${rest//\"/}"
-            # shellcheck disable=SC2086
-            "$ipt" ${table:+-t "$table"} -D $clean 2>/dev/null || true
-        done <<EOF
-$output
-EOF
-    done
-}
-
 configure_firewall() {
     if [ "$INSTALL_MODE" = "continue" ] && step_already_done "firewall"; then log_info "Step 'firewall' already completed; skipping."; return 0; fi
     log_step "Configuring firewall"
@@ -1790,7 +1977,7 @@ configure_firewall() {
         log_warn "Container detected; skipping firewall configuration."
         return 0
     fi
-    # Enable IPv4 forwarding for hotspot->WAN sharing (persists across reboot)
+    # Enable IPv4 forwarding (hotspot/WAN sharing is managed dynamically by the API via iptables comments)
     if [ -d /etc/sysctl.d ]; then
         echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-rpi-engineer.conf
         sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
@@ -1812,6 +1999,8 @@ configure_firewall() {
     iptables -P INPUT DROP
     iptables -P FORWARD DROP
     iptables -P OUTPUT ACCEPT
+
+    # Base INPUT rules: loopback, established/related, hotspot and optional LAN HTTP(S)/SSH/DNS/DHCP
     ensure_rule INPUT -i lo -j ACCEPT
     ensure_rule INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
     ensure_rule INPUT -i wlan0 -p tcp -m multiport --dports 80,443 -s 192.168.50.0/24 -j ACCEPT
@@ -1821,7 +2010,18 @@ configure_firewall() {
     if [ -n "$LAN_SUBNET" ]; then
         ensure_rule INPUT -i eth0 -p tcp -m multiport --dports 80,443 -s "$LAN_SUBNET" -j ACCEPT
     fi
+
+    # Base FORWARD rule: allow return traffic only. Actual hotspot->WAN sharing is managed
+    # by the NetworkManager API using iptables rules with rpi-engineer-share:* comments so it
+    # can be toggled on/off from the UI without being overridden by static installer rules.
     ensure_rule FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+    # Clean up any legacy unconditional hotspot sharing rules from earlier installs so they
+    # do not keep forwarding traffic when the UI "share with hotspot" toggle is disabled.
+    iptables -D FORWARD -i wlan0 -o eth0 -j ACCEPT 2>/dev/null || true
+    iptables -D FORWARD -i wlan0 -o usb0 -j ACCEPT 2>/dev/null || true
+    iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE 2>/dev/null || true
+    iptables -t nat -D POSTROUTING -o usb0 -j MASQUERADE 2>/dev/null || true
     echo "Firewall rules configured."
     mark_step_done "firewall"
 }
@@ -2008,6 +2208,19 @@ configure_lightdm_for_x11() {
     log_info "LightDM set to X11 ($x11_session). Reboot or re-login for taskbar and menu to take effect."
 }
 
+_print_remote_tool_summary() {
+    local tool="$1" id="$2" pass_source="$3"
+    print_section_header "$tool Configuration Summary"
+    echo "  Tool    : $tool"
+    echo "  ID      : $id"
+    if [ "$pass_source" = "custom" ]; then
+        echo "  Password: custom (set by user)"
+    else
+        echo "  Password: auto-generated (see $CONFIG_DIR/remote_access.conf)"
+    fi
+    echo ""
+}
+
 install_anydesk() {
     log_step "Installing AnyDesk"
     if dpkg -s anydesk >/dev/null 2>&1; then
@@ -2024,6 +2237,7 @@ install_anydesk() {
     if [ -n "$REMOTE_ACCESS_PASSWORD" ]; then
         echo "$REMOTE_ACCESS_PASSWORD" | anydesk --set-password >> "$INSTALL_LOG" 2>&1 || true
     fi
+    _print_remote_tool_summary "AnyDesk" "${ANYDESK_ID:-unknown}" "$REMOTE_ACCESS_PASSWORD_SOURCE"
     systemctl enable anydesk >> "$INSTALL_LOG" 2>&1 || true
     systemctl start anydesk >> "$INSTALL_LOG" 2>&1 || true
     ANYDESK_ID="$(anydesk --get-id 2>/dev/null || true)"
@@ -2051,6 +2265,7 @@ install_teamviewer() {
     if [ -n "$REMOTE_ACCESS_PASSWORD" ]; then
         teamviewer passwd "$REMOTE_ACCESS_PASSWORD" >> "$INSTALL_LOG" 2>&1 || true
     fi
+    _print_remote_tool_summary "TeamViewer" "${TEAMVIEWER_ID:-unknown}" "$REMOTE_ACCESS_PASSWORD_SOURCE"
     teamviewer setup >> "$INSTALL_LOG" 2>&1 || true
     systemctl enable teamviewerd >> "$INSTALL_LOG" 2>&1 || true
     systemctl start teamviewerd >> "$INSTALL_LOG" 2>&1 || true
@@ -2203,8 +2418,9 @@ setup_remote_access() {
         echo "Remote access: skipped (none selected)."
         return 0
     fi
-    if [ -z "$REMOTE_ACCESS_PASSWORD" ]; then
-        REMOTE_ACCESS_PASSWORD="$HOTSPOT_PASSWORD"
+    if [ -z "$REMOTE_ACCESS_PASSWORD" ] && [ "$REMOTE_ACCESS_PASSWORD_SOURCE" != "custom" ]; then
+        REMOTE_ACCESS_PASSWORD="$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9!@#$%^&*' | head -c 20)"
+        log_info "Auto-generated remote access password."
     fi
     # AnyDesk requires Xvfb on headless; TeamViewer can use framebuffer console (no Xorg) per headless docs.
     need_xvfb=$(printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -q '^anydesk$' && echo 1)
@@ -2341,38 +2557,29 @@ EOF
 }
 
 show_installation_summary() {
-    log_step "Installation complete"
-    echo "Installation Summary:"
-    echo "  - System dependencies installed: $DEPS_INSTALLED"
-    echo "  - Application files deployed: $APP_INSTALLED"
-    echo "  - Services configured: $SERVICES_CONFIGURED"
-    echo "  - WiFi hotspot configured: $HOTSPOT_CONFIGURED"
-    echo "  - Remote access configured: $REMOTE_CONFIGURED"
-    echo "  - Modules installed: $MODULES_INSTALLED"
+    print_section_header "Installation Complete"
+    echo "  System dependencies installed : $DEPS_INSTALLED"
+    echo "  Application files deployed    : $APP_INSTALLED"
+    echo "  Services configured           : $SERVICES_CONFIGURED"
+    echo "  WiFi hotspot configured       : $HOTSPOT_CONFIGURED"
+    echo "  Remote access configured      : $REMOTE_CONFIGURED"
+    echo "  Modules installed             : $MODULES_INSTALLED"
     echo
-    echo "System Information:"
-    echo "  WiFi SSID: $HOTSPOT_SSID"
-    echo "  WiFi Password: ********"
-    echo "  Web Interface: http://${DEFAULT_HOTSPOT_IP} (after connecting to WiFi)"
-    if [ -n "${ANYDESK_ID:-}" ]; then
-        echo "  AnyDesk ID: $ANYDESK_ID"
+    echo "  WiFi SSID                     : $HOTSPOT_SSID"
+    echo "  WiFi Password                 : ********"
+    if [ "${REMOTE_ACCESS_PASSWORD_SOURCE:-}" = "custom" ]; then
+        echo "  Remote access password        : custom (set by you)"
+    else
+        echo "  Remote access password        : auto-generated (saved to $CONFIG_DIR/remote_access.conf)"
     fi
-    if [ -n "${TEAMVIEWER_ID:-}" ]; then
-        echo "  TeamViewer ID: $TEAMVIEWER_ID"
-    fi
-    if [ -n "${VNC_CONNECTION:-}" ]; then
-        echo "  VNC: $VNC_CONNECTION"
-    fi
-    if [ -n "${RPI_CONNECT_URL:-}" ]; then
-        echo "  Raspberry Pi Connect: $RPI_CONNECT_URL"
-    fi
+    echo "  Web Interface                 : http://${DEFAULT_HOTSPOT_IP} (after connecting to WiFi)"
+    [ -n "${ANYDESK_ID:-}" ] && echo "  AnyDesk ID                    : $ANYDESK_ID"
+    [ -n "${TEAMVIEWER_ID:-}" ] && echo "  TeamViewer ID                 : $TEAMVIEWER_ID"
+    [ -n "${VNC_CONNECTION:-}" ] && echo "  VNC                           : $VNC_CONNECTION"
+    [ -n "${RPI_CONNECT_URL:-}" ] && echo "  Raspberry Pi Connect          : $RPI_CONNECT_URL"
     echo
-    echo "Next Steps:"
-    echo "  1. Reboot the system: sudo reboot (hotspot and WiFi takeover activate after reboot)"
-    echo "  2. After reboot, connect to WiFi: $HOTSPOT_SSID"
-    echo "  3. Open web browser to: http://${DEFAULT_HOTSPOT_IP}"
-    echo
-    echo "Installation log saved to: $INSTALL_LOG"
+    echo "  Next: sudo reboot, then connect to $HOTSPOT_SSID and open http://${DEFAULT_HOTSPOT_IP}"
+    echo "  Installation log              : $INSTALL_LOG"
 }
 
 reboot_system() {
@@ -2385,6 +2592,10 @@ reboot_system() {
 }
 
 run_wizard() {
+    if [ "${INSTALL_MODE:-}" = "reconfigure" ]; then
+        prompt_reconfigure_sections
+        return 0
+    fi
     prompt_welcome
     prompt_remote_access
     prompt_hotspot_config
@@ -2395,6 +2606,13 @@ run_wizard() {
     if [ "$TARGET_HOSTNAME" != "$(hostname)" ]; then
         hostnamectl set-hostname "$TARGET_HOSTNAME"
     fi
+}
+
+prompt_missing_upgrade_config() {
+    [ -z "$TARGET_HOSTNAME" ] && prompt_hostname
+    [ -z "$HOTSPOT_SSID" ] && prompt_hotspot_config
+    [ "${#REMOTE_ACCESS_TOOLS[@]}" -eq 0 ] && prompt_remote_access
+    [ "${#MODULE_SELECTIONS[@]}" -eq 0 ] && prompt_modules
 }
 
 main() {
@@ -2413,8 +2631,13 @@ main() {
         exit 0
     fi
 
-    if [ "$INSTALL_MODE" = "quick_update" ]; then
-        run_quick_update
+    if [ "$INSTALL_MODE" = "sync" ]; then
+        run_sync_files
+        exit 0
+    fi
+
+    if [ "$INSTALL_MODE" = "repair" ]; then
+        run_repair
         exit 0
     fi
 
@@ -2434,9 +2657,9 @@ main() {
                 log_warn "Hotspot password must be 8-63 characters."
             done
         fi
-    elif [ "$INSTALL_MODE" = "upgrade" ] && [ "$UPGRADE_SKIP_CONFIG" = "1" ]; then
+    elif [ "$INSTALL_MODE" = "upgrade" ] && [ "${UPGRADE_SKIP_CONFIG:-0}" = "1" ]; then
         load_install_conf
-        log_info "Upgrade: using existing configuration (no module or wizard prompts)."
+        prompt_missing_upgrade_config
         write_install_conf
         if [ "$TARGET_HOSTNAME" != "$(hostname)" ]; then
             hostnamectl set-hostname "$TARGET_HOSTNAME"
@@ -2458,170 +2681,62 @@ main() {
         if [ "$INSTALL_MODE" != "continue" ]; then
             : > "$INSTALL_PROGRESS_FILE"
         fi
-        progress_bar 1 16 "System dependencies"
+        step_counter_bar 1 16 "System dependencies"
         install_system_dependencies
-        progress_bar 2 16 "Required packages"
+        step_counter_bar 2 16 "Required packages"
         install_required_packages
-        progress_bar 3 16 "Directories"
+        step_counter_bar 3 16 "Directories"
         create_directories
-        progress_bar 4 16 "Deploying files"
+        step_counter_bar 4 16 "Deploying files"
         deploy_files
-        progress_bar 5 16 "Python dependencies"
+        step_counter_bar 5 16 "Python dependencies"
         install_python_dependencies
-        progress_bar 6 16 "Permissions"
+        step_counter_bar 6 16 "Permissions"
         setup_user_permissions
-        progress_bar 7 16 "Services"
+        step_counter_bar 7 16 "Services"
         configure_services
-        progress_bar 8 16 "nginx"
+        step_counter_bar 8 16 "nginx"
         configure_nginx
-        progress_bar 9 16 "WiFi hotspot"
+        step_counter_bar 9 16 "WiFi hotspot"
         configure_hotspot
-        progress_bar 10 16 "Firewall"
+        step_counter_bar 10 16 "Firewall"
         configure_firewall
-        progress_bar 11 16 "Modules"
+        step_counter_bar 11 16 "Modules"
         install_modules
-        progress_bar 12 16 "Remote access"
+        step_counter_bar 12 16 "Remote access"
         setup_remote_access
-        progress_bar 13 16 "Configuration files"
+        step_counter_bar 13 16 "Configuration files"
         generate_configs
-        progress_bar 14 16 "Enabling services"
+        step_counter_bar 14 16 "Enabling services"
         enable_services
-        progress_bar 15 16 "Health check"
+        step_counter_bar 15 16 "Health check"
         create_health_check_script
         if [ "$INSTALL_MODE" = "upgrade" ] && [ -x "$INSTALL_DIR/bin/apply-web-permissions.sh" ]; then
             log_step "Applying web permissions (upgrade)"
             "$INSTALL_DIR/bin/apply-web-permissions.sh" >> "$INSTALL_LOG" 2>&1 || log_warn "apply-web-permissions.sh had issues (see $INSTALL_LOG)."
         fi
-        progress_bar 16 16 "Complete"
+        step_counter_bar 16 16 "Complete"
     else
-        progress_bar 1 6 "WiFi hotspot"
-        configure_hotspot
-        progress_bar 2 6 "Firewall"
-        configure_firewall
-        progress_bar 3 6 "Remote access"
-        setup_remote_access
-        progress_bar 4 6 "Configuration files"
+        local step=1
+        local total=0
+        reconf_includes hotspot && total=$((total + 1))
+        reconf_includes firewall && total=$((total + 1))
+        reconf_includes remote_access && total=$((total + 1))
+        reconf_includes modules && total=$((total + 1))
+        total=$((total + 3))
+        reconf_includes hotspot && { step_counter_bar $step $total "WiFi hotspot"; configure_hotspot; step=$((step + 1)); }
+        reconf_includes firewall && { step_counter_bar $step $total "Firewall"; configure_firewall; step=$((step + 1)); }
+        reconf_includes remote_access && { step_counter_bar $step $total "Remote access"; setup_remote_access; step=$((step + 1)); }
+        reconf_includes modules && { step_counter_bar $step $total "Modules"; install_modules; step=$((step + 1)); }
+        step_counter_bar $step $total "Configuration files"
         generate_configs
-        progress_bar 5 6 "Enabling services"
+        step=$((step + 1))
+        step_counter_bar $step $total "Enabling services"
         enable_services
-        progress_bar 6 6 "Health check"
+        step=$((step + 1))
+        step_counter_bar $step $total "Health check"
         create_health_check_script
     fi
-
-    # --- Security Hardening (Prompt 2) ---
-    echo ""
-    echo "=== Security Hardening ==="
-
-    # Step 1 — Hotspot interface detection
-    if [ -f "$CONFIG_DIR/network.conf" ] && grep -q "hotspot_interface=" "$CONFIG_DIR/network.conf" 2>/dev/null; then
-        WLAN_IF=$(awk -F= '/^hotspot_interface=/ {print $2; exit}' "$CONFIG_DIR/network.conf")
-    else
-        WLAN_IF=$(iw dev 2>/dev/null | awk '$1=="Interface"{print $2}' | head -1)
-        if [ -z "$WLAN_IF" ]; then
-            [ "${NONINTERACTIVE:-0}" = "1" ] && WLAN_IF="wlan0"
-            interactive_read -r -p "No wireless interface detected. Enter hotspot interface name (e.g. wlan0): " WLAN_IF
-            WLAN_IF=${WLAN_IF:-wlan0}
-        else
-            interactive_read -r -p "Detected hotspot interface: $WLAN_IF. Press Enter to confirm or type a different name: " INPUT
-            WLAN_IF=${INPUT:-$WLAN_IF}
-        fi
-    fi
-    mkdir -p "$CONFIG_DIR"
-    cat > "$CONFIG_DIR/network.conf" << EOF
-# Written by install.sh
-hotspot_interface=$WLAN_IF
-bind_lan_interface=false
-EOF
-    echo "Hotspot interface: $WLAN_IF"
-
-    # Step 2 — TLS certificate generation
-    mkdir -p "$CONFIG_DIR/tls"
-    if [ ! -f "$CONFIG_DIR/tls/cert.pem" ]; then
-        openssl req -x509 -newkey rsa:4096 -keyout "$CONFIG_DIR/tls/key.pem" -out "$CONFIG_DIR/tls/cert.pem" -days 3650 -nodes -subj "/CN=rpi-engineer.local" 2>/dev/null
-        chmod 600 "$CONFIG_DIR/tls/key.pem"
-        chmod 644 "$CONFIG_DIR/tls/cert.pem"
-    fi
-    TLS_FINGERPRINT=$(openssl x509 -in "$CONFIG_DIR/tls/cert.pem" -noout -sha256 -fingerprint 2>/dev/null | sed 's/.*=//' || echo "")
-
-    # Step 3 — iptables rules for eth1
-    if [ ! -f /.dockerenv ] && [ ! -f /run/.containerenv ]; then
-        iptables -D INPUT -i eth1 -m state --state NEW -j DROP 2>/dev/null || true
-        iptables -A INPUT -i eth1 -m state --state NEW -j DROP
-        iptables -A INPUT -i eth1 -m state --state ESTABLISHED,RELATED -j ACCEPT
-        iptables -A OUTPUT -o eth1 -p tcp -d connect.raspberrypi.com --dport 443 -j ACCEPT
-        iptables -A OUTPUT -o eth1 -p udp -d stun.raspberrypi.com --dport 3478 -j ACCEPT
-        for TURN_HOST in turn1.raspberrypi.com turn2.raspberrypi.com turn3.raspberrypi.com; do
-            iptables -A OUTPUT -o eth1 -p tcp -d $TURN_HOST --dport 443 -j ACCEPT
-            iptables -A OUTPUT -o eth1 -p tcp -d $TURN_HOST --dport 3478 -j ACCEPT
-            iptables -A OUTPUT -o eth1 -p udp -d $TURN_HOST --dport 443 -j ACCEPT
-            iptables -A OUTPUT -o eth1 -p udp -d $TURN_HOST --dport 3478 -j ACCEPT
-            iptables -A OUTPUT -o eth1 -p udp -d $TURN_HOST --dport 49152:65535 -j ACCEPT
-        done
-        apt-get install -y iptables-persistent 2>/dev/null || true
-        netfilter-persistent save 2>/dev/null || true
-        echo "iptables rules applied and saved."
-    fi
-
-    # Step 4 — Hotspot password
-    HOTSPOT_PASS=$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9!@#$%^&*' | head -c 20)
-    echo "hotspot_password=$HOTSPOT_PASS" > "$CONFIG_DIR/hotspot.conf"
-
-    # Step 5 — logrotate for audit log
-    cat > /etc/logrotate.d/rpi-engineer-audit << EOF
-$DATA_DIR/audit.log {
-    rotate 10
-    size 50M
-    compress
-    delaycompress
-    missingok
-    notifempty
-    copytruncate
-}
-EOF
-    echo "logrotate config written."
-
-    # Step 6 — AnyDesk hardening (conditional)
-    if which anydesk > /dev/null 2>&1; then
-        if ! grep -q "anydesk_password" "$CONFIG_DIR/remote-access.conf" 2>/dev/null; then
-            ANYDESK_PASS=$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9!@#$%^&*' | head -c 16)
-            echo "anydesk_password=$ANYDESK_PASS" >> "$CONFIG_DIR/remote-access.conf"
-            anydesk --set-password "$ANYDESK_PASS" 2>/dev/null || \
-                echo "WARNING: anydesk --set-password failed. Set the unattended password manually in AnyDesk settings."
-        fi
-        if [ -f /etc/anydesk/service.conf ]; then
-            grep -q "ad.security.acl_enabled" /etc/anydesk/service.conf || \
-                echo "ad.security.acl_enabled=1" >> /etc/anydesk/service.conf
-        fi
-        echo "AnyDesk hardened."
-    fi
-
-    # Step 7 — TeamViewer hardening (conditional)
-    if which teamviewer > /dev/null 2>&1; then
-        if ! grep -q "teamviewer_password" "$CONFIG_DIR/remote-access.conf" 2>/dev/null; then
-            TV_PASS=$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9!@#$%^&*' | head -c 16)
-            echo "teamviewer_password=$TV_PASS" >> "$CONFIG_DIR/remote-access.conf"
-            teamviewer passwd "$TV_PASS" 2>/dev/null || \
-                echo "WARNING: teamviewer passwd failed. Set the fixed password manually in TeamViewer options."
-        fi
-        echo "TeamViewer hardened."
-    fi
-
-    # Step 8 — Secure config files and print summary
-    chmod 600 "$CONFIG_DIR/remote-access.conf" 2>/dev/null || true
-    chmod 600 "$CONFIG_DIR/auth.conf" 2>/dev/null || true
-
-    echo ""
-    echo "=============================="
-    echo " Installation Complete"
-    echo "=============================="
-    echo " Hotspot interface : $WLAN_IF"
-    echo " Hotspot password  : $HOTSPOT_PASS"
-    echo " TLS fingerprint   : $TLS_FINGERPRINT"
-    echo ""
-    echo " SAVE THESE VALUES."
-    echo " The hotspot password will not be shown again."
-    echo " AnyDesk/TeamViewer passwords are in config/remote-access.conf (root-only)."
-    echo "=============================="
 
     progress_cleanup
     echo

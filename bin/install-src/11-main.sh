@@ -1,38 +1,29 @@
 #!/usr/bin/env bash
 
 show_installation_summary() {
-    log_step "Installation complete"
-    echo "Installation Summary:"
-    echo "  - System dependencies installed: $DEPS_INSTALLED"
-    echo "  - Application files deployed: $APP_INSTALLED"
-    echo "  - Services configured: $SERVICES_CONFIGURED"
-    echo "  - WiFi hotspot configured: $HOTSPOT_CONFIGURED"
-    echo "  - Remote access configured: $REMOTE_CONFIGURED"
-    echo "  - Modules installed: $MODULES_INSTALLED"
+    print_section_header "Installation Complete"
+    echo "  System dependencies installed : $DEPS_INSTALLED"
+    echo "  Application files deployed    : $APP_INSTALLED"
+    echo "  Services configured           : $SERVICES_CONFIGURED"
+    echo "  WiFi hotspot configured       : $HOTSPOT_CONFIGURED"
+    echo "  Remote access configured      : $REMOTE_CONFIGURED"
+    echo "  Modules installed             : $MODULES_INSTALLED"
     echo
-    echo "System Information:"
-    echo "  WiFi SSID: $HOTSPOT_SSID"
-    echo "  WiFi Password: ********"
-    echo "  Web Interface: http://${DEFAULT_HOTSPOT_IP} (after connecting to WiFi)"
-    if [ -n "${ANYDESK_ID:-}" ]; then
-        echo "  AnyDesk ID: $ANYDESK_ID"
+    echo "  WiFi SSID                     : $HOTSPOT_SSID"
+    echo "  WiFi Password                 : ********"
+    if [ "${REMOTE_ACCESS_PASSWORD_SOURCE:-}" = "custom" ]; then
+        echo "  Remote access password        : custom (set by you)"
+    else
+        echo "  Remote access password        : auto-generated (saved to $CONFIG_DIR/remote_access.conf)"
     fi
-    if [ -n "${TEAMVIEWER_ID:-}" ]; then
-        echo "  TeamViewer ID: $TEAMVIEWER_ID"
-    fi
-    if [ -n "${VNC_CONNECTION:-}" ]; then
-        echo "  VNC: $VNC_CONNECTION"
-    fi
-    if [ -n "${RPI_CONNECT_URL:-}" ]; then
-        echo "  Raspberry Pi Connect: $RPI_CONNECT_URL"
-    fi
+    echo "  Web Interface                 : http://${DEFAULT_HOTSPOT_IP} (after connecting to WiFi)"
+    [ -n "${ANYDESK_ID:-}" ] && echo "  AnyDesk ID                    : $ANYDESK_ID"
+    [ -n "${TEAMVIEWER_ID:-}" ] && echo "  TeamViewer ID                 : $TEAMVIEWER_ID"
+    [ -n "${VNC_CONNECTION:-}" ] && echo "  VNC                           : $VNC_CONNECTION"
+    [ -n "${RPI_CONNECT_URL:-}" ] && echo "  Raspberry Pi Connect          : $RPI_CONNECT_URL"
     echo
-    echo "Next Steps:"
-    echo "  1. Reboot the system: sudo reboot (hotspot and WiFi takeover activate after reboot)"
-    echo "  2. After reboot, connect to WiFi: $HOTSPOT_SSID"
-    echo "  3. Open web browser to: http://${DEFAULT_HOTSPOT_IP}"
-    echo
-    echo "Installation log saved to: $INSTALL_LOG"
+    echo "  Next: sudo reboot, then connect to $HOTSPOT_SSID and open http://${DEFAULT_HOTSPOT_IP}"
+    echo "  Installation log              : $INSTALL_LOG"
 }
 
 reboot_system() {
@@ -45,6 +36,10 @@ reboot_system() {
 }
 
 run_wizard() {
+    if [ "${INSTALL_MODE:-}" = "reconfigure" ]; then
+        prompt_reconfigure_sections
+        return 0
+    fi
     prompt_welcome
     prompt_remote_access
     prompt_hotspot_config
@@ -55,6 +50,13 @@ run_wizard() {
     if [ "$TARGET_HOSTNAME" != "$(hostname)" ]; then
         hostnamectl set-hostname "$TARGET_HOSTNAME"
     fi
+}
+
+prompt_missing_upgrade_config() {
+    [ -z "$TARGET_HOSTNAME" ] && prompt_hostname
+    [ -z "$HOTSPOT_SSID" ] && prompt_hotspot_config
+    [ "${#REMOTE_ACCESS_TOOLS[@]}" -eq 0 ] && prompt_remote_access
+    [ "${#MODULE_SELECTIONS[@]}" -eq 0 ] && prompt_modules
 }
 
 main() {
@@ -73,8 +75,13 @@ main() {
         exit 0
     fi
 
-    if [ "$INSTALL_MODE" = "quick_update" ]; then
-        run_quick_update
+    if [ "$INSTALL_MODE" = "sync" ]; then
+        run_sync_files
+        exit 0
+    fi
+
+    if [ "$INSTALL_MODE" = "repair" ]; then
+        run_repair
         exit 0
     fi
 
@@ -94,9 +101,9 @@ main() {
                 log_warn "Hotspot password must be 8-63 characters."
             done
         fi
-    elif [ "$INSTALL_MODE" = "upgrade" ] && [ "$UPGRADE_SKIP_CONFIG" = "1" ]; then
+    elif [ "$INSTALL_MODE" = "upgrade" ] && [ "${UPGRADE_SKIP_CONFIG:-0}" = "1" ]; then
         load_install_conf
-        log_info "Upgrade: using existing configuration (no module or wizard prompts)."
+        prompt_missing_upgrade_config
         write_install_conf
         if [ "$TARGET_HOSTNAME" != "$(hostname)" ]; then
             hostnamectl set-hostname "$TARGET_HOSTNAME"
@@ -118,53 +125,60 @@ main() {
         if [ "$INSTALL_MODE" != "continue" ]; then
             : > "$INSTALL_PROGRESS_FILE"
         fi
-        progress_bar 1 16 "System dependencies"
+        step_counter_bar 1 16 "System dependencies"
         install_system_dependencies
-        progress_bar 2 16 "Required packages"
+        step_counter_bar 2 16 "Required packages"
         install_required_packages
-        progress_bar 3 16 "Directories"
+        step_counter_bar 3 16 "Directories"
         create_directories
-        progress_bar 4 16 "Deploying files"
+        step_counter_bar 4 16 "Deploying files"
         deploy_files
-        progress_bar 5 16 "Python dependencies"
+        step_counter_bar 5 16 "Python dependencies"
         install_python_dependencies
-        progress_bar 6 16 "Permissions"
+        step_counter_bar 6 16 "Permissions"
         setup_user_permissions
-        progress_bar 7 16 "Services"
+        step_counter_bar 7 16 "Services"
         configure_services
-        progress_bar 8 16 "nginx"
+        step_counter_bar 8 16 "nginx"
         configure_nginx
-        progress_bar 9 16 "WiFi hotspot"
+        step_counter_bar 9 16 "WiFi hotspot"
         configure_hotspot
-        progress_bar 10 16 "Firewall"
+        step_counter_bar 10 16 "Firewall"
         configure_firewall
-        progress_bar 11 16 "Modules"
+        step_counter_bar 11 16 "Modules"
         install_modules
-        progress_bar 12 16 "Remote access"
+        step_counter_bar 12 16 "Remote access"
         setup_remote_access
-        progress_bar 13 16 "Configuration files"
+        step_counter_bar 13 16 "Configuration files"
         generate_configs
-        progress_bar 14 16 "Enabling services"
+        step_counter_bar 14 16 "Enabling services"
         enable_services
-        progress_bar 15 16 "Health check"
+        step_counter_bar 15 16 "Health check"
         create_health_check_script
         if [ "$INSTALL_MODE" = "upgrade" ] && [ -x "$INSTALL_DIR/bin/apply-web-permissions.sh" ]; then
             log_step "Applying web permissions (upgrade)"
             "$INSTALL_DIR/bin/apply-web-permissions.sh" >> "$INSTALL_LOG" 2>&1 || log_warn "apply-web-permissions.sh had issues (see $INSTALL_LOG)."
         fi
-        progress_bar 16 16 "Complete"
+        step_counter_bar 16 16 "Complete"
     else
-        progress_bar 1 6 "WiFi hotspot"
-        configure_hotspot
-        progress_bar 2 6 "Firewall"
-        configure_firewall
-        progress_bar 3 6 "Remote access"
-        setup_remote_access
-        progress_bar 4 6 "Configuration files"
+        local step=1
+        local total=0
+        reconf_includes hotspot && total=$((total + 1))
+        reconf_includes firewall && total=$((total + 1))
+        reconf_includes remote_access && total=$((total + 1))
+        reconf_includes modules && total=$((total + 1))
+        total=$((total + 3))
+        reconf_includes hotspot && { step_counter_bar $step $total "WiFi hotspot"; configure_hotspot; step=$((step + 1)); }
+        reconf_includes firewall && { step_counter_bar $step $total "Firewall"; configure_firewall; step=$((step + 1)); }
+        reconf_includes remote_access && { step_counter_bar $step $total "Remote access"; setup_remote_access; step=$((step + 1)); }
+        reconf_includes modules && { step_counter_bar $step $total "Modules"; install_modules; step=$((step + 1)); }
+        step_counter_bar $step $total "Configuration files"
         generate_configs
-        progress_bar 5 6 "Enabling services"
+        step=$((step + 1))
+        step_counter_bar $step $total "Enabling services"
         enable_services
-        progress_bar 6 6 "Health check"
+        step=$((step + 1))
+        step_counter_bar $step $total "Health check"
         create_health_check_script
     fi
 

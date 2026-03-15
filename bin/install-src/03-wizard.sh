@@ -33,48 +33,96 @@ determine_install_mode() {
         return 0
     fi
     if [ "${NONINTERACTIVE:-0}" = "1" ] && [ "$INSTALL_MODE" = "quick_update" ]; then
-        log_info "Install mode: quick update (from environment)"
+        INSTALL_MODE="sync"
+        log_info "Install mode: sync (from environment, was quick_update)"
+        return 0
+    fi
+    if [ "${NONINTERACTIVE:-0}" = "1" ] && [ "$INSTALL_MODE" = "sync" ]; then
+        log_info "Install mode: sync (from environment)"
         return 0
     fi
     if [ -d "$INSTALL_DIR" ] || [ -d "$CONFIG_DIR" ]; then
         log_warn "Existing installation detected."
-        if [ "${NONINTERACTIVE:-0}" != "1" ]; then
-            echo "Select install mode:"
-            echo "  1) Upgrade (update files and services)"
-            echo "  2) Quick update (update repo only, no wizard)"
-            echo "  3) Reconfigure (wizard and config only)"
-            echo "  4) Uninstall"
-            echo "  5) Abort"
-            interactive_read -r -p "Enter choice (1-5) [1]: " choice
-        fi
-        case "${choice:-1}" in
-            1) INSTALL_MODE="upgrade" ;;
-            2) INSTALL_MODE="quick_update" ;;
-            3) INSTALL_MODE="reconfigure" ;;
-            4) INSTALL_MODE="uninstall" ;;
-            5) log_error "Installation aborted by user."; exit 1 ;;
-            *) INSTALL_MODE="upgrade" ;;
-        esac
-        if [ "$INSTALL_MODE" = "upgrade" ]; then
-            if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+            if [ -z "${INSTALL_MODE:-}" ] || [ "$INSTALL_MODE" = "fresh" ]; then
+                INSTALL_MODE="upgrade"
                 UPGRADE_SKIP_CONFIG="1"
-                log_info "Non-interactive upgrade: using existing configuration."
-            else
-                echo "Upgrade configuration:"
-                echo "  1) Use existing configuration (only choose modules)"
-                echo "  2) Re-run full configuration wizard"
-                interactive_read -r -p "Enter choice (1-2) [1]: " upgrade_choice
-                case "${upgrade_choice:-1}" in
-                    1) UPGRADE_SKIP_CONFIG="1"; log_info "Upgrade: using existing configuration (upgrade in place)." ;;
-                    2) UPGRADE_SKIP_CONFIG="0"; log_info "Upgrade: re-running full wizard." ;;
-                    *) UPGRADE_SKIP_CONFIG="1" ;;
-                esac
+                log_info "Non-interactive: defaulting to full upgrade (skip config)."
             fi
+        else
+            echo "+--------------------------------------------------+"
+            echo "|           Existing Installation Found            |"
+            echo "+--------------------------------------------------+"
+            echo "  1) Update         — Sync files or run full upgrade"
+            echo "  2) Repair         — Check and fix installation issues"
+            echo "  3) Uninstall      — Remove application and config"
+            echo "  4) Abort"
+            interactive_read -r -p "Enter choice (1-4): " choice
+            case "${choice}" in
+                1) determine_update_mode ;;
+                2) INSTALL_MODE="repair" ;;
+                3) INSTALL_MODE="uninstall" ;;
+                4) log_error "Installation aborted by user."; exit 1 ;;
+                *) log_error "Invalid choice."; exit 1 ;;
+            esac
         fi
     else
         INSTALL_MODE="fresh"
     fi
     log_info "Install mode: $INSTALL_MODE"
+}
+
+determine_update_mode() {
+    echo "+--------------------------------------------------+"
+    echo "|                  Update Options                  |"
+    echo "+--------------------------------------------------+"
+    echo "  1) Sync files     — Pull latest code, restart services"
+    echo "  2) Full upgrade  — Sync files + reinstall dependencies"
+    echo "  3) Reconfigure   — Re-apply selected config sections only"
+    interactive_read -r -p "Enter choice (1-3): " choice
+    case "${choice}" in
+        1) INSTALL_MODE="sync" ;;
+        2) INSTALL_MODE="upgrade"; UPGRADE_SKIP_CONFIG="1"; log_info "Full upgrade: using existing config (prompt only if missing)." ;;
+        3) INSTALL_MODE="reconfigure" ;;
+        *) log_error "Invalid choice."; exit 1 ;;
+    esac
+}
+
+prompt_reconfigure_sections() {
+    RECONF_SECTIONS=()
+    echo "Which sections do you want to reconfigure?"
+    echo "  1) Hotspot"
+    echo "  2) Firewall"
+    echo "  3) Remote Access"
+    echo "  4) Modules"
+    interactive_read -r -p "Enter numbers (comma-separated) or Enter for all: " input
+    if [ -z "${input:-}" ]; then
+        RECONF_SECTIONS=(hotspot firewall remote_access modules)
+        log_info "Reconfigure sections: all"
+    else
+        local selections
+        IFS=',' read -r -a selections <<< "$input"
+        local s
+        for s in "${selections[@]}"; do
+            s="$(echo "$s" | tr -d ' ')"
+            case "$s" in
+                1) RECONF_SECTIONS+=(hotspot) ;;
+                2) RECONF_SECTIONS+=(firewall) ;;
+                3) RECONF_SECTIONS+=(remote_access) ;;
+                4) RECONF_SECTIONS+=(modules) ;;
+            esac
+        done
+        log_info "Reconfigure sections: ${RECONF_SECTIONS[*]:-none}"
+    fi
+}
+
+reconf_includes() {
+    local section_name="$1"
+    local s
+    for s in "${RECONF_SECTIONS[@]:-}"; do
+        [ "$s" = "$section_name" ] && return 0
+    done
+    return 1
 }
 
 # Offer repair/continue when a previous run was interrupted (progress file left behind)
@@ -138,6 +186,8 @@ EOF
 
 prompt_remote_access() {
     log_step "Remote access configuration"
+    REMOTE_ACCESS_PASSWORD=""
+    REMOTE_ACCESS_PASSWORD_SOURCE=""
     if [ "${NONINTERACTIVE:-0}" != "1" ]; then
         echo "Select the remote access tool you want to install:"
         echo "  1) AnyDesk (Recommended)"
@@ -181,6 +231,39 @@ prompt_remote_access() {
         log_info "Selected remote access tool: skip"
     else
         log_info "Selected remote access tools: ${REMOTE_ACCESS_TOOLS[*]}"
+    fi
+    local need_password=0
+    if [ "${#REMOTE_ACCESS_TOOLS[@]}" -gt 0 ]; then
+        local t
+        for t in "${REMOTE_ACCESS_TOOLS[@]}"; do
+            [ "$t" = "anydesk" ] || [ "$t" = "teamviewer" ] && need_password=1 && break
+        done
+    fi
+    if [ "$need_password" -eq 1 ] && [ "${NONINTERACTIVE:-0}" != "1" ]; then
+        echo "Remote access password:"
+        echo "  1) Auto-generate a secure password (recommended)"
+        echo "  2) Set a custom password"
+        interactive_read -r -p "Enter choice (1-2) [1]: " pw_choice
+        case "${pw_choice:-1}" in
+            1) REMOTE_ACCESS_PASSWORD_SOURCE="auto"; REMOTE_ACCESS_PASSWORD="" ;;
+            2)
+                REMOTE_ACCESS_PASSWORD_SOURCE="custom"
+                while true; do
+                    interactive_read -r -s -p "Enter remote access password: " REMOTE_ACCESS_PASSWORD
+                    echo
+                    interactive_read -r -s -p "Confirm password: " password_confirm
+                    echo
+                    if [ "$REMOTE_ACCESS_PASSWORD" = "$password_confirm" ]; then
+                        break
+                    fi
+                    log_warn "Passwords do not match."
+                done
+                ;;
+            *) REMOTE_ACCESS_PASSWORD_SOURCE="auto"; REMOTE_ACCESS_PASSWORD="" ;;
+        esac
+    elif [ "$need_password" -eq 1 ] && [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        REMOTE_ACCESS_PASSWORD_SOURCE="auto"
+        REMOTE_ACCESS_PASSWORD=""
     fi
 }
 

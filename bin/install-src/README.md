@@ -17,7 +17,8 @@ command continues to work:
 
 | Mode | Description |
 |------|-------------|
-| Upgrade | Update files and services; optionally re-run wizard |
-| Quick update | Git fetch + reset only; no wizard, no deps |
-| Reconfigure | Re-run wizard and config only |
-| Uninstall | Stop services, remove app, config, and optionally data/logs |
+| sync | Pull latest code from repo and restart services. No wizard, no deps. |
+| upgrade | Sync files + reinstall deps + apply any missing config. |
+| reconfigure | Re-run selected config sections only (hotspot/firewall/remote_access/modules). |
+| repair | Scan for issues, report, confirm, then fix. |
+| uninstall | Stop services, remove app, config, and optionally data/logs. |

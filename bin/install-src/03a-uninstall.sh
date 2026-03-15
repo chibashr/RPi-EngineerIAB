@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-# Quick update: git fetch + reset in install dir only. No wizard, no deps, no service reconfig.
-run_quick_update() {
-    log_step "Quick update (repo only)"
+# Sync files: git fetch + reset in install dir only. No wizard, no deps, no service reconfig.
+run_sync_files() {
+    log_step "Sync files (repo only)"
     if [ ! -d "$INSTALL_DIR/.git" ]; then
         log_error "Install directory is not a git repository. Use Upgrade instead."
         exit 1
@@ -18,12 +18,117 @@ run_quick_update() {
     fi
     write_version_file
     log_info "Restarting services..."
-    if [ -d /run/systemd/system ]; then
-        systemctl restart rpi-engineer rpi-engineer-api rpi-engineer-network rpi-engineer-serial \
-            rpi-engineer-capture rpi-engineer-system rpi-engineer-monitor rpi-engineer-update \
-            rpi-engineer-logging nginx >> "$INSTALL_LOG" 2>&1 || true
+    if [ -d /run/systemd/system ] && [ "${#ALL_SERVICES[@]}" -gt 0 ]; then
+        systemctl restart "${ALL_SERVICES[@]}" >> "$INSTALL_LOG" 2>&1 || true
     fi
-    echo "Quick update complete. Repository updated to latest $BRANCH."
+    echo "Sync complete. Repository updated to latest $BRANCH."
+}
+
+run_repair() {
+    local issues=()
+    local svc
+
+    # Scan phase
+    [ ! -d "$INSTALL_DIR/.git" ] && issues+=( "Install directory is not a git repository" )
+    [ ! -f "$INSTALL_DIR/venv/bin/python" ] && issues+=( "Python virtual environment missing" )
+    [ ! -f "$CONFIG_DIR/install.conf" ] && issues+=( "install.conf missing" )
+    [ ! -f "$CONFIG_DIR/system.conf" ] && issues+=( "system.conf missing" )
+    for svc in "${DAEMON_SERVICES[@]}"; do
+        if ! systemctl is-active "$svc" &>/dev/null; then
+            issues+=( "Service not running: $svc" )
+        fi
+    done
+    [ ! -f "$INSTALL_DIR/web/index.html" ] && issues+=( "Web assets missing (web/index.html not found)" )
+    [ ! -f "$INSTALL_DIR/services/api_gateway/main.py" ] && issues+=( "API source missing" )
+
+    # Report phase
+    print_section_header "Repair Scan Results"
+    if [ "${#issues[@]}" -eq 0 ]; then
+        echo "No issues detected."
+        return 0
+    fi
+    for svc in "${issues[@]}"; do
+        echo "[!] $svc"
+    done
+
+    # Confirm phase
+    local reply
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        reply="y"
+    else
+        read -r -p "Attempt to repair these issues? (y/n) [y]: " reply
+        reply="${reply:-y}"
+    fi
+    if [[ ! "$reply" =~ ^[Yy]$ ]]; then
+        exit 0
+    fi
+
+    # Repair phase
+    local fixed=()
+
+    if [[ " ${issues[*]} " == *" Install directory is not a git repository "* ]]; then
+        if declare -f run_sync_files &>/dev/null; then
+            ( run_sync_files ) || true
+        else
+            log_warn "run_sync_files not available; cannot repair git repository."
+        fi
+    fi
+    if [[ " ${issues[*]} " == *" Python virtual environment missing "* ]]; then
+        if declare -f install_python_dependencies &>/dev/null; then
+            install_python_dependencies || true
+        else
+            log_warn "install_python_dependencies not available; cannot repair venv."
+        fi
+    fi
+    if [[ " ${issues[*]} " == *" install.conf missing "* ]] || [[ " ${issues[*]} " == *" system.conf missing "* ]]; then
+        if declare -f generate_configs &>/dev/null; then
+            generate_configs || true
+        else
+            log_warn "generate_configs not available; cannot repair config files."
+        fi
+    fi
+    for svc in "${DAEMON_SERVICES[@]}"; do
+        if systemctl is-active "$svc" &>/dev/null; then
+            continue
+        fi
+        if systemctl restart "$svc" 2>/dev/null; then
+            fixed+=( "Service now running: $svc" )
+        fi
+    done
+    if [[ " ${issues[*]} " == *" Web assets missing "* ]] || [[ " ${issues[*]} " == *" API source missing "* ]]; then
+        if declare -f deploy_files &>/dev/null; then
+            deploy_files >> "$INSTALL_LOG" 2>&1 || log_warn "deploy_files failed."
+        else
+            log_warn "deploy_files not available; cannot repair web/API files."
+        fi
+    fi
+
+    # Re-scan and summary
+    issues=()
+    [ ! -d "$INSTALL_DIR/.git" ] && issues+=( "Install directory is not a git repository" )
+    [ ! -f "$INSTALL_DIR/venv/bin/python" ] && issues+=( "Python virtual environment missing" )
+    [ ! -f "$CONFIG_DIR/install.conf" ] && issues+=( "install.conf missing" )
+    [ ! -f "$CONFIG_DIR/system.conf" ] && issues+=( "system.conf missing" )
+    for svc in "${DAEMON_SERVICES[@]}"; do
+        if ! systemctl is-active "$svc" &>/dev/null; then
+            issues+=( "Service not running: $svc" )
+        fi
+    done
+    [ ! -f "$INSTALL_DIR/web/index.html" ] && issues+=( "Web assets missing (web/index.html not found)" )
+    [ ! -f "$INSTALL_DIR/services/api_gateway/main.py" ] && issues+=( "API source missing" )
+
+    print_section_header "Repair Summary"
+    if [ "${#fixed[@]}" -gt 0 ]; then
+        echo "Fixed:"
+        for svc in "${fixed[@]}"; do echo "  $svc"; done
+    fi
+    if [ "${#issues[@]}" -gt 0 ]; then
+        echo "Still failing:"
+        for svc in "${issues[@]}"; do echo "  [!] $svc"; done
+    fi
+    if [ "${#fixed[@]}" -gt 0 ] && [ "${#issues[@]}" -eq 0 ]; then
+        echo "All detected issues were repaired."
+    fi
 }
 
 # Uninstall: stop services, remove configs, remove app and data.
@@ -43,11 +148,9 @@ run_uninstall() {
     fi
 
     # Stop and disable services
-    if [ -d /run/systemd/system ]; then
+    if [ -d /run/systemd/system ] && [ "${#ALL_SERVICES[@]}" -gt 0 ]; then
         log_info "Stopping and disabling services..."
-        for svc in rpi-engineer rpi-engineer-api rpi-engineer-network rpi-engineer-serial \
-            rpi-engineer-capture rpi-engineer-system rpi-engineer-monitor rpi-engineer-update \
-            rpi-engineer-logging rpi-engineer-wlan0; do
+        for svc in "${ALL_SERVICES[@]}"; do
             systemctl stop "$svc" 2>/dev/null || true
             systemctl disable "$svc" 2>/dev/null || true
         done
@@ -55,9 +158,7 @@ run_uninstall() {
     fi
 
     # Remove systemd unit files
-    for unit in rpi-engineer rpi-engineer-api rpi-engineer-network rpi-engineer-serial \
-        rpi-engineer-capture rpi-engineer-system rpi-engineer-monitor rpi-engineer-update \
-        rpi-engineer-logging rpi-engineer-wlan0; do
+    for unit in "${ALL_SERVICES[@]}"; do
         rm -f "/etc/systemd/system/${unit}.service"
     done
     rm -rf /etc/systemd/system/hostapd.service.d
