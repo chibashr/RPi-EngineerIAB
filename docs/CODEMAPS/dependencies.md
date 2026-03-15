@@ -1,6 +1,6 @@
 # Dependencies
 
-<!-- Generated: 2026-03-13 | Docs: ENV.md, RUNBOOK.md synced | Token estimate: ~400 -->
+<!-- Generated: 2026-03-15 | Docs: ENV.md, RUNBOOK.md synced | Token estimate: ~400 -->
 
 ## External Services
 
@@ -18,6 +18,9 @@
 | psutil | System info |
 | pyserial | Serial devices |
 | pyudev | USB device detection |
+| slowapi | Rate limiting (e.g. login) |
+| python-pam | PAM auth (Pi OS admin) |
+| bcrypt | Password hash (auth.conf fallback) |
 
 ## Dev (requirements-dev.txt)
 

@@ -184,10 +184,15 @@ install_teamviewer() {
 
 install_vnc() {
     log_step "Installing TigerVNC"
+    if [ "$INSTALL_MODE" = "continue" ] && dpkg -s tigervnc-standalone-server >/dev/null 2>&1 && [ -f "$INSTALL_DIR/.vnc/passwd" ] && [ -f /etc/systemd/system/vncserver@.service ]; then
+        log_info "TigerVNC already configured; skipping (continue mode)."
+        VNC_CONNECTION="${DEFAULT_HOTSPOT_IP}:5901"
+        return 0
+    fi
     if dpkg -s tigervnc-standalone-server >/dev/null 2>&1; then
         log_info "TigerVNC already installed; skipping package install."
     else
-        if ! DEBIAN_FRONTEND=noninteractive apt-get install -y tigervnc-standalone-server tigervnc-common lxde-core >> "$INSTALL_LOG" 2>&1; then
+        if ! DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" tigervnc-standalone-server tigervnc-common lxde-core >> "$INSTALL_LOG" 2>&1; then
             log_error "Failed to install TigerVNC packages; skipping VNC setup (see $INSTALL_LOG)."
             VNC_CONNECTION=""
             return 0
@@ -226,7 +231,7 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 EOF
-    systemctl daemon-reload
+    systemctl daemon-reload >> "$INSTALL_LOG" 2>&1 || true
     systemctl enable vncserver@1 >> "$INSTALL_LOG" 2>&1 || true
     systemctl start vncserver@1 >> "$INSTALL_LOG" 2>&1 || true
     VNC_CONNECTION="${DEFAULT_HOTSPOT_IP}:5901"

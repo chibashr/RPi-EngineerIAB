@@ -19,6 +19,8 @@
 | `RPI_ENGINEER_UPDATE_REPO` | No | Git repo for updates (default: project repo) | `https://github.com/.../RPi-EngineerIAB.git` |
 | `RPI_ENGINEER_UPDATE_BRANCH` | No | Branch for update check/apply (default: main) | `main` |
 | `RPI_ENGINEER_WAN_CHECK_INTERVAL` | No | WAN check interval in seconds (default: 60) | `60` |
+| `RPI_ENGINEER_AUTH_CONF` | No | Path to auth config (default: config/auth.conf in repo root) | `/etc/rpi-engineer/auth.conf` |
+| `RPI_ENGINEER_AUDIT_LOG` | No | Path to audit log file (default: data/audit.log in repo root) | `/var/lib/rpi-engineer/audit.log` |
 
 <!-- END AUTO-GENERATED -->
 

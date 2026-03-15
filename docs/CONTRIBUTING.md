@@ -14,13 +14,23 @@
 
 ## Available scripts
 
-<!-- AUTO-GENERATED from package.json and requirements-dev.txt - do not edit this table manually -->
+<!-- AUTO-GENERATED from package.json - do not edit this table manually -->
 
 | Command | Description |
 |---------|-------------|
-| `npm test` | Placeholder (no test specified; use pytest for Python tests) |
+| `npm test` | Run Jest test suite (NODE_OPTIONS experimental-vm-modules) |
+| `npm run test:watch` | Jest in watch mode |
+| `npm run test:coverage` | Jest with coverage |
+| `npm run test:ci` | Jest CI mode (ci, coverage, default reporters) |
+| `npm run test:all` | Python pytest + Jest |
+| `npm run test:py` | pytest tests/ -v |
+| `npm run test:py:unit` | pytest tests/unit/ -v -m 'not slow' |
+| `npm run test:py:integration` | pytest tests/integration/ -v |
+| `npm run test:py:coverage` | pytest with --cov=services,lib and term-missing report |
+| `npm run lint` | Echo: run ruff check (pip install ruff) |
+| `npm run lint:fix` | Echo: run ruff check --fix |
 
-**Python (repo root):** `pytest tests/unit/ -v` (unit), `pytest tests/unit/ -v --cov=services` (coverage), `pytest tests/integration/ -v -m integration` (integration), `python -m uvicorn services.api_gateway.main:app --host 0.0.0.0 --port 5000` (API gateway).
+**API (repo root):** `python -m uvicorn services.api_gateway.main:app --host 0.0.0.0 --port 5000`
 
 **Bin scripts (install/deploy):** `bin/install.sh`, `bin/start.sh`, `bin/stop.sh`, `bin/apply-update.sh`, `bin/install-src/*.sh`. See [Installation Specification](.planning/INSTALLATION-SPECIFICATION.md).
 

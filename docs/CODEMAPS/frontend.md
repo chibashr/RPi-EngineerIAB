@@ -1,6 +1,6 @@
 # Frontend
 
-<!-- Generated: 2026-03-13 | Files scanned: 180+ | Token estimate: ~500 -->
+<!-- Generated: 2026-03-15 | Files scanned: 180+ | Token estimate: ~500 -->
 
 ## Page Tree
 
@@ -11,14 +11,14 @@
 ## Component Hierarchy
 
 - Static HTML per page; no SPA framework.
-- Shared: `web/js/api.js` (API base URL, fetch helpers), `web/js/websocket.js`, `web/js/notifications.js`, `web/js/theme.js`, `web/js/modal.js`, `web/js/components.js`, `web/js/mode.js`
+- Shared: `web/js/api.js` (API base URL, fetch helpers, Authorization header), `web/js/auth.js` (login modal, sessionStorage token), `web/js/websocket.js`, `web/js/notifications.js`, `web/js/theme.js`, `web/js/modal.js`, `web/js/components.js`, `web/js/mode.js`
 - Pages: `web/js/pages/*.js` — dashboard, simple, network, serial, capture, updates, system, modules, logs, advanced, docs, fileshare
 - Module UIs: `modules/<name>/web/component.html`, `modules/<name>/web/module.js`; loaded via /modules/<id>/ when module enabled
 
 ## State Management
 
 - No global store. Per-page JS holds state; API calls and WebSockets update DOM.
-- Theme: `localStorage` key `rpi-theme` (light/dark/auto).
+- Theme: `localStorage` key `rpi-theme` (light/dark/auto). Auth: token in sessionStorage; admin-only UI gated by login.
 - Connection status: banner when API unreachable (e.g. simple-connection-banner).
 
 ## Data Flow
