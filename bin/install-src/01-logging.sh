@@ -32,22 +32,22 @@ step_counter_bar() {
 }
 
 log_info() {
-    echo "[INFO] $1" | tee -a "$INSTALL_LOG"
+    echo "[INFO] $1" | tee -a "$INSTALL_LOG" 2>/dev/null || echo "[INFO] $1"
 }
 
 log_warn() {
     echo -e "${C_YELLOW}[WARN] $1${C_RESET}"
-    echo "[WARN] $1" >> "$INSTALL_LOG"
+    echo "[WARN] $1" >> "$INSTALL_LOG" 2>/dev/null || true
 }
 
 log_error() {
     echo -e "${C_RED}[ERROR] $1${C_RESET}"
-    echo "[ERROR] $1" >> "$INSTALL_LOG"
+    echo "[ERROR] $1" >> "$INSTALL_LOG" 2>/dev/null || true
 }
 
 log_step() {
     echo -e "${C_BOLD}${C_CYAN}[STEP] $1${C_RESET}"
-    echo "[STEP] $1" >> "$INSTALL_LOG"
+    echo "[STEP] $1" >> "$INSTALL_LOG" 2>/dev/null || true
 }
 
 show_progress() {
