@@ -5,6 +5,7 @@ per-IP lockout. Token format: <expiry_unix_int>.<hmac_hex>.
 
 import configparser
 import hmac
+import os
 import secrets
 import time
 from pathlib import Path
@@ -12,6 +13,7 @@ from pathlib import Path
 import bcrypt
 
 _AUTH_CONF = "config/auth.conf"
+_AUTH_CONF_ENV = "RPI_ENGINEER_AUTH_CONF"
 _LOCKOUT_WINDOW = 600.0
 _LOCKOUT_THRESHOLD = 20
 _TOKEN_EXPIRY_SECONDS = 14400
@@ -29,6 +31,8 @@ def _repo_root() -> Path:
 
 
 def _auth_conf_path() -> Path:
+    if _AUTH_CONF_ENV in os.environ:
+        return Path(os.environ[_AUTH_CONF_ENV])
     return _repo_root() / _AUTH_CONF
 
 
