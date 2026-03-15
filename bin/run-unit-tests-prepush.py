@@ -8,10 +8,13 @@ import tempfile
 
 
 def main() -> int:
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as f:
-        path = f.name
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False) as auth_path:
+        auth_path.close()
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".audit.log", delete=False) as audit_path:
+        audit_path.close()
     try:
-        os.environ["RPI_ENGINEER_AUTH_CONF"] = path
+        os.environ["RPI_ENGINEER_AUTH_CONF"] = auth_path.name
+        os.environ["RPI_ENGINEER_AUDIT_LOG"] = audit_path.name
         return subprocess.call(
             [
                 sys.executable,
@@ -29,10 +32,11 @@ def main() -> int:
             cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))) or ".",
         )
     finally:
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
+        for p in (auth_path.name, audit_path.name):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":
