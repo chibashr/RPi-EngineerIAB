@@ -2508,6 +2508,121 @@ main() {
         create_health_check_script
     fi
 
+    # --- Security Hardening (Prompt 2) ---
+    echo ""
+    echo "=== Security Hardening ==="
+
+    # Step 1 — Hotspot interface detection
+    if [ -f "$CONFIG_DIR/network.conf" ] && grep -q "hotspot_interface=" "$CONFIG_DIR/network.conf" 2>/dev/null; then
+        WLAN_IF=$(awk -F= '/^hotspot_interface=/ {print $2; exit}' "$CONFIG_DIR/network.conf")
+    else
+        WLAN_IF=$(iw dev 2>/dev/null | awk '$1=="Interface"{print $2}' | head -1)
+        if [ -z "$WLAN_IF" ]; then
+            [ "${NONINTERACTIVE:-0}" = "1" ] && WLAN_IF="wlan0"
+            interactive_read -r -p "No wireless interface detected. Enter hotspot interface name (e.g. wlan0): " WLAN_IF
+            WLAN_IF=${WLAN_IF:-wlan0}
+        else
+            interactive_read -r -p "Detected hotspot interface: $WLAN_IF. Press Enter to confirm or type a different name: " INPUT
+            WLAN_IF=${INPUT:-$WLAN_IF}
+        fi
+    fi
+    mkdir -p "$CONFIG_DIR"
+    cat > "$CONFIG_DIR/network.conf" << EOF
+# Written by install.sh
+hotspot_interface=$WLAN_IF
+bind_lan_interface=false
+EOF
+    echo "Hotspot interface: $WLAN_IF"
+
+    # Step 2 — TLS certificate generation
+    mkdir -p "$CONFIG_DIR/tls"
+    if [ ! -f "$CONFIG_DIR/tls/cert.pem" ]; then
+        openssl req -x509 -newkey rsa:4096 -keyout "$CONFIG_DIR/tls/key.pem" -out "$CONFIG_DIR/tls/cert.pem" -days 3650 -nodes -subj "/CN=rpi-engineer.local" 2>/dev/null
+        chmod 600 "$CONFIG_DIR/tls/key.pem"
+        chmod 644 "$CONFIG_DIR/tls/cert.pem"
+    fi
+    TLS_FINGERPRINT=$(openssl x509 -in "$CONFIG_DIR/tls/cert.pem" -noout -sha256 -fingerprint 2>/dev/null | sed 's/.*=//' || echo "")
+
+    # Step 3 — iptables rules for eth1
+    if [ ! -f /.dockerenv ] && [ ! -f /run/.containerenv ]; then
+        iptables -D INPUT -i eth1 -m state --state NEW -j DROP 2>/dev/null || true
+        iptables -A INPUT -i eth1 -m state --state NEW -j DROP
+        iptables -A INPUT -i eth1 -m state --state ESTABLISHED,RELATED -j ACCEPT
+        iptables -A OUTPUT -o eth1 -p tcp -d connect.raspberrypi.com --dport 443 -j ACCEPT
+        iptables -A OUTPUT -o eth1 -p udp -d stun.raspberrypi.com --dport 3478 -j ACCEPT
+        for TURN_HOST in turn1.raspberrypi.com turn2.raspberrypi.com turn3.raspberrypi.com; do
+            iptables -A OUTPUT -o eth1 -p tcp -d $TURN_HOST --dport 443 -j ACCEPT
+            iptables -A OUTPUT -o eth1 -p tcp -d $TURN_HOST --dport 3478 -j ACCEPT
+            iptables -A OUTPUT -o eth1 -p udp -d $TURN_HOST --dport 443 -j ACCEPT
+            iptables -A OUTPUT -o eth1 -p udp -d $TURN_HOST --dport 3478 -j ACCEPT
+            iptables -A OUTPUT -o eth1 -p udp -d $TURN_HOST --dport 49152:65535 -j ACCEPT
+        done
+        apt-get install -y iptables-persistent 2>/dev/null || true
+        netfilter-persistent save 2>/dev/null || true
+        echo "iptables rules applied and saved."
+    fi
+
+    # Step 4 — Hotspot password
+    HOTSPOT_PASS=$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9!@#$%^&*' | head -c 20)
+    echo "hotspot_password=$HOTSPOT_PASS" > "$CONFIG_DIR/hotspot.conf"
+
+    # Step 5 — logrotate for audit log
+    cat > /etc/logrotate.d/rpi-engineer-audit << EOF
+$DATA_DIR/audit.log {
+    rotate 10
+    size 50M
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
+EOF
+    echo "logrotate config written."
+
+    # Step 6 — AnyDesk hardening (conditional)
+    if which anydesk > /dev/null 2>&1; then
+        if ! grep -q "anydesk_password" "$CONFIG_DIR/remote-access.conf" 2>/dev/null; then
+            ANYDESK_PASS=$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9!@#$%^&*' | head -c 16)
+            echo "anydesk_password=$ANYDESK_PASS" >> "$CONFIG_DIR/remote-access.conf"
+            anydesk --set-password "$ANYDESK_PASS" 2>/dev/null || \
+                echo "WARNING: anydesk --set-password failed. Set the unattended password manually in AnyDesk settings."
+        fi
+        if [ -f /etc/anydesk/service.conf ]; then
+            grep -q "ad.security.acl_enabled" /etc/anydesk/service.conf || \
+                echo "ad.security.acl_enabled=1" >> /etc/anydesk/service.conf
+        fi
+        echo "AnyDesk hardened."
+    fi
+
+    # Step 7 — TeamViewer hardening (conditional)
+    if which teamviewer > /dev/null 2>&1; then
+        if ! grep -q "teamviewer_password" "$CONFIG_DIR/remote-access.conf" 2>/dev/null; then
+            TV_PASS=$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9!@#$%^&*' | head -c 16)
+            echo "teamviewer_password=$TV_PASS" >> "$CONFIG_DIR/remote-access.conf"
+            teamviewer passwd "$TV_PASS" 2>/dev/null || \
+                echo "WARNING: teamviewer passwd failed. Set the fixed password manually in TeamViewer options."
+        fi
+        echo "TeamViewer hardened."
+    fi
+
+    # Step 8 — Secure config files and print summary
+    chmod 600 "$CONFIG_DIR/remote-access.conf" 2>/dev/null || true
+    chmod 600 "$CONFIG_DIR/auth.conf" 2>/dev/null || true
+
+    echo ""
+    echo "=============================="
+    echo " Installation Complete"
+    echo "=============================="
+    echo " Hotspot interface : $WLAN_IF"
+    echo " Hotspot password  : $HOTSPOT_PASS"
+    echo " TLS fingerprint   : $TLS_FINGERPRINT"
+    echo ""
+    echo " SAVE THESE VALUES."
+    echo " The hotspot password will not be shown again."
+    echo " AnyDesk/TeamViewer passwords are in config/remote-access.conf (root-only)."
+    echo "=============================="
+
     progress_cleanup
     echo
     show_installation_summary

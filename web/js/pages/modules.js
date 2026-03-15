@@ -1,4 +1,5 @@
 import { apiDelete, apiGet, apiPost, extractData } from "../api.js";
+import { requireAdmin } from "../auth.js";
 import { initTabs } from "../components.js";
 import { modalPrompt } from "../modal.js";
 
@@ -70,41 +71,47 @@ function renderInstalled(modules, updates = []) {
       const updateBtn = document.createElement("button");
       updateBtn.className = "btn btn-primary";
       updateBtn.textContent = "Update";
-      updateBtn.addEventListener("click", async () => {
-        try {
-          await apiPost(`/api/v1/modules/update/${module.id}`, {});
-          showToast("Module updated.", "success");
-          loadModules();
-        } catch (error) {
-          showToast("Unable to update module.", "error");
-        }
+      updateBtn.addEventListener("click", () => {
+        requireAdmin(async () => {
+          try {
+            await apiPost(`/api/v1/modules/update/${module.id}`, {});
+            showToast("Module updated.", "success");
+            loadModules();
+          } catch (error) {
+            showToast("Unable to update module.", "error");
+          }
+        });
       });
       actions.appendChild(updateBtn);
     }
     const toggle = document.createElement("button");
     toggle.className = "btn btn-secondary";
     toggle.textContent = module.enabled ? "Disable" : "Enable";
-    toggle.addEventListener("click", async () => {
-      try {
-        await apiPost(
-          `/api/v1/modules/${module.enabled ? "disable" : "enable"}/${module.id}`,
-          {}
-        );
-        loadModules();
-      } catch (error) {
-        showToast("Unable to update module state.", "error");
-      }
+    toggle.addEventListener("click", () => {
+      requireAdmin(async () => {
+        try {
+          await apiPost(
+            `/api/v1/modules/${module.enabled ? "disable" : "enable"}/${module.id}`,
+            {}
+          );
+          loadModules();
+        } catch (error) {
+          showToast("Unable to update module state.", "error");
+        }
+      });
     });
     const uninstall = document.createElement("button");
     uninstall.className = "btn btn-ghost";
     uninstall.textContent = "Uninstall";
-    uninstall.addEventListener("click", async () => {
-      try {
-        await apiDelete(`/api/v1/modules/uninstall/${module.id}`);
-        loadModules();
-      } catch (error) {
-        showToast("Unable to uninstall module.", "error");
-      }
+    uninstall.addEventListener("click", () => {
+      requireAdmin(async () => {
+        try {
+          await apiDelete(`/api/v1/modules/uninstall/${module.id}`);
+          loadModules();
+        } catch (error) {
+          showToast("Unable to uninstall module.", "error");
+        }
+      });
     });
     actions.appendChild(toggle);
     actions.appendChild(uninstall);
@@ -152,20 +159,22 @@ function renderAvailable(available) {
     mainBtn.textContent = m.update_available ? "Update" : m.installed ? "Installed" : "Install";
     if (!m.installed || m.update_available) {
       mainBtn.disabled = false;
-      mainBtn.addEventListener("click", async () => {
-        try {
-          if (m.installed && m.update_available) {
-            await apiPost(`/api/v1/modules/update/${m.id}`, {});
-            showToast("Module updated.", "success");
-          } else {
-            await apiPost("/api/v1/modules/install-from-repo", { module_id: m.id });
-            showToast("Module installed.", "success");
+      mainBtn.addEventListener("click", () => {
+        requireAdmin(async () => {
+          try {
+            if (m.installed && m.update_available) {
+              await apiPost(`/api/v1/modules/update/${m.id}`, {});
+              showToast("Module updated.", "success");
+            } else {
+              await apiPost("/api/v1/modules/install-from-repo", { module_id: m.id });
+              showToast("Module installed.", "success");
+            }
+            loadModules();
+            loadAvailable();
+          } catch (error) {
+            showToast(error?.message || "Action failed.", "error");
           }
-          loadModules();
-          loadAvailable();
-        } catch (error) {
-          showToast(error?.message || "Action failed.", "error");
-        }
+        });
       });
     } else {
       mainBtn.disabled = true;
@@ -220,20 +229,22 @@ async function loadAvailable() {
 function setupActions() {
   const uploadButton = document.getElementById("upload-module");
   if (uploadButton) {
-    uploadButton.addEventListener("click", async () => {
-      const moduleUrl = await modalPrompt("Enter module archive path or URL", "", {
-        label: "Path or URL",
+    uploadButton.addEventListener("click", () => {
+      requireAdmin(async () => {
+        const moduleUrl = await modalPrompt("Enter module archive path or URL", "", {
+          label: "Path or URL",
+        });
+        if (moduleUrl === null || !moduleUrl.trim()) {
+          return;
+        }
+        try {
+          await apiPost("/api/v1/modules/install", { module_url: moduleUrl });
+          showToast("Module installed.", "success");
+          loadModules();
+        } catch (error) {
+          showToast("Unable to install module.", "error");
+        }
       });
-      if (moduleUrl === null || !moduleUrl.trim()) {
-        return;
-      }
-      try {
-        await apiPost("/api/v1/modules/install", { module_url: moduleUrl });
-        showToast("Module installed.", "success");
-        loadModules();
-      } catch (error) {
-        showToast("Unable to install module.", "error");
-      }
     });
   }
 }

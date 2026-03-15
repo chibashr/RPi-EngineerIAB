@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from lib.module_logger import get_service_logger
+from services.api_gateway.routes.auth import require_admin
 from services.update_manager import update_manager
 
 from ..response import error_response, success_response
@@ -36,7 +37,7 @@ def apply_update():
 
 
 @updates_router.post("/reconfigure")
-def reconfigure():
+def reconfigure(_: str = Depends(require_admin)):
     """Re-run install script in reconfigure mode (existing config). Requires sudo for install.sh."""
     try:
         payload = update_manager.run_reconfigure()
@@ -48,7 +49,7 @@ def reconfigure():
 
 
 @updates_router.post("/reinstall")
-def reinstall_from_scratch():
+def reinstall_from_scratch(_: str = Depends(require_admin)):
     """Run install script in reinstall_from_scratch mode (full reinstall using existing config). Requires sudo for install.sh."""
     try:
         payload = update_manager.run_reinstall_from_scratch()
@@ -60,7 +61,7 @@ def reinstall_from_scratch():
 
 
 @updates_router.post("/rollback")
-def rollback_update():
+def rollback_update(_: str = Depends(require_admin)):
     try:
         payload = update_manager.rollback_update()
     except RuntimeError as exc:

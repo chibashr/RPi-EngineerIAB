@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiUpload, extractData } from "../api.js";
+import { getToken, requireAdmin, showLoginModal } from "../auth.js";
 import { copyTextToClipboard, initTabs } from "../components.js";
 
 const elements = {
@@ -249,14 +250,34 @@ async function applyUpdate(applyButton) {
   applyButton.textContent = "Updating…";
 
   const url = new URL("/api/v1/updates/apply", window.location.origin);
+  const token = getToken();
+  const headers = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
 
   try {
-    const response = await fetch(url.toString(), {
+    let response = await fetch(url.toString(), {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers,
       body: "{}",
       signal: AbortSignal.timeout(30000),
     });
+    if (response.status === 401) {
+      await showLoginModal();
+      const retryToken = getToken();
+      response = await fetch(url.toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...(retryToken ? { Authorization: `Bearer ${retryToken}` } : {}),
+        },
+        body: "{}",
+        signal: AbortSignal.timeout(30000),
+      });
+    }
 
     const payload = await response.json().catch(() => ({}));
     const data = extractData(payload) || {};
@@ -320,7 +341,7 @@ function setupActions() {
   const applyButton = document.getElementById("apply-update");
   if (applyButton) {
     applyButton.addEventListener("click", () => {
-      applyUpdate(applyButton);
+      requireAdmin(() => applyUpdate(applyButton));
     });
   }
 
@@ -335,14 +356,16 @@ function setupActions() {
 
   const rollbackButton = document.getElementById("rollback-update");
   if (rollbackButton) {
-    rollbackButton.addEventListener("click", async () => {
-      try {
-        await apiPost("/api/v1/updates/rollback", {});
-        showToast("Rollback completed (configuration and version restored).", "success");
-        await loadUpdates();
-      } catch (error) {
-        showToast("Unable to rollback update.", "error");
-      }
+    rollbackButton.addEventListener("click", () => {
+      requireAdmin(async () => {
+        try {
+          await apiPost("/api/v1/updates/rollback", {});
+          showToast("Rollback completed (configuration and version restored).", "success");
+          await loadUpdates();
+        } catch (error) {
+          showToast("Unable to rollback update.", "error");
+        }
+      });
     });
   }
 
@@ -366,19 +389,21 @@ function setupActions() {
   const restoreButton = document.getElementById("restore-backup");
   const backupInput = document.getElementById("backup-file");
   if (restoreButton && backupInput) {
-    restoreButton.addEventListener("click", async () => {
-      if (!backupInput.files?.length) {
-        showToast("Select a backup file to restore.", "error");
-        return;
-      }
-      const formData = new FormData();
-      formData.append("file", backupInput.files[0]);
-      try {
-        await apiUpload("/api/v1/backup/restore", formData);
-        showToast("Backup restored successfully.", "success");
-      } catch (error) {
-        showToast("Unable to restore backup.", "error");
-      }
+    restoreButton.addEventListener("click", () => {
+      requireAdmin(async () => {
+        if (!backupInput.files?.length) {
+          showToast("Select a backup file to restore.", "error");
+          return;
+        }
+        const formData = new FormData();
+        formData.append("file", backupInput.files[0]);
+        try {
+          await apiUpload("/api/v1/backup/restore", formData);
+          showToast("Backup restored successfully.", "success");
+        } catch (error) {
+          showToast("Unable to restore backup.", "error");
+        }
+      });
     });
   }
 }

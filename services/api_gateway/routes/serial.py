@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from fastapi import APIRouter, Body, Query
+from fastapi import APIRouter, Body, Depends, Query
 from starlette.responses import FileResponse
 
 from lib.module_logger import get_service_logger
+from services.api_gateway.routes.auth import require_admin
 from services.serial_manager import serial_manager
 from services.serial_manager.manager import EXPORT_DIR
 
@@ -23,9 +24,7 @@ async def list_devices(
     refresh: str = Query(default="", alias="refresh"),
 ):
     force_refresh = refresh.lower() in ("1", "true", "yes")
-    data = await asyncio.to_thread(
-        serial_manager.list_devices, force_refresh=force_refresh
-    )
+    data = await asyncio.to_thread(serial_manager.list_devices, force_refresh=force_refresh)
     return success_response(data)
 
 
@@ -155,7 +154,7 @@ async def get_log_content(log_id: str):
 
 
 @router.delete("/logs/{log_id}")
-def delete_log(log_id: str):
+def delete_log(log_id: str, _: str = Depends(require_admin)):
     try:
         data = serial_manager.delete_log(log_id)
     except KeyError as exc:
@@ -181,9 +180,7 @@ def export_logs(payload: dict | None = Body(default=None)):
     payload = payload or {}
     log_ids = payload.get("log_ids", [])
     if not isinstance(log_ids, list):
-        return error_response(
-            "VALIDATION_ERROR", "log_ids must be a list", status_code=400
-        )
+        return error_response("VALIDATION_ERROR", "log_ids must be a list", status_code=400)
     data = serial_manager.export_logs(log_ids)
     return success_response(data, status_code=201)
 

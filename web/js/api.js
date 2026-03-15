@@ -1,4 +1,11 @@
+import { getToken, showLoginModal } from "./auth.js";
+
 const DEFAULT_TIMEOUT_MS = 8000;
+
+function authHeaders() {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 function withTimeout(promise, timeoutMs = DEFAULT_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
@@ -56,16 +63,18 @@ export async function apiPost(endpoint, body, options = {}) {
   const url = new URL(safeEndpoint, window.location.origin);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const { timeoutMs: _omit, ...fetchOptions } = options;
-  const response = await withTimeout(
+  const doFetch = (headers) =>
     fetch(url.toString(), {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "application/json", ...headers },
       body: JSON.stringify(body || {}),
       ...fetchOptions,
-    }),
-    timeoutMs
-  );
-
+    });
+  let response = await withTimeout(doFetch(authHeaders()), timeoutMs);
+  if (response.status === 401) {
+    await showLoginModal();
+    response = await withTimeout(doFetch(authHeaders()), timeoutMs);
+  }
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
     try {
@@ -84,27 +93,28 @@ export async function apiPost(endpoint, body, options = {}) {
     }
     throw new Error(message);
   }
-
   return response.json();
 }
 
 export async function apiPut(endpoint, body, options = {}) {
   const safeEndpoint = normalizeEndpoint(endpoint);
   const url = new URL(safeEndpoint, window.location.origin);
-  const response = await withTimeout(
+  const doFetch = (headers) =>
     fetch(url.toString(), {
       method: "PUT",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "application/json", ...headers },
       body: JSON.stringify(body || {}),
       ...options,
-    })
-  );
-
+    });
+  let response = await withTimeout(doFetch(authHeaders()));
+  if (response.status === 401) {
+    await showLoginModal();
+    response = await withTimeout(doFetch(authHeaders()));
+  }
   if (!response.ok) {
     const message = `Request failed (${response.status})`;
     throw new Error(message);
   }
-
   return response.json();
 }
 
@@ -113,39 +123,43 @@ export async function apiDelete(endpoint, options = {}) {
   const url = new URL(safeEndpoint, window.location.origin);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const { timeoutMs: _omit, ...fetchOptions } = options;
-  const response = await withTimeout(
+  const doFetch = (headers) =>
     fetch(url.toString(), {
       method: "DELETE",
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", ...headers },
       ...fetchOptions,
-    }),
-    timeoutMs
-  );
-
+    });
+  let response = await withTimeout(doFetch(authHeaders()), timeoutMs);
+  if (response.status === 401) {
+    await showLoginModal();
+    response = await withTimeout(doFetch(authHeaders()), timeoutMs);
+  }
   if (!response.ok) {
     const message = `Request failed (${response.status})`;
     throw new Error(message);
   }
-
   return response.json();
 }
 
 export async function apiUpload(endpoint, formData, options = {}) {
   const safeEndpoint = normalizeEndpoint(endpoint);
   const url = new URL(safeEndpoint, window.location.origin);
-  const response = await withTimeout(
+  const doFetch = (headers) =>
     fetch(url.toString(), {
       method: "POST",
+      headers: { ...headers },
       body: formData,
       ...options,
-    })
-  );
-
+    });
+  let response = await withTimeout(doFetch(authHeaders()));
+  if (response.status === 401) {
+    await showLoginModal();
+    response = await withTimeout(doFetch(authHeaders()));
+  }
   if (!response.ok) {
     const message = `Request failed (${response.status})`;
     throw new Error(message);
   }
-
   return response.json();
 }
 

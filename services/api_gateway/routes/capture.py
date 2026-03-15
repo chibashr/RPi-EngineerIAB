@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Depends
 from fastapi.responses import FileResponse
 
 from lib.module_logger import get_service_logger
+from services.api_gateway.routes.auth import require_admin
 from services.capture_manager import capture_manager
 
 from ..response import error_response, success_response
@@ -22,7 +23,7 @@ def list_interfaces():
 
 
 @capture_router.post("/start")
-def start_capture(payload: Optional[Dict[str, Any]] = Body(default=None)):
+def start_capture(payload: dict[str, Any] | None = Body(default=None)):
     data_in = payload or {}
     try:
         data = capture_manager.start_capture(data_in)
@@ -95,7 +96,7 @@ def download_capture(capture_id: str):
 
 
 @capture_router.delete("/completed/{capture_id}")
-def delete_capture(capture_id: str):
+def delete_capture(capture_id: str, _: str = Depends(require_admin)):
     try:
         data = capture_manager.delete_completed(capture_id)
         logger.info("Capture deleted via API: %s", capture_id[:8])

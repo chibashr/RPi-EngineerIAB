@@ -6,10 +6,11 @@ import asyncio
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import FileResponse
 
 from lib.module_logger import get_service_logger
+from services.api_gateway.routes.auth import require_admin
 from services.update_manager import update_manager
 
 from ..response import error_response, success_response
@@ -32,7 +33,7 @@ def download_config():
 
 
 @backup_router.post("/restore")
-async def restore_config(file: UploadFile = File(...)):
+async def restore_config(file: UploadFile = File(...), _: str = Depends(require_admin)):
     if not file.filename:
         return error_response("VALIDATION_ERROR", "Backup file is required", status_code=400)
     temp_path = None

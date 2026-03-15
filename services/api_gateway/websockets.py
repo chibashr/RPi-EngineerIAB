@@ -12,10 +12,12 @@ import shutil
 import time
 from typing import TYPE_CHECKING
 
-from fastapi import WebSocket
+from fastapi import Query, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
+from lib.audit import audit_log
 from lib.module_logger import get_api_logger
+from services.auth_service.manager import verify_token
 from services.capture_manager import capture_manager
 from services.logging_service import logging_service
 from services.monitor_service import MonitorService
@@ -45,15 +47,13 @@ def _capture_error_message(stderr: str, is_active: bool) -> str:
     """Turn tshark/dumpcap stderr into a user-friendly message."""
     err = stderr.strip()[:500]
     if "Permission denied" in err and ("dumpcap" in err or "Couldn't run" in err):
-        return (
-            "Live capture requires permission to capture packets. "
-            "dumpcap could not run (Permission denied)."
-            + (CAPTURE_PERMISSION_HINT if is_active else "")
+        return "Live capture requires permission to capture packets. " "dumpcap could not run (Permission denied)." + (
+            CAPTURE_PERMISSION_HINT if is_active else ""
         )
     return f"tshark exited: {err}"
 
 
-def register_websockets(app: "FastAPI") -> None:
+def register_websockets(app: FastAPI) -> None:
     """Register WebSocket routes on the FastAPI app."""
 
     @app.websocket("/ws/status")
@@ -78,20 +78,14 @@ def register_websockets(app: "FastAPI") -> None:
 
                     # Gather status (sync managers → run in executor)
                     loop = asyncio.get_running_loop()
-                    system_status = await loop.run_in_executor(
-                        None, _system_manager.get_status
-                    )
-                    network_status = await loop.run_in_executor(
-                        None, _network_manager.get_status
-                    )
+                    system_status = await loop.run_in_executor(None, _system_manager.get_status)
+                    network_status = await loop.run_in_executor(None, _network_manager.get_status)
                     interfaces_data = await loop.run_in_executor(
                         None,
                         lambda: _network_manager.list_interfaces(),
                     )
                     try:
-                        monitor_status = await loop.run_in_executor(
-                            None, _monitor_service.get_status
-                        )
+                        monitor_status = await loop.run_in_executor(None, _monitor_service.get_status)
                     except Exception:
                         monitor_status = {}
 
@@ -99,9 +93,7 @@ def register_websockets(app: "FastAPI") -> None:
                     if monitor_status:
                         system_status = dict(system_status)
                         system_status["health"] = monitor_status.get("health")
-                        system_status["alerts"] = list(
-                            monitor_status.get("alerts", [])
-                        )
+                        system_status["alerts"] = list(monitor_status.get("alerts", []))
                         system_status["monitor"] = monitor_status
                     else:
                         system_status = dict(system_status)
@@ -120,21 +112,15 @@ def register_websockets(app: "FastAPI") -> None:
                     except Exception:
                         pass
 
-                    await websocket.send_json(
-                        {"type": "system_metrics", "data": system_status}
-                    )
-                    await websocket.send_json(
-                        {"type": "network_status", "data": network_status}
-                    )
+                    await websocket.send_json({"type": "system_metrics", "data": system_status})
+                    await websocket.send_json({"type": "network_status", "data": network_status})
                     await websocket.send_json(
                         {
                             "type": "network_interfaces",
                             "data": {"interfaces": interfaces_data.get("interfaces", [])},
                         }
                     )
-                    await websocket.send_json(
-                        {"type": "monitor_status", "data": monitor_status}
-                    )
+                    await websocket.send_json({"type": "monitor_status", "data": monitor_status})
                     tx_count += 4
                 except WebSocketDisconnect:
                     break
@@ -173,13 +159,10 @@ def register_websockets(app: "FastAPI") -> None:
         try:
             session = serial_manager.get_session_record(session_id)
         except KeyError:
-            await websocket.send_json(
-                {"type": "error", "message": "Session not found"}
-            )
+            await websocket.send_json({"type": "error", "message": "Session not found"})
             duration = time.monotonic() - start
             logger.info(
-                "WS disconnect path=/ws/serial session=%s client=%s "
-                "duration_s=%.1f rx=%d tx=%d",
+                "WS disconnect path=/ws/serial session=%s client=%s " "duration_s=%.1f rx=%d tx=%d",
                 session_id,
                 client,
                 duration,
@@ -195,13 +178,10 @@ def register_websockets(app: "FastAPI") -> None:
         try:
             import serial as pyserial  # type: ignore
         except ImportError:
-            await websocket.send_json(
-                {"type": "error", "message": "pyserial not installed"}
-            )
+            await websocket.send_json({"type": "error", "message": "pyserial not installed"})
             duration = time.monotonic() - start
             logger.info(
-                "WS disconnect path=/ws/serial session=%s client=%s "
-                "duration_s=%.1f rx=%d tx=%d",
+                "WS disconnect path=/ws/serial session=%s client=%s " "duration_s=%.1f rx=%d tx=%d",
                 session_id,
                 client,
                 duration,
@@ -228,13 +208,10 @@ def register_websockets(app: "FastAPI") -> None:
                 device_id,
                 exc,
             )
-            await websocket.send_json(
-                {"type": "error", "message": str(exc)}
-            )
+            await websocket.send_json({"type": "error", "message": str(exc)})
             duration = time.monotonic() - start
             logger.info(
-                "WS disconnect path=/ws/serial session=%s client=%s "
-                "duration_s=%.1f rx=%d tx=%d",
+                "WS disconnect path=/ws/serial session=%s client=%s " "duration_s=%.1f rx=%d tx=%d",
                 session_id,
                 client,
                 duration,
@@ -288,26 +265,20 @@ def register_websockets(app: "FastAPI") -> None:
                         if isinstance(payload, str):
                             out = payload.encode("utf-8", errors="replace")
                             loop = asyncio.get_running_loop()
-                            await loop.run_in_executor(
-                                None, lambda: ser.write(out)
-                            )
+                            await loop.run_in_executor(None, lambda out=out: ser.write(out))
                             serial_manager.record_tx(session_id, out)
                     elif msg_type == "control":
                         action = data.get("action")
                         if action == "pause_logging":
-                            serial_manager.update_session(
-                                session_id, {"logging_paused": True}
-                            )
+                            serial_manager.update_session(session_id, {"logging_paused": True})
                         elif action == "resume_logging":
-                            serial_manager.update_session(
-                                session_id, {"logging_paused": False}
-                            )
+                            serial_manager.update_session(session_id, {"logging_paused": False})
                         elif action == "break":
                             duration = float(data.get("duration", 0.25))
                             loop = asyncio.get_running_loop()
                             await loop.run_in_executor(
                                 None,
-                                lambda: _send_break(ser, duration),
+                                lambda dur=duration: _send_break(ser, dur),
                             )
                 except WebSocketDisconnect:
                     break
@@ -334,6 +305,7 @@ def register_websockets(app: "FastAPI") -> None:
         def _send_break(port, dur: float) -> None:
             port.break_condition = True
             import time
+
             time.sleep(dur)
             port.break_condition = False
 
@@ -353,8 +325,7 @@ def register_websockets(app: "FastAPI") -> None:
         finally:
             duration = time.monotonic() - start
             logger.info(
-                "WS disconnect path=/ws/serial session=%s client=%s "
-                "duration_s=%.1f rx=%d tx=%d",
+                "WS disconnect path=/ws/serial session=%s client=%s " "duration_s=%.1f rx=%d tx=%d",
                 session_id,
                 client,
                 duration,
@@ -369,7 +340,12 @@ def register_websockets(app: "FastAPI") -> None:
             serial_manager.release_session(session_id)
 
     @app.websocket("/ws/updates/apply")
-    async def updates_apply_stream(websocket: WebSocket) -> None:
+    async def updates_apply_stream(websocket: WebSocket, token: str = Query(None)) -> None:
+        if not verify_token(token):
+            audit_log({"event": "ws_auth_rejected", "path": "/ws/updates/apply"})
+            await websocket.close(code=1008)
+            return
+        audit_log({"event": "ws_auth_accepted", "path": "/ws/updates/apply"})
         client = websocket.client.host if websocket.client else "unknown"
         logger.info("WS connect path=/ws/updates/apply client=%s", client)
         start = time.monotonic()
@@ -382,9 +358,7 @@ def register_websockets(app: "FastAPI") -> None:
 
         def run_apply() -> None:
             try:
-                result = update_manager.apply_update(
-                    progress_callback=progress_callback
-                )
+                result = update_manager.apply_update(progress_callback=progress_callback)
                 progress_queue.put(("done", result))
             except Exception as exc:
                 progress_queue.put(("error", str(exc)))
@@ -394,24 +368,16 @@ def register_websockets(app: "FastAPI") -> None:
             loop = asyncio.get_running_loop()
             while True:
                 try:
-                    kind, payload = await loop.run_in_executor(
-                        None, progress_queue.get
-                    )
+                    kind, payload = await loop.run_in_executor(None, progress_queue.get)
                     if kind == "progress":
-                        await websocket.send_json(
-                            {"type": "progress", "line": payload}
-                        )
+                        await websocket.send_json({"type": "progress", "line": payload})
                         tx_count += 1
                     elif kind == "done":
-                        await websocket.send_json(
-                            {"type": "done", "result": payload}
-                        )
+                        await websocket.send_json({"type": "done", "result": payload})
                         tx_count += 1
                         return
                     elif kind == "error":
-                        await websocket.send_json(
-                            {"type": "error", "message": str(payload)}
-                        )
+                        await websocket.send_json({"type": "error", "message": str(payload)})
                         tx_count += 1
                         return
                 except Exception:
@@ -437,9 +403,7 @@ def register_websockets(app: "FastAPI") -> None:
                 exc_info=True,
             )
             try:
-                await websocket.send_json(
-                    {"type": "error", "message": str(exc)}
-                )
+                await websocket.send_json({"type": "error", "message": str(exc)})
             except Exception:
                 pass
             raise
@@ -458,13 +422,10 @@ def register_websockets(app: "FastAPI") -> None:
         try:
             job = capture_manager.get_job(capture_id)
             if not job:
-                await websocket.send_json(
-                    {"type": "error", "message": "Capture not found"}
-                )
+                await websocket.send_json({"type": "error", "message": "Capture not found"})
                 duration = time.monotonic() - start
                 logger.info(
-                    "WS disconnect path=/ws/capture capture=%s client=%s "
-                    "duration_s=%.1f tx=%d",
+                    "WS disconnect path=/ws/capture capture=%s client=%s " "duration_s=%.1f tx=%d",
                     capture_id,
                     client,
                     duration,
@@ -472,13 +433,10 @@ def register_websockets(app: "FastAPI") -> None:
                 )
                 return
             if not shutil.which("tshark"):
-                await websocket.send_json(
-                    {"type": "error", "message": "tshark not installed"}
-                )
+                await websocket.send_json({"type": "error", "message": "tshark not installed"})
                 duration = time.monotonic() - start
                 logger.info(
-                    "WS disconnect path=/ws/capture capture=%s client=%s "
-                    "duration_s=%.1f tx=%d",
+                    "WS disconnect path=/ws/capture capture=%s client=%s " "duration_s=%.1f tx=%d",
                     capture_id,
                     client,
                     duration,
@@ -498,13 +456,10 @@ def register_websockets(app: "FastAPI") -> None:
                 )
             else:
                 if not job.file_path or not job.file_path.exists():
-                    await websocket.send_json(
-                        {"type": "error", "message": "Capture not found"}
-                    )
+                    await websocket.send_json({"type": "error", "message": "Capture not found"})
                     duration = time.monotonic() - start
                     logger.info(
-                        "WS disconnect path=/ws/capture capture=%s client=%s "
-                        "duration_s=%.1f tx=%d",
+                        "WS disconnect path=/ws/capture capture=%s client=%s " "duration_s=%.1f tx=%d",
                         capture_id,
                         client,
                         duration,
@@ -526,9 +481,7 @@ def register_websockets(app: "FastAPI") -> None:
                     async for line in proc.stdout:
                         line_str = line.decode(errors="replace").strip()
                         if line_str:
-                            await websocket.send_json(
-                                {"type": "packet", "summary": line_str}
-                            )
+                            await websocket.send_json({"type": "packet", "summary": line_str})
                             tx_count += 1
             except (WebSocketDisconnect, ConnectionError):
                 pass
@@ -540,20 +493,15 @@ def register_websockets(app: "FastAPI") -> None:
                     pass
                 if proc.returncode and proc.returncode != 0 and proc.stderr:
                     try:
-                        stderr = (await proc.stderr.read()).decode(
-                            errors="replace"
-                        ).strip()
+                        stderr = (await proc.stderr.read()).decode(errors="replace").strip()
                         if stderr:
                             msg = _capture_error_message(stderr, is_active)
-                            await websocket.send_json(
-                                {"type": "error", "message": msg}
-                            )
+                            await websocket.send_json({"type": "error", "message": msg})
                     except Exception:
                         pass
             duration = time.monotonic() - start
             logger.info(
-                "WS disconnect path=/ws/capture capture=%s client=%s "
-                "duration_s=%.1f tx=%d",
+                "WS disconnect path=/ws/capture capture=%s client=%s " "duration_s=%.1f tx=%d",
                 capture_id,
                 client,
                 duration,
@@ -562,8 +510,7 @@ def register_websockets(app: "FastAPI") -> None:
         except WebSocketDisconnect:
             duration = time.monotonic() - start
             logger.info(
-                "WS disconnect path=/ws/capture capture=%s client=%s "
-                "duration_s=%.1f tx=%d",
+                "WS disconnect path=/ws/capture capture=%s client=%s " "duration_s=%.1f tx=%d",
                 capture_id,
                 client,
                 duration,
@@ -577,9 +524,7 @@ def register_websockets(app: "FastAPI") -> None:
                 exc_info=True,
             )
             try:
-                await websocket.send_json(
-                    {"type": "error", "message": str(exc)}
-                )
+                await websocket.send_json({"type": "error", "message": str(exc)})
             except Exception:
                 pass
             raise

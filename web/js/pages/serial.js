@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPut, apiDelete, extractData } from "../api.js";
+import { requireAdmin } from "../auth.js";
 import { createWebSocketClient } from "../websocket.js";
 import { modalForm, modalPrompt, modalConfirm } from "../modal.js";
 
@@ -1460,7 +1461,7 @@ function renderLogs(logsArg) {
     const deleteBtn = document.createElement("button");
     deleteBtn.className = "btn btn-ghost btn-sm";
     deleteBtn.textContent = "Delete";
-    deleteBtn.addEventListener("click", () => deleteLog(log.id));
+    deleteBtn.addEventListener("click", () => requireAdmin(() => deleteLog(log.id)));
     actionCell.append(renameBtn, exportBtn, deleteBtn);
     row.appendChild(actionCell);
     elements.logsTable.appendChild(row);

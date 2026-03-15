@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -10,15 +9,17 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import FileResponse
-from starlette.responses import Response
+from starlette.responses import FileResponse, Response
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 from lib.module_logger import get_service_logger  # noqa: E402
+from services.api_gateway.limiter import limiter  # noqa: E402
 from services.api_gateway.middleware.request_logger import RequestLoggerMiddleware  # noqa: E402
 from services.api_gateway.response import success_response  # noqa: E402
 from services.api_gateway.routes import register_routes  # noqa: E402
@@ -45,6 +46,8 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     web_root = REPO_ROOT / "web"
     app = FastAPI(title="RPi Engineer API Gateway", lifespan=lifespan)
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     # CORS: localhost, LAN (192.168.x, 10.x, 172.16-31.x). Scope /api/*, /ws/* preserved via same origins.
     _cors_regex = (
@@ -66,15 +69,13 @@ def create_app() -> FastAPI:
             response = await call_next(request)
             response.headers["X-Content-Type-Options"] = "nosniff"
             response.headers["X-Frame-Options"] = "DENY"
+            # default-src: fallback for unspecified resource types; script-src: JS sources;
+            # style-src: CSS (unsafe-inline for inline styles); img-src: images + data URIs;
+            # connect-src: fetch/XHR/WS (wss: for WebSockets); frame-ancestors: no embedding;
+            # form-action: forms may only submit to same origin
             response.headers["Content-Security-Policy"] = (
-                "default-src 'self'; "
-                "script-src 'self'; "
-                "style-src 'self' 'unsafe-inline'; "
-                "img-src 'self' data:; "
-                "connect-src 'self'; "
-                "object-src 'none'; "
-                "base-uri 'self'; "
-                "frame-ancestors 'none'"
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data:; connect-src 'self' wss:; frame-ancestors 'none'; form-action 'self';"
             )
             return response
 
@@ -111,10 +112,85 @@ app = create_app()
 
 
 if __name__ == "__main__":
+    import configparser
+    import socket
+    import struct
+    import threading
+
+    try:
+        import fcntl
+    except ImportError:
+        fcntl = None
+
     import uvicorn
 
+    def _get_interface_ip(ifname: str) -> str:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        if fcntl is None:
+            raise RuntimeError("fcntl not available (Unix only)")
+        return socket.inet_ntoa(
+            fcntl.ioctl(
+                s.fileno(),
+                0x8915,
+                struct.pack("256s", ifname[:15].encode()),
+            )[20:24]
+        )
+
+    cfg = configparser.ConfigParser()
+    cfg.read(REPO_ROOT / "config" / "network.conf")
+    hotspot_if = cfg.get("DEFAULT", "hotspot_interface", fallback="wlan0")
+    bind_lan = cfg.getboolean("DEFAULT", "bind_lan_interface", fallback=False)
+
+    cert_file = REPO_ROOT / "config" / "tls" / "cert.pem"
+    key_file = REPO_ROOT / "config" / "tls" / "key.pem"
+    if not cert_file.exists() or not key_file.exists():
+        print(
+            "ERROR: TLS certificates missing. Run bin/install.sh first.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    ssl_kwargs = {
+        "ssl_keyfile": str(key_file),
+        "ssl_certfile": str(cert_file),
+    }
+
+    try:
+        hotspot_ip = _get_interface_ip(hotspot_if)
+    except Exception as e:
+        print(
+            f"ERROR: Cannot resolve IP for {hotspot_if}: {e}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    bind_ips = [hotspot_ip]
+    if bind_lan:
+        try:
+            bind_ips.append(_get_interface_ip("eth0"))
+        except Exception as e:
+            print(f"WARNING: Cannot bind to eth0: {e}", file=sys.stderr)
+
     logger = get_service_logger("services.api_gateway.main")
-    host = os.getenv("RPI_ENGINEER_API_HOST", "0.0.0.0")
-    port = int(os.getenv("RPI_ENGINEER_API_PORT", "5000"))
-    logger.info("API Gateway starting on %s:%s (uvicorn)", host, port)
-    uvicorn.run(app, host=host, port=port)
+    port = 5000
+    if len(bind_ips) == 1:
+        logger.info("API Gateway starting on %s:%s (uvicorn TLS)", bind_ips[0], port)
+        uvicorn.run(app, host=bind_ips[0], port=port, **ssl_kwargs)
+    else:
+        logger.info(
+            "API Gateway starting on %s (uvicorn TLS, %d interfaces)",
+            bind_ips,
+            len(bind_ips),
+        )
+        threads = [
+            threading.Thread(
+                target=uvicorn.run,
+                kwargs={"app": app, "host": ip, "port": port, **ssl_kwargs},
+                daemon=True,
+            )
+            for ip in bind_ips
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()

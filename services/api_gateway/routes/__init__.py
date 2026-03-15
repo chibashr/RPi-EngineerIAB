@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from services.api_gateway.response import success_response
+from services.api_gateway.routes.auth import auth_router
 from services.api_gateway.routes.backup import backup_router
 from services.api_gateway.routes.capture import capture_router
 from services.api_gateway.routes.dashboard import dashboard_router
@@ -19,8 +19,10 @@ from services.api_gateway.routes.updates import updates_router
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
-def register_routes(app: "FastAPI") -> None:
+
+def register_routes(app: FastAPI) -> None:
     """Register API routers on the FastAPI app."""
+    app.include_router(auth_router)
     app.include_router(network_router)
     app.include_router(system_router)
     app.include_router(capture_router)

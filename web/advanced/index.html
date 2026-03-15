@@ -27,6 +27,7 @@
     <link rel="stylesheet" href="/css/components.css" />
     <link rel="stylesheet" href="/css/pages/advanced.css" />
     <link rel="stylesheet" href="/css/pages/dashboard.css" />
+    <script type="module" src="/js/auth.js"></script>
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to main content</a>
@@ -288,6 +289,16 @@
                 <div id="remote-tools-list" class="remote-tools-list" aria-live="polite"></div>
               </div>
             </a>
+          </section>
+          <section class="dashboard-info" aria-label="Device information">
+            <p><strong>Device cert fingerprint (SHA-256):</strong><br>
+            <code id="cert-fingerprint">loading...</code></p>
+            <script>
+              fetch('/api/v1/system/cert-fingerprint')
+                .then(r => r.json())
+                .then(d => document.getElementById('cert-fingerprint').textContent = d.fingerprint)
+                .catch(() => document.getElementById('cert-fingerprint').textContent = 'unavailable');
+            </script>
           </section>
         </main>
       </div>

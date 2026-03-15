@@ -1,4 +1,5 @@
 import { apiDelete, apiGet, apiPost, extractData } from "../api.js";
+import { requireAdmin } from "../auth.js";
 import { createStatusItem } from "../components.js";
 import { createWebSocketClient } from "../websocket.js";
 import { modalForm } from "../modal.js";
@@ -124,15 +125,17 @@ function createCompletedCaptureItem(capture) {
   deleteBtn.className = "btn btn-secondary btn-sm";
   deleteBtn.textContent = "Delete";
   deleteBtn.setAttribute("aria-label", `Delete ${label}`);
-  deleteBtn.addEventListener("click", async (e) => {
+  deleteBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    try {
-      await apiDelete(`/api/v1/capture/completed/${capture.capture_id}`);
-      showToast("Capture deleted.", "success");
-      await loadCaptureData();
-    } catch (_) {
-      showToast("Unable to delete capture.", "error");
-    }
+    requireAdmin(async () => {
+      try {
+        await apiDelete(`/api/v1/capture/completed/${capture.capture_id}`);
+        showToast("Capture deleted.", "success");
+        await loadCaptureData();
+      } catch (_) {
+        showToast("Unable to delete capture.", "error");
+      }
+    });
   });
   const newSimilarBtn = document.createElement("button");
   newSimilarBtn.type = "button";
@@ -583,15 +586,17 @@ function openCaptureViewModal(capture, { isLive }) {
       exportCapture(capture);
       close();
     });
-    dialog.querySelector(".capture-view-delete")?.addEventListener("click", async () => {
-      try {
-        await apiDelete(`/api/v1/capture/completed/${capture.capture_id}`);
-        showToast("Capture deleted.", "success");
-        close();
-        await loadCaptureData();
-      } catch (_) {
-        showToast("Unable to delete capture.", "error");
-      }
+    dialog.querySelector(".capture-view-delete")?.addEventListener("click", () => {
+      requireAdmin(async () => {
+        try {
+          await apiDelete(`/api/v1/capture/completed/${capture.capture_id}`);
+          showToast("Capture deleted.", "success");
+          close();
+          await loadCaptureData();
+        } catch (_) {
+          showToast("Unable to delete capture.", "error");
+        }
+      });
     });
     dialog.querySelector(".capture-view-new-similar")?.addEventListener("click", () => {
       close();

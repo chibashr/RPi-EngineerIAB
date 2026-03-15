@@ -5,3 +5,6 @@ websockets
 psutil
 pyserial
 pyudev
+slowapi
+python-pam
+bcrypt

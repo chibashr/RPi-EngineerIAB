@@ -1,0 +1,120 @@
+{"event": "test", "x": 1, "timestamp": "2026-03-15T16:46:11.132Z"}
+{"event": "ws_auth_rejected", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:41:45.094Z"}
+{"event": "ws_auth_rejected", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:41:45.258Z"}
+{"event": "ws_auth_rejected", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:41:45.329Z"}
+{"event": "ws_auth_rejected", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:41:45.403Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/backup/restore", "timestamp": "2026-03-15T17:46:30.769Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/backup/restore", "timestamp": "2026-03-15T17:46:30.853Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/backup/restore", "timestamp": "2026-03-15T17:46:30.904Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/backup/restore", "timestamp": "2026-03-15T17:46:30.954Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/capture/completed/nonexistent-id", "timestamp": "2026-03-15T17:46:33.075Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install", "timestamp": "2026-03-15T17:46:33.787Z"}
+{"event": "module_install_blocked", "module": "not_allowed_module", "reason": "not in allowlist", "timestamp": "2026-03-15T17:46:33.788Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/uninstall/nonexistent_module", "timestamp": "2026-03-15T17:46:33.845Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install-from-repo", "timestamp": "2026-03-15T17:46:34.027Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/update/nonexistent_module", "timestamp": "2026-03-15T17:46:34.270Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/enable/nonexistent_module", "timestamp": "2026-03-15T17:46:34.322Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/disable/nonexistent_module", "timestamp": "2026-03-15T17:46:34.375Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install", "timestamp": "2026-03-15T17:46:34.478Z"}
+{"event": "module_install_allowed", "module": "allowed_module", "timestamp": "2026-03-15T17:46:34.480Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install", "timestamp": "2026-03-15T17:46:34.786Z"}
+{"event": "module_install_allowed", "module": "example_module", "timestamp": "2026-03-15T17:46:34.787Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/uninstall/example_module", "timestamp": "2026-03-15T17:46:34.851Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/serial/logs/nonexistent", "timestamp": "2026-03-15T17:46:39.240Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/updates/reconfigure", "timestamp": "2026-03-15T17:46:40.337Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/updates/reinstall", "timestamp": "2026-03-15T17:46:40.386Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/updates/rollback", "timestamp": "2026-03-15T17:46:40.492Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:46:45.930Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:46:45.978Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:46:46.029Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:46:46.084Z"}
+{"event": "login_success", "source_ip": "testclient", "timestamp": "2026-03-15T17:48:52.462Z"}
+{"event": "login_failure", "source_ip": "testclient", "locked_out": false, "timestamp": "2026-03-15T17:48:52.519Z"}
+{"event": "login_failure", "source_ip": "testclient", "locked_out": false, "timestamp": "2026-03-15T17:48:52.571Z"}
+{"event": "login_failure", "source_ip": "testclient", "locked_out": false, "timestamp": "2026-03-15T17:48:52.576Z"}
+{"event": "login_failure", "source_ip": "testclient", "locked_out": false, "timestamp": "2026-03-15T17:48:52.595Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/updates/reinstall", "timestamp": "2026-03-15T17:48:52.773Z"}
+{"event": "ws_auth_rejected", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:48:53.231Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:48:53.299Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install", "timestamp": "2026-03-15T17:48:53.369Z"}
+{"event": "module_install_blocked", "module": "disallowed", "reason": "not in allowlist", "timestamp": "2026-03-15T17:48:53.371Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install-from-repo", "timestamp": "2026-03-15T17:48:53.524Z"}
+{"event": "module_repo_blocked", "url": "https://github.com/chibashr/RPi-EngineerIAB.git", "reason": "repo not in allowlist", "timestamp": "2026-03-15T17:48:53.525Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:48:59.526Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:48:59.577Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:48:59.631Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:48:59.684Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:52:39.675Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:52:39.729Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:52:39.786Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:52:39.910Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/backup/restore", "timestamp": "2026-03-15T17:52:41.922Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/backup/restore", "timestamp": "2026-03-15T17:52:41.993Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/backup/restore", "timestamp": "2026-03-15T17:52:42.066Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/backup/restore", "timestamp": "2026-03-15T17:52:42.137Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/capture/completed/nonexistent-id", "timestamp": "2026-03-15T17:52:45.036Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install", "timestamp": "2026-03-15T17:52:51.298Z"}
+{"event": "module_install_blocked", "module": "not_allowed_module", "reason": "not in allowlist", "timestamp": "2026-03-15T17:52:51.301Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/uninstall/nonexistent_module", "timestamp": "2026-03-15T17:52:51.365Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install-from-repo", "timestamp": "2026-03-15T17:52:51.664Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/update/nonexistent_module", "timestamp": "2026-03-15T17:52:51.854Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/enable/nonexistent_module", "timestamp": "2026-03-15T17:52:51.925Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/disable/nonexistent_module", "timestamp": "2026-03-15T17:52:52.012Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install", "timestamp": "2026-03-15T17:52:52.166Z"}
+{"event": "module_install_allowed", "module": "allowed_module", "timestamp": "2026-03-15T17:52:52.169Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install", "timestamp": "2026-03-15T17:52:52.640Z"}
+{"event": "module_install_allowed", "module": "example_module", "timestamp": "2026-03-15T17:52:52.642Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/uninstall/example_module", "timestamp": "2026-03-15T17:52:52.704Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/serial/logs/nonexistent", "timestamp": "2026-03-15T17:53:00.869Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/updates/reconfigure", "timestamp": "2026-03-15T17:53:03.230Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/updates/reinstall", "timestamp": "2026-03-15T17:53:03.313Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/updates/rollback", "timestamp": "2026-03-15T17:53:03.515Z"}
+{"event": "login_success", "source_ip": "testclient", "timestamp": "2026-03-15T17:53:03.598Z"}
+{"event": "login_failure", "source_ip": "testclient", "locked_out": false, "timestamp": "2026-03-15T17:53:03.679Z"}
+{"event": "login_failure", "source_ip": "testclient", "locked_out": false, "timestamp": "2026-03-15T17:53:03.756Z"}
+{"event": "login_failure", "source_ip": "testclient", "locked_out": false, "timestamp": "2026-03-15T17:53:03.763Z"}
+{"event": "login_failure", "source_ip": "testclient", "locked_out": false, "timestamp": "2026-03-15T17:53:03.770Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/updates/reinstall", "timestamp": "2026-03-15T17:53:04.024Z"}
+{"event": "ws_auth_rejected", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:53:04.585Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:53:04.648Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install", "timestamp": "2026-03-15T17:53:04.708Z"}
+{"event": "module_install_blocked", "module": "disallowed", "reason": "not in allowlist", "timestamp": "2026-03-15T17:53:04.710Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install-from-repo", "timestamp": "2026-03-15T17:53:04.772Z"}
+{"event": "module_repo_blocked", "url": "https://github.com/chibashr/RPi-EngineerIAB.git", "reason": "repo not in allowlist", "timestamp": "2026-03-15T17:53:04.774Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:54:10.862Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:54:10.923Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:54:10.989Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:54:11.055Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/backup/restore", "timestamp": "2026-03-15T17:54:13.107Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/backup/restore", "timestamp": "2026-03-15T17:54:13.184Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/backup/restore", "timestamp": "2026-03-15T17:54:13.258Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/backup/restore", "timestamp": "2026-03-15T17:54:13.343Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/capture/completed/nonexistent-id", "timestamp": "2026-03-15T17:54:15.911Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install", "timestamp": "2026-03-15T17:54:21.049Z"}
+{"event": "module_install_blocked", "module": "not_allowed_module", "reason": "not in allowlist", "timestamp": "2026-03-15T17:54:21.051Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/uninstall/nonexistent_module", "timestamp": "2026-03-15T17:54:21.113Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install-from-repo", "timestamp": "2026-03-15T17:54:21.281Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/update/nonexistent_module", "timestamp": "2026-03-15T17:54:21.530Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/enable/nonexistent_module", "timestamp": "2026-03-15T17:54:21.582Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/disable/nonexistent_module", "timestamp": "2026-03-15T17:54:21.636Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install", "timestamp": "2026-03-15T17:54:21.746Z"}
+{"event": "module_install_allowed", "module": "allowed_module", "timestamp": "2026-03-15T17:54:21.749Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install", "timestamp": "2026-03-15T17:54:22.089Z"}
+{"event": "module_install_allowed", "module": "example_module", "timestamp": "2026-03-15T17:54:22.091Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/uninstall/example_module", "timestamp": "2026-03-15T17:54:22.144Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/serial/logs/nonexistent", "timestamp": "2026-03-15T17:54:27.619Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/updates/reconfigure", "timestamp": "2026-03-15T17:54:29.944Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/updates/reinstall", "timestamp": "2026-03-15T17:54:30.000Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/updates/rollback", "timestamp": "2026-03-15T17:54:30.059Z"}
+{"event": "login_success", "source_ip": "testclient", "timestamp": "2026-03-15T17:54:30.124Z"}
+{"event": "login_failure", "source_ip": "testclient", "locked_out": false, "timestamp": "2026-03-15T17:54:30.289Z"}
+{"event": "login_failure", "source_ip": "testclient", "locked_out": false, "timestamp": "2026-03-15T17:54:30.350Z"}
+{"event": "login_failure", "source_ip": "testclient", "locked_out": false, "timestamp": "2026-03-15T17:54:30.355Z"}
+{"event": "login_failure", "source_ip": "testclient", "locked_out": false, "timestamp": "2026-03-15T17:54:30.361Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/updates/reinstall", "timestamp": "2026-03-15T17:54:30.551Z"}
+{"event": "ws_auth_rejected", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:54:31.088Z"}
+{"event": "ws_auth_accepted", "path": "/ws/updates/apply", "timestamp": "2026-03-15T17:54:31.140Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install", "timestamp": "2026-03-15T17:54:31.194Z"}
+{"event": "module_install_blocked", "module": "disallowed", "reason": "not in allowlist", "timestamp": "2026-03-15T17:54:31.197Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install-from-repo", "timestamp": "2026-03-15T17:54:31.256Z"}
+{"event": "module_repo_blocked", "url": "https://github.com/chibashr/RPi-EngineerIAB.git", "reason": "repo not in allowlist", "timestamp": "2026-03-15T17:54:31.258Z"}

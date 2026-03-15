@@ -1,4 +1,5 @@
 import { apiGet, apiPost, extractData } from "../api.js";
+import { requireAdmin } from "../auth.js";
 import { initTabs } from "../components.js";
 import { modalConfirm } from "../modal.js";
 
@@ -301,27 +302,29 @@ function setupActions() {
   const saveSettings = document.getElementById("save-settings");
   if (saveSettings) {
     saveSettings.addEventListener("click", () => {
-      const hostname = elements.inputs.hostname?.value?.trim() || "";
-      const timezone = elements.inputs.timezone?.value?.trim() || "";
-      const preferredMode = elements.inputs.preferredMode?.value || "simple";
-      if (!hostname) {
-        showToast("Hostname is required.", "error");
-        return;
-      }
-      if (!timezone) {
-        showToast("Timezone is required.", "error");
-        return;
-      }
-      apiPost("/api/v1/system/settings", {
-        hostname,
-        timezone,
-        preferred_mode: preferredMode,
-      })
-        .then(() => {
-          showToast("Settings saved.", "success");
-          loadSystemData();
+      requireAdmin(() => {
+        const hostname = elements.inputs.hostname?.value?.trim() || "";
+        const timezone = elements.inputs.timezone?.value?.trim() || "";
+        const preferredMode = elements.inputs.preferredMode?.value || "simple";
+        if (!hostname) {
+          showToast("Hostname is required.", "error");
+          return;
+        }
+        if (!timezone) {
+          showToast("Timezone is required.", "error");
+          return;
+        }
+        apiPost("/api/v1/system/settings", {
+          hostname,
+          timezone,
+          preferred_mode: preferredMode,
         })
-        .catch(() => showToast("Unable to save settings.", "error"));
+          .then(() => {
+            showToast("Settings saved.", "success");
+            loadSystemData();
+          })
+          .catch(() => showToast("Unable to save settings.", "error"));
+      });
     });
   }
 }

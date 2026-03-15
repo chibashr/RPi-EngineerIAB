@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from pathlib import Path
+from typing import Any
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Request
+from fastapi.responses import JSONResponse
 
 from lib.module_logger import get_service_logger
+from services.auth_service import verify_token
 from services.network_manager import NetworkManager
 
 from ..response import error_response, success_response
@@ -14,6 +17,27 @@ from ..response import error_response, success_response
 logger = get_service_logger(__name__)
 network_router = APIRouter(prefix="/api/v1/network", tags=["network"])
 _network_manager = NetworkManager()
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+_NETWORK_CONF = _REPO_ROOT / "config" / "network.conf"
+
+
+def _read_hotspot_interface() -> str:
+    value = ""
+    if _NETWORK_CONF.exists():
+        try:
+            with open(_NETWORK_CONF) as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("hotspot_interface="):
+                        value = line.split("=", 1)[-1].strip()
+                        break
+        except Exception:
+            pass
+    return value
+
+
+_hotspot_interface = _read_hotspot_interface()
 
 
 @network_router.get("/interfaces")
@@ -31,7 +55,7 @@ def get_interface(interface_id: str):
 
 
 @network_router.put("/interfaces/{interface_id}/share-with-hotspot")
-def set_interface_share_hotspot(interface_id: str, payload: Optional[Dict[str, Any]] = Body(default=None)):
+def set_interface_share_hotspot(interface_id: str, payload: dict[str, Any] | None = Body(default=None)):
     """Toggle whether this interface's connection is shared with the wireless hotspot (bridged routing)."""
     data_in = payload or {}
     enabled = data_in.get("enabled", True)
@@ -49,7 +73,16 @@ def set_interface_share_hotspot(interface_id: str, payload: Optional[Dict[str, A
 
 
 @network_router.put("/interfaces/{interface_id}")
-def update_interface(interface_id: str, payload: Optional[Dict[str, Any]] = Body(default=None)):
+def update_interface(
+    interface_id: str,
+    request: Request,
+    payload: dict[str, Any] | None = Body(default=None),
+):
+    if interface_id == _hotspot_interface:
+        auth = request.headers.get("Authorization")
+        token = (auth.split(" ", 1)[-1].strip()) if (auth and auth.startswith("Bearer ")) else None
+        if not token or not verify_token(token):
+            return JSONResponse(status_code=401, content={"error": "Invalid or missing token"})
     data_in = payload or {}
     try:
         data = _network_manager.update_interface(interface_id, data_in)
@@ -77,7 +110,7 @@ def list_current_routes():
 
 
 @network_router.post("/routes")
-def add_route(payload: Optional[Dict[str, Any]] = Body(default=None)):
+def add_route(payload: dict[str, Any] | None = Body(default=None)):
     data_in = payload or {}
     try:
         data = _network_manager.add_route(data_in)
@@ -94,7 +127,7 @@ def list_profiles():
 
 
 @network_router.post("/profiles")
-def save_profile(payload: Optional[Dict[str, Any]] = Body(default=None)):
+def save_profile(payload: dict[str, Any] | None = Body(default=None)):
     data_in = payload or {}
     try:
         data = _network_manager.save_profile(data_in)
@@ -123,7 +156,7 @@ def load_profile(profile_name: str):
 
 
 @network_router.put("/profiles/{profile_name}")
-def update_profile(profile_name: str, payload: Optional[Dict[str, Any]] = Body(default=None)):
+def update_profile(profile_name: str, payload: dict[str, Any] | None = Body(default=None)):
     data_in = payload or {}
     try:
         data = _network_manager.update_profile(profile_name, data_in)
@@ -163,7 +196,7 @@ def ensure_wan_priority():
 
 
 @network_router.post("/reset")
-def reset_network(payload: Optional[Dict[str, Any]] = Body(default=None)):
+def reset_network(payload: dict[str, Any] | None = Body(default=None)):
     data_in = payload or {}
     preserve_hotspot = data_in.get("preserve_hotspot", False)
     try:
@@ -179,7 +212,7 @@ def reset_network(payload: Optional[Dict[str, Any]] = Body(default=None)):
 
 
 @network_router.post("/vlans")
-def create_vlan(payload: Optional[Dict[str, Any]] = Body(default=None)):
+def create_vlan(payload: dict[str, Any] | None = Body(default=None)):
     data_in = payload or {}
     try:
         result = _network_manager.create_vlan(data_in)
@@ -193,7 +226,7 @@ def create_vlan(payload: Optional[Dict[str, Any]] = Body(default=None)):
 
 
 @network_router.post("/hotspot")
-def configure_hotspot(payload: Optional[Dict[str, Any]] = Body(default=None)):
+def configure_hotspot(payload: dict[str, Any] | None = Body(default=None)):
     data_in = payload or {}
     try:
         result = _network_manager.configure_hotspot(data_in)

@@ -1,11 +1,16 @@
 """System API routes."""
 
-from fastapi import APIRouter, Body
+import hashlib
+import ssl as _ssl
+from pathlib import Path
+
+from fastapi import APIRouter, Body, Depends
 
 from lib.module_logger import get_service_logger
-from services.system_manager import SystemManager
-from services.monitor_service import MonitorService
+from services.api_gateway.routes.auth import require_admin
 from services.logging_service import logging_service
+from services.monitor_service import MonitorService
+from services.system_manager import SystemManager
 
 from ..response import error_response, success_response
 
@@ -31,9 +36,7 @@ def get_status():
     try:
         log_alerts = logging_service.get_recent_log_alerts(limit=30)
         status["alerts"].extend(log_alerts)
-        status["alerts"].sort(
-            key=lambda a: (a.get("timestamp") or ""), reverse=True
-        )
+        status["alerts"].sort(key=lambda a: (a.get("timestamp") or ""), reverse=True)
         status["alerts"] = status["alerts"][:50]
     except Exception:
         pass
@@ -102,9 +105,7 @@ def power_action(payload: dict | None = Body(default=None)):
     payload = payload or {}
     action = payload.get("action")
     if not action:
-        return error_response(
-            "VALIDATION_ERROR", "Action is required", status_code=400
-        )
+        return error_response("VALIDATION_ERROR", "Action is required", status_code=400)
     try:
         result = _system_manager.power_action(action)
         logger.warning("Power action via API: %s", action)
@@ -125,8 +126,16 @@ def get_info():
     return success_response(_system_manager.get_info())
 
 
+@router.get("/cert-fingerprint")
+def cert_fingerprint():
+    cert_path = Path(__file__).resolve().parents[3] / "config" / "tls" / "cert.pem"
+    pem = cert_path.read_text()
+    der = _ssl.PEM_cert_to_DER_cert(pem)
+    return {"fingerprint": hashlib.sha256(der).hexdigest(), "algorithm": "sha256"}
+
+
 @router.post("/settings")
-def save_settings(payload: dict | None = Body(default=None)):
+def save_settings(payload: dict | None = Body(default=None), _: str = Depends(require_admin)):
     payload = payload or {}
     try:
         result = _system_manager.save_settings(payload)
