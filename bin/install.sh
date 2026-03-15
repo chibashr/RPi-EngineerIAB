@@ -2344,7 +2344,18 @@ install_rpi_connect() {
     else
         apt-get install -y rpi-connect >> "$INSTALL_LOG" 2>&1
     fi
-    rpi-connect on >> "$INSTALL_LOG" 2>&1 || true
+    # rpi-connect runs as a user service; enable lingering so it starts at boot without login
+    local connect_user="${SUDO_USER:-}"
+    [ -z "$connect_user" ] && id -u pi >/dev/null 2>&1 && connect_user="pi"
+    if [ -n "$connect_user" ] && id "$connect_user" >/dev/null 2>&1; then
+        if command -v loginctl >/dev/null 2>&1; then
+            loginctl enable-linger "$connect_user" >> "$INSTALL_LOG" 2>&1 || true
+            log_info "Enabled user lingering for $connect_user (Raspberry Pi Connect will start after reboot)."
+        fi
+        sudo -u "$connect_user" rpi-connect on >> "$INSTALL_LOG" 2>&1 || true
+    else
+        rpi-connect on >> "$INSTALL_LOG" 2>&1 || true
+    fi
     RPI_CONNECT_URL="connect.raspberrypi.com"
 }
 
