@@ -1,4 +1,8 @@
 pytest
 pytest-timeout
+pytest-cov
+pytest-asyncio
 httpx
 beautifulsoup4
+ruff
+black

@@ -24,5 +24,8 @@ data/captures/*
 .DS_Store
 Thumbs.db
 .planning/
+tests/
+.refactor/
+.claude/
 .cursor/
-claude/
+.reports/

@@ -1,0 +1,86 @@
+[project]
+name = "rpi-engineer-iab"
+version = "1.0.0"
+description = "Portable network diagnostic and remote access platform for Raspberry Pi"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "chibashr" }
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # function-call-in-default-argument (FastAPI Depends)
+    "B904",   # raise-without-from-inside-except (sometimes intentional)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["services", "lib", "modules"]
+
+[tool.black]
+line-length = 120
+target-version = ["py310", "py311", "py312"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+    | \.venv
+    | venv
+    | __pycache__
+    | node_modules
+    | web/vendor
+)/
+'''
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --strict-markers"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+markers = [
+    "unit: Unit tests (fast, isolated, no external dependencies)",
+    "integration: Integration tests (may require services/mocks)",
+    "slow: Slow tests (excluded from quick runs)",
+    "hardware: Tests requiring physical hardware (serial ports, etc)",
+    "e2e: End-to-end tests (full stack)",
+]
+timeout = 30
+
+[tool.coverage.run]
+source = ["services", "lib", "modules"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/venv/*",
+]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+fail_under = 60
+show_missing = true

@@ -1,22 +1,38 @@
 {
-  "name": "workspace",
+  "name": "rpi-engineer-iab",
   "version": "1.0.0",
   "type": "module",
-  "description": "[![GitHub](https://img.shields.io/badge/GitHub-chibashr%2FRPi--EngineerIAB-blue)](https://github.com/chibashr/RPi-EngineerIAB)",
+  "description": "Portable network diagnostic and remote access platform for Raspberry Pi",
   "main": "index.js",
   "directories": {
     "lib": "lib",
     "test": "tests"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "NODE_OPTIONS='--experimental-vm-modules' jest",
+    "test:watch": "NODE_OPTIONS='--experimental-vm-modules' jest --watch",
+    "test:coverage": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage",
+    "test:ci": "NODE_OPTIONS='--experimental-vm-modules' jest --ci --coverage --reporters=default",
+    "test:all": "npm run test:py && npm run test",
+    "test:py": "pytest tests/ -v",
+    "test:py:unit": "pytest tests/unit/ -v -m 'not slow'",
+    "test:py:integration": "pytest tests/integration/ -v",
+    "test:py:coverage": "pytest tests/ -v --cov=services --cov=lib --cov-report=term-missing",
+    "lint": "echo 'Run: pip install ruff && ruff check .'",
+    "lint:fix": "echo 'Run: pip install ruff && ruff check --fix .'"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/chibashr/RPi-EngineerIAB.git"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "raspberry-pi",
+    "network",
+    "diagnostic",
+    "serial-console",
+    "packet-capture"
+  ],
+  "author": "chibashr",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/chibashr/RPi-EngineerIAB/issues"
