@@ -1,4 +1,4 @@
-/* Remote Console (SSH/Telnet) – type badges and list styling */
+/* SSH/Telnet console – type badges and list styling */
 
 .remote-type-badge {
   display: inline-block;
@@ -22,4 +22,30 @@
 
 .serial-list-item .remote-type-badge {
   margin-left: auto;
+}
+
+/* Modal section divider between connection fields and save-as section */
+.modal-section-divider {
+  border: none;
+  border-top: 1px dashed var(--color-border);
+  margin: 1rem 0;
+}
+
+/* Name collision inline warning */
+.modal-field-warning {
+  font-size: 0.75rem;
+  color: var(--color-warning, #e6a817);
+  margin-top: 0.25rem;
+  line-height: 1.4;
+}
+
+.serial-list-section-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+  padding: 0.5rem 0.75rem 0.25rem;
+  pointer-events: none;
+  user-select: none;
 }

@@ -1,8 +1,8 @@
 /**
- * Remote Console (SSH / Telnet) page: targets, sessions, and browser terminal.
+ * SSH / Telnet console page: saved connections, sessions, and browser terminal.
  */
 
-import { apiGet, apiPost, apiDelete, extractData } from "../api.js";
+import { apiGet, apiPost, apiPut, apiDelete, extractData } from "../api.js";
 import { createWebSocketClient } from "../websocket.js";
 import { modalForm, modalConfirm } from "../modal.js";
 
@@ -100,7 +100,7 @@ function createTabAndConnect(sessionId, label) {
   wrapper.className = "console-window-wrapper";
   const container = document.createElement("div");
   container.className = "console-window xterm-container";
-  container.setAttribute("aria-label", "Remote console");
+  container.setAttribute("aria-label", "SSH or Telnet session");
   wrapper.appendChild(container);
   body.appendChild(wrapper);
 
@@ -282,105 +282,267 @@ async function disconnectSession(sessionId) {
 
 function renderTargets() {
   if (!elements.targetList) return;
-  const items = [];
-
-  targetCache.forEach((t) => {
-    const li = document.createElement("li");
-    li.className = "serial-list-item";
-    li.dataset.targetId = t.id;
-    const dot = document.createElement("span");
-    dot.className = "serial-list-item-dot";
-    const label = document.createElement("span");
-    label.className = "serial-list-item-label";
-    label.textContent = t.friendly_name || t.host || t.id;
-    const badge = document.createElement("span");
-    badge.className = "remote-type-badge " + (t.type === "telnet" ? "telnet" : "ssh");
-    badge.textContent = t.type === "telnet" ? "Telnet" : "SSH";
-    li.append(dot, label, badge);
-    li.addEventListener("click", () => openConnectToTargetModal(t));
-    items.push(li);
-  });
-
-  activeSessions.forEach((s) => {
-    const state = sessionMap.get(s.session_id);
-    const connected = state && state.wsStatus === "connected";
-    const li = document.createElement("li");
-    li.className = "serial-list-item" + (activeTabSessionId === s.session_id ? " is-active" : "");
-    li.dataset.sessionId = s.session_id;
-    const dot = document.createElement("span");
-    dot.className = "serial-list-item-dot" + (connected ? " is-connected" : "");
-    const label = document.createElement("span");
-    label.className = "serial-list-item-label";
-    label.textContent = sessionLabel(s);
-    const badge = document.createElement("span");
-    badge.className = "remote-type-badge " + (s.type === "telnet" ? "telnet" : "ssh");
-    badge.textContent = s.type === "telnet" ? "Telnet" : "SSH";
-    li.append(dot, label, badge);
-    li.addEventListener("click", () => switchTab(s.session_id));
-    items.push(li);
-  });
-
   elements.targetList.innerHTML = "";
-  if (items.length === 0) {
+
+  const hasSaved = targetCache.length > 0;
+  const hasActive = activeSessions.length > 0;
+
+  if (!hasSaved && !hasActive) {
     const ph = document.createElement("li");
     ph.className = "serial-list-placeholder";
     ph.id = "remote-list-placeholder";
-    ph.textContent = targetCache.length === 0 && activeSessions.length === 0 ? "No targets. Add one or use New Session." : "";
+    ph.textContent = "No saved connections. Use Connect to start a session.";
     elements.targetList.appendChild(ph);
-  } else {
-    items.forEach((el) => elements.targetList.appendChild(el));
+    return;
+  }
+
+  if (hasSaved) {
+    const savedLabel = document.createElement("li");
+    savedLabel.className = "serial-list-section-label";
+    savedLabel.textContent = "Saved";
+    elements.targetList.appendChild(savedLabel);
+    targetCache.forEach((t) => {
+      const li = document.createElement("li");
+      li.className = "serial-list-item";
+      li.dataset.targetId = t.id;
+      const dot = document.createElement("span");
+      dot.className = "serial-list-item-dot";
+      const label = document.createElement("span");
+      label.className = "serial-list-item-label";
+      label.textContent = t.friendly_name || t.host || t.id;
+      const badge = document.createElement("span");
+      badge.className = "remote-type-badge " + (t.type === "telnet" ? "telnet" : "ssh");
+      badge.textContent = t.type === "telnet" ? "Telnet" : "SSH";
+      li.append(dot, label, badge);
+      li.addEventListener("click", () => openConnectToTargetModal(t));
+      elements.targetList.appendChild(li);
+    });
+  }
+
+  if (hasActive) {
+    const activeLabel = document.createElement("li");
+    activeLabel.className = "serial-list-section-label";
+    activeLabel.textContent = "Active";
+    elements.targetList.appendChild(activeLabel);
+    activeSessions.forEach((s) => {
+      const state = sessionMap.get(s.session_id);
+      const connected = state && state.wsStatus === "connected";
+      const li = document.createElement("li");
+      li.className = "serial-list-item" + (activeTabSessionId === s.session_id ? " is-active" : "");
+      li.dataset.sessionId = s.session_id;
+      const dot = document.createElement("span");
+      dot.className = "serial-list-item-dot" + (connected ? " is-connected" : "");
+      const label = document.createElement("span");
+      label.className = "serial-list-item-label";
+      label.textContent = sessionLabel(s);
+      const badge = document.createElement("span");
+      badge.className = "remote-type-badge " + (s.type === "telnet" ? "telnet" : "ssh");
+      badge.textContent = s.type === "telnet" ? "Telnet" : "SSH";
+      li.append(dot, label, badge);
+      li.addEventListener("click", () => switchTab(s.session_id));
+      elements.targetList.appendChild(li);
+    });
   }
 }
 
 async function openConnectToTargetModal(target) {
+  const modalTitle = target.friendly_name || target.host;
+  const authDefault = target.auth_type === "key" ? "key" : "password";
   const fields = [
-    { name: "target_id", label: "Target", type: "display", default: target.friendly_name || target.host },
+    {
+      name: "type",
+      label: "Type",
+      type: "select",
+      default: target.type || "ssh",
+      options: [
+        { value: "ssh", label: "SSH" },
+        { value: "telnet", label: "Telnet" },
+      ],
+    },
+    { name: "host", label: "Host", type: "text", default: target.host || "", placeholder: "192.168.1.1 or hostname" },
+    { name: "port", label: "Port", type: "text", default: String(target.port != null ? target.port : 22), placeholder: "22" },
+    { name: "username", label: "Username", type: "text", default: target.username || "", placeholder: "Optional" },
+    {
+      name: "auth",
+      label: "Auth",
+      type: "select",
+      default: authDefault,
+      options: [
+        { value: "password", label: "Password" },
+        { value: "key", label: "Key" },
+      ],
+    },
+    { name: "password", label: "Password", type: "password", default: "", placeholder: "Optional" },
+    { name: "private_key_path", label: "Key path", type: "text", default: target.private_key_path || "", placeholder: "/home/pi/.ssh/id_rsa" },
+    { name: "_divider", label: "", type: "display", default: "" },
+    { name: "save_as", label: "Save as", type: "text", default: target.friendly_name || "", placeholder: "Leave blank to not save · defaults to host" },
   ];
-  if (target.type === "ssh") {
-    fields.push({
-      name: "password",
-      label: "Password (leave blank if using key)",
-      type: "password",
-      default: "",
-      placeholder: "Optional",
-    });
-  }
-  const form = await modalForm(fields, "Connect to " + (target.friendly_name || target.host));
+  const form = await modalForm(fields, modalTitle, {
+    onOpen(overlay) {
+      const typeSelect = overlay.querySelector("#modal-form-type");
+      const portInput = overlay.querySelector("#modal-form-port");
+      const authSelect = overlay.querySelector("#modal-form-auth");
+      const authRow = overlay.querySelector('[data-field-name="auth"]');
+      const passwordRow = overlay.querySelector('[data-field-name="password"]');
+      const keyRow = overlay.querySelector('[data-field-name="private_key_path"]');
+      const saveAsInput = overlay.querySelector("#modal-form-save_as");
+      const dividerRow = overlay.querySelector('[data-field-name="_divider"]');
+      if (dividerRow) dividerRow.classList.add("modal-section-divider");
+      const warningEl = document.createElement("div");
+      warningEl.className = "modal-field-warning";
+      warningEl.setAttribute("aria-live", "polite");
+      saveAsInput?.closest(".field")?.appendChild(warningEl);
+
+      const modalActions = overlay.querySelector(".modal-actions");
+      if (modalActions) {
+        modalActions.style.justifyContent = "space-between";
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.className = "btn btn-ghost btn-danger-ghost btn-sm";
+        deleteBtn.textContent = "Delete";
+        deleteBtn.addEventListener("click", async () => {
+          try {
+            await apiDelete(`/api/v1/remote-console/targets/${encodeURIComponent(target.id)}`, { timeoutMs: REMOTE_API_TIMEOUT_MS });
+            showToast("Connection deleted.", "success");
+            await loadTargets();
+            renderTargets();
+            overlay.querySelector(".modal-cancel")?.click();
+          } catch {
+            showToast("Unable to delete connection.", "error");
+          }
+        });
+        modalActions.insertBefore(deleteBtn, modalActions.firstChild);
+      }
+
+      function updatePort() {
+        if (!typeSelect || !portInput) return;
+        portInput.value = typeSelect.value === "telnet" ? "23" : "22";
+      }
+      function updateCredentialVisibility() {
+        const isTelnet = typeSelect?.value === "telnet";
+        if (authRow) authRow.hidden = isTelnet;
+        if (isTelnet) {
+          if (passwordRow) {
+            passwordRow.hidden = false;
+            const lab = passwordRow.querySelector(".field-label");
+            if (lab) lab.textContent = "Password";
+            const inp = passwordRow.querySelector("input");
+            if (inp) inp.placeholder = "Optional";
+          }
+          if (keyRow) keyRow.hidden = true;
+        } else {
+          const isKey = authSelect?.value === "key";
+          if (passwordRow) {
+            passwordRow.hidden = isKey;
+            const lab = passwordRow.querySelector(".field-label");
+            if (lab) lab.textContent = "Password";
+            const inp = passwordRow.querySelector("input");
+            if (inp) inp.placeholder = "Optional";
+          }
+          if (keyRow) keyRow.hidden = !isKey;
+        }
+      }
+      function updateSaveAsWarning() {
+        const raw = saveAsInput?.value ?? "";
+        const { collision, suggested } = getCollisionSuggest(raw, target.id);
+        if (warningEl) {
+          warningEl.textContent = collision ? `"${raw.trim()}" already exists. Will save as "${suggested}" unless you rename above.` : "";
+        }
+      }
+      typeSelect?.addEventListener("change", () => {
+        updatePort();
+        updateCredentialVisibility();
+      });
+      authSelect?.addEventListener("change", updateCredentialVisibility);
+      saveAsInput?.addEventListener("blur", updateSaveAsWarning);
+      updatePort();
+      updateCredentialVisibility();
+    },
+  });
   if (!form) return;
+
+  const host = (form.host || "").trim();
+  if (!host) {
+    showToast("Host is required.", "error");
+    return;
+  }
+  const port = parseInt(form.port, 10) || 22;
+  const type = (form.type || "ssh").toLowerCase();
+  const isTelnet = type === "telnet";
+  const auth = form.auth || "password";
+  const username = (form.username || "").trim() || undefined;
+  const saveAsTrimmed = (form.save_as || "").trim();
+  const keyPath = !isTelnet && auth === "key" && form.private_key_path ? form.private_key_path.trim() : undefined;
+
+  const typeChanged = (target.type || "ssh") !== type;
+  const hostChanged = (target.host || "") !== host;
+  const portChanged = (target.port != null ? target.port : 22) !== port;
+  const usernameChanged = (target.username || "") !== (username || "");
+  const authChanged = (target.auth_type === "key" ? "key" : "password") !== auth;
+  const keyPathChanged = (target.private_key_path || "") !== (keyPath || "");
+  const saveAsChanged = (target.friendly_name || "") !== saveAsTrimmed;
+  const anyChanged = typeChanged || hostChanged || portChanged || usernameChanged || authChanged || keyPathChanged || saveAsChanged;
+
+  if (!anyChanged) {
+    const payload = { target_id: target.id };
+    if (target.type === "ssh" && form.password) payload.password = form.password;
+    await createSessionAndConnect(payload, sessionLabel({ type: target.type, host: target.host, port: target.port }));
+    return;
+  }
+
+  let resolvedName = saveAsTrimmed || host;
+  if (saveAsTrimmed) {
+    const { collision, suggested } = getCollisionSuggest(saveAsTrimmed, target.id);
+    resolvedName = collision ? suggested : saveAsTrimmed;
+  }
+  try {
+    await apiPut(`/api/v1/remote-console/targets/${encodeURIComponent(target.id)}`, {
+      host,
+      port,
+      type,
+      friendly_name: resolvedName,
+      username,
+      auth_type: !isTelnet && auth === "key" ? "key" : undefined,
+      private_key_path: keyPath,
+    }, { timeoutMs: REMOTE_API_TIMEOUT_MS });
+    if (resolvedName !== (target.friendly_name || "")) {
+      showToast("Connection saved.", "success");
+      await loadTargets();
+      renderTargets();
+    }
+  } catch (e) {
+    showToast(e?.message || "Unable to save connection.", "error");
+    return;
+  }
   const payload = { target_id: target.id };
-  if (target.type === "ssh" && form.password) payload.password = form.password;
-  await createSessionAndConnect(payload, sessionLabel({ type: target.type, host: target.host, port: target.port }));
+  if (type === "ssh" && form.password) payload.password = form.password;
+  await createSessionAndConnect(payload, sessionLabel({ type, host, port }));
+}
+
+function getCollisionSuggest(name, excludeTargetId) {
+  const trimmed = (name || "").trim();
+  if (!trimmed) return { collision: false };
+  const names = new Set(
+    targetCache
+      .filter((t) => !excludeTargetId || t.id !== excludeTargetId)
+      .map((t) => (t.friendly_name || "").trim())
+      .filter(Boolean)
+  );
+  if (!names.has(trimmed)) return { collision: false };
+  let suggested = trimmed;
+  let n = 2;
+  while (names.has(suggested)) {
+    suggested = `${trimmed}_${n}`;
+    n += 1;
+  }
+  return { collision: true, suggested };
 }
 
 async function openNewSessionModal() {
-  const targetOptions = targetCache.map((t) => ({
-    value: t.id,
-    label: (t.friendly_name || t.host) + " (" + (t.type === "ssh" ? "SSH" : "Telnet") + ")",
-  }));
   const fields = [
     {
-      name: "mode",
-      label: "Mode",
-      type: "select",
-      default: targetOptions.length ? "saved" : "quick",
-      options: [
-        { value: "saved", label: "Saved target" },
-        { value: "quick", label: "Quick connect" },
-      ],
-    },
-    {
-      name: "target_id",
-      label: "Target",
-      type: "select",
-      default: targetOptions[0]?.value ?? "",
-      options: targetOptions.length ? targetOptions : [{ value: "", label: "No targets saved" }],
-    },
-    { name: "password", label: "Password (for saved SSH)", type: "password", default: "", placeholder: "Optional" },
-    { name: "host", label: "Host (quick connect)", type: "text", default: "", placeholder: "e.g. 192.168.1.1" },
-    { name: "port", label: "Port (quick connect)", type: "text", default: "22", placeholder: "22 or 23" },
-    {
       name: "type",
-      label: "Type (quick connect)",
+      label: "Type",
       type: "select",
       default: "ssh",
       options: [
@@ -388,32 +550,125 @@ async function openNewSessionModal() {
         { value: "telnet", label: "Telnet" },
       ],
     },
-    { name: "username", label: "Username (quick connect)", type: "text", default: "", placeholder: "Optional" },
-    { name: "quick_password", label: "Password (quick connect)", type: "password", default: "", placeholder: "Optional" },
+    { name: "host", label: "Host", type: "text", default: "", placeholder: "192.168.1.1 or hostname" },
+    { name: "port", label: "Port", type: "text", default: "22", placeholder: "22" },
+    { name: "username", label: "Username", type: "text", default: "", placeholder: "Optional" },
+    {
+      name: "auth",
+      label: "Auth",
+      type: "select",
+      default: "password",
+      options: [
+        { value: "password", label: "Password" },
+        { value: "key", label: "Key" },
+      ],
+    },
+    { name: "password", label: "Password", type: "password", default: "", placeholder: "Optional" },
+    { name: "private_key_path", label: "Key path", type: "text", default: "", placeholder: "/home/pi/.ssh/id_rsa" },
+    { name: "_divider", label: "", type: "display", default: "" },
+    { name: "save_as", label: "Save as", type: "text", default: "", placeholder: "Leave blank to not save · defaults to host" },
   ];
-  const form = await modalForm(fields, "New Session");
+  const form = await modalForm(fields, "Connect", {
+    onOpen(overlay) {
+      const typeSelect = overlay.querySelector("#modal-form-type");
+      const portInput = overlay.querySelector("#modal-form-port");
+      const authSelect = overlay.querySelector("#modal-form-auth");
+      const authRow = overlay.querySelector('[data-field-name="auth"]');
+      const passwordRow = overlay.querySelector('[data-field-name="password"]');
+      const keyRow = overlay.querySelector('[data-field-name="private_key_path"]');
+      const saveAsInput = overlay.querySelector("#modal-form-save_as");
+      const dividerRow = overlay.querySelector('[data-field-name="_divider"]');
+      if (dividerRow) dividerRow.classList.add("modal-section-divider");
+      const warningEl = document.createElement("div");
+      warningEl.className = "modal-field-warning";
+      warningEl.setAttribute("aria-live", "polite");
+      saveAsInput?.closest(".field")?.appendChild(warningEl);
+
+      function updatePort() {
+        if (!typeSelect || !portInput) return;
+        portInput.value = typeSelect.value === "telnet" ? "23" : "22";
+      }
+      function updateCredentialVisibility() {
+        const isTelnet = typeSelect?.value === "telnet";
+        if (authRow) authRow.hidden = isTelnet;
+        if (isTelnet) {
+          if (passwordRow) {
+            passwordRow.hidden = false;
+            const lab = passwordRow.querySelector(".field-label");
+            if (lab) lab.textContent = "Password";
+            const inp = passwordRow.querySelector("input");
+            if (inp) inp.placeholder = "Optional";
+          }
+          if (keyRow) keyRow.hidden = true;
+        } else {
+          const isKey = authSelect?.value === "key";
+          if (passwordRow) {
+            passwordRow.hidden = isKey;
+            const lab = passwordRow.querySelector(".field-label");
+            if (lab) lab.textContent = "Password";
+            const inp = passwordRow.querySelector("input");
+            if (inp) inp.placeholder = "Optional";
+          }
+          if (keyRow) keyRow.hidden = !isKey;
+        }
+      }
+      function updateSaveAsWarning() {
+        const raw = saveAsInput?.value ?? "";
+        const { collision, suggested } = getCollisionSuggest(raw);
+        if (warningEl) {
+          warningEl.textContent = collision ? `"${raw.trim()}" already exists. Will save as "${suggested}" unless you rename above.` : "";
+        }
+      }
+      typeSelect?.addEventListener("change", () => {
+        updatePort();
+        updateCredentialVisibility();
+      });
+      authSelect?.addEventListener("change", updateCredentialVisibility);
+      saveAsInput?.addEventListener("blur", updateSaveAsWarning);
+      updatePort();
+      updateCredentialVisibility();
+    },
+  });
   if (!form) return;
-  let payload;
-  let label;
-  if (form.mode === "saved" && form.target_id) {
-    const t = targetCache.find((x) => x.id === form.target_id);
-    if (!t) {
-      showToast("Target not found.", "error");
+  const host = (form.host || "").trim();
+  if (!host) {
+    showToast("Host is required.", "error");
+    return;
+  }
+  const port = parseInt(form.port, 10) || 22;
+  const type = (form.type || "ssh").toLowerCase();
+  const isTelnet = type === "telnet";
+  const auth = form.auth || "password";
+  const username = (form.username || "").trim() || undefined;
+  const payload = { host, port, type, username };
+  if (isTelnet || auth === "password") {
+    if (form.password) payload.password = form.password;
+  }
+  const label = (isTelnet ? "Telnet" : "SSH") + " " + host + ":" + port;
+  let resolvedName = null;
+  const saveAsTrimmed = (form.save_as || "").trim();
+  if (saveAsTrimmed) {
+    const { collision, suggested } = getCollisionSuggest(saveAsTrimmed);
+    resolvedName = collision ? suggested : saveAsTrimmed;
+  }
+  if (resolvedName) {
+    try {
+      await apiPost("/api/v1/remote-console/targets", {
+        host,
+        port,
+        type,
+        friendly_name: resolvedName,
+        username,
+        auth_type: !isTelnet && auth === "key" ? "key" : undefined,
+        private_key_path: !isTelnet && auth === "key" && form.private_key_path ? form.private_key_path.trim() : undefined,
+      }, { timeoutMs: REMOTE_API_TIMEOUT_MS });
+      showToast("Connection saved.", "success");
+      await loadTargets();
+      renderTargets();
+    } catch (e) {
+      showToast(e?.message || "Unable to save connection.", "error");
       return;
     }
-    payload = { target_id: form.target_id };
-    if (t.type === "ssh" && form.password) payload.password = form.password;
-    label = (t.friendly_name || t.host) + " " + (t.type === "ssh" ? "SSH" : "Telnet");
-  } else {
-    const host = (form.host || "").trim();
-    if (!host) {
-      showToast("Host is required for quick connect.", "error");
-      return;
-    }
-    const port = parseInt(form.port, 10) || 22;
-    payload = { host, port, type: form.type || "ssh", username: (form.username || "").trim() || undefined };
-    if (form.quick_password) payload.password = form.quick_password;
-    label = (form.type === "telnet" ? "Telnet" : "SSH") + " " + host + ":" + port;
   }
   await createSessionAndConnect(payload, label);
 }
@@ -449,63 +704,6 @@ async function createSessionAndConnect(payload, label) {
   }
 }
 
-async function openAddTargetModal() {
-  const form = await modalForm(
-    [
-      { name: "friendly_name", label: "Name", type: "text", default: "", placeholder: "e.g. Router A" },
-      { name: "host", label: "Host", type: "text", default: "", placeholder: "192.168.1.1 or hostname" },
-      { name: "port", label: "Port", type: "text", default: "22", placeholder: "22 (SSH) or 23 (Telnet)" },
-      {
-        name: "type",
-        label: "Type",
-        type: "select",
-        default: "ssh",
-        options: [
-          { value: "ssh", label: "SSH" },
-          { value: "telnet", label: "Telnet" },
-        ],
-      },
-      { name: "username", label: "Username", type: "text", default: "", placeholder: "Optional" },
-      {
-        name: "auth_type",
-        label: "Auth (SSH)",
-        type: "select",
-        default: "password",
-        options: [
-          { value: "password", label: "Password (enter at connect)" },
-          { value: "key", label: "Private key path" },
-        ],
-      },
-      { name: "private_key_path", label: "Private key path", type: "text", default: "", placeholder: "e.g. /home/pi/.ssh/id_rsa" },
-    ],
-    "Add Target"
-  );
-  if (!form) return;
-  const host = (form.host || "").trim();
-  if (!host) {
-    showToast("Host is required.", "error");
-    return;
-  }
-  const port = parseInt(form.port, 10) || 22;
-  const payload = {
-    host,
-    port,
-    type: (form.type || "ssh").toLowerCase(),
-    friendly_name: (form.friendly_name || host).trim(),
-    username: (form.username || "").trim() || undefined,
-    auth_type: form.auth_type === "key" ? "key" : undefined,
-    private_key_path: form.auth_type === "key" && form.private_key_path ? form.private_key_path.trim() : undefined,
-  };
-  try {
-    await apiPost("/api/v1/remote-console/targets", payload, { timeoutMs: REMOTE_API_TIMEOUT_MS });
-    showToast("Target added.", "success");
-    await loadTargets();
-    renderTargets();
-  } catch (e) {
-    showToast(e?.message || "Unable to add target.", "error");
-  }
-}
-
 async function loadTargets() {
   try {
     const payload = await apiGet("/api/v1/remote-console/targets", { timeoutMs: REMOTE_API_TIMEOUT_MS });
@@ -513,7 +711,7 @@ async function loadTargets() {
     targetCache = data.targets || [];
   } catch {
     targetCache = [];
-    showToast("Unable to load targets.", "error");
+    showToast("Unable to load connections.", "error");
   }
 }
 
@@ -551,10 +749,6 @@ async function init() {
   const newBtn = document.getElementById("new-remote-session");
   if (newBtn) {
     newBtn.addEventListener("click", () => openNewSessionModal());
-  }
-  const addTargetBtn = document.getElementById("add-target-btn");
-  if (addTargetBtn) {
-    addTargetBtn.addEventListener("click", () => openAddTargetModal());
   }
   await loadTargets();
   await loadSessions();
