@@ -1,10 +1,10 @@
 /**
- * SSH/Telnet page: targets, sessions, and browser terminal.
+ * Remote Console (SSH / Telnet) page: targets, sessions, and browser terminal.
  */
 
-import { apiGet, apiPost, apiPut, apiDelete, extractData } from "../api.js";
+import { apiGet, apiPost, apiDelete, extractData } from "../api.js";
 import { createWebSocketClient } from "../websocket.js";
-import { getContainer, bindEscape, trapFocus, escapeHtml } from "../modal.js";
+import { modalForm, modalConfirm } from "../modal.js";
 
 const REMOTE_API_TIMEOUT_MS = 20000;
 
@@ -297,10 +297,7 @@ function renderTargets() {
     badge.className = "remote-type-badge " + (t.type === "telnet" ? "telnet" : "ssh");
     badge.textContent = t.type === "telnet" ? "Telnet" : "SSH";
     li.append(dot, label, badge);
-    li.addEventListener("click", async () => {
-      const result = await openSessionCreatorModal(t);
-      await handleSessionCreatorResult(result, t);
-    });
+    li.addEventListener("click", () => openConnectToTargetModal(t));
     items.push(li);
   });
 
@@ -335,196 +332,90 @@ function renderTargets() {
   }
 }
 
-/**
- * Open the single session creator modal. Pre-fill if editing a saved target (password not returned by API).
- * @param {object} [initialTarget] - Saved target to edit/connect to; omit for new session.
- * @returns {Promise<{ action: 'save'|'connect', data: Record<string, string> }|null>}
- */
-function openSessionCreatorModal(initialTarget = null) {
-  const container = getContainer();
-  container.setAttribute("aria-hidden", "false");
-  container.innerHTML = "";
-
-  const connType = initialTarget ? initialTarget.type : "ssh";
-  const defaultPort = connType === "telnet" ? "23" : "22";
-
-  const overlay = document.createElement("div");
-  overlay.className = "modal-overlay";
-  overlay.setAttribute("role", "dialog");
-  overlay.setAttribute("aria-modal", "true");
-  overlay.setAttribute("aria-labelledby", "session-creator-title");
-
-  let resolveRef;
-  const promise = new Promise((resolve) => {
-    resolveRef = resolve;
-  });
-
-  const close = (value) => {
-    overlay.remove();
-    if (container.children.length === 0) {
-      container.setAttribute("aria-hidden", "true");
-    }
-    resolveRef(value);
-  };
-
-  const title = initialTarget ? "Edit session" : "New Session";
-  const nameVal = initialTarget ? escapeHtml(initialTarget.friendly_name || initialTarget.host) : "";
-  const hostVal = initialTarget ? escapeHtml(initialTarget.host) : "";
-  const portVal = initialTarget ? String(initialTarget.port) : defaultPort;
-  const userVal = initialTarget && initialTarget.username ? escapeHtml(initialTarget.username) : "";
-
-  overlay.innerHTML = `
-    <div class="modal-dialog modal-dialog-form">
-      <h2 id="session-creator-title" class="modal-title">${escapeHtml(title)}</h2>
-      <form class="modal-form" id="session-creator-form">
-        <div class="field" data-field-name="session_name">
-          <label class="field-label" for="session-creator-name">Session name (for save)</label>
-          <input type="text" id="session-creator-name" name="session_name" class="modal-input" value="${nameVal}" placeholder="e.g. Router A" />
-        </div>
-        <div class="session-type-switcher field" role="group" aria-label="Connection type">
-          <span class="field-label">Type</span>
-          <div class="btn-group-inline">
-            <button type="button" class="btn btn-secondary session-type-btn ${connType === "ssh" ? "is-active" : ""}" data-type="ssh">SSH</button>
-            <button type="button" class="btn btn-secondary session-type-btn ${connType === "telnet" ? "is-active" : ""}" data-type="telnet">Telnet</button>
-          </div>
-          <input type="hidden" name="type" id="session-creator-type" value="${escapeHtml(connType)}" />
-        </div>
-        <div class="field" data-field-name="host">
-          <label class="field-label" for="session-creator-host">Host</label>
-          <input type="text" id="session-creator-host" name="host" class="modal-input" value="${hostVal}" placeholder="192.168.1.1 or hostname" />
-        </div>
-        <div class="field" data-field-name="port">
-          <label class="field-label" for="session-creator-port">Port</label>
-          <input type="text" id="session-creator-port" name="port" class="modal-input" value="${portVal}" placeholder="22 or 23" />
-        </div>
-        <div class="field" data-field-name="username">
-          <label class="field-label" for="session-creator-username">Username (for connection)</label>
-          <input type="text" id="session-creator-username" name="username" class="modal-input" value="${userVal}" placeholder="Optional" autocomplete="off" />
-        </div>
-        <div class="field" data-field-name="password">
-          <label class="field-label" for="session-creator-password">Password (for connection)</label>
-          <input type="password" id="session-creator-password" name="password" class="modal-input" value="" placeholder="Optional" autocomplete="off" />
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
-          <button type="button" class="btn btn-secondary session-save-btn">Save</button>
-          <button type="button" class="btn btn-primary session-connect-btn">Connect</button>
-        </div>
-      </form>
-    </div>
-  `;
-
-  const form = overlay.querySelector("#session-creator-form");
-  const typeInput = overlay.querySelector("#session-creator-type");
-  const portInput = overlay.querySelector("#session-creator-port");
-  const typeBtns = overlay.querySelectorAll(".session-type-btn");
-
-  typeBtns.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const t = btn.dataset.type;
-      typeInput.value = t;
-      typeBtns.forEach((b) => b.classList.toggle("is-active", b.dataset.type === t));
-      const defaultP = t === "telnet" ? "23" : "22";
-      if (!portInput.value || portInput.value === "22" || portInput.value === "23") {
-        portInput.value = defaultP;
-      }
+async function openConnectToTargetModal(target) {
+  const fields = [
+    { name: "target_id", label: "Target", type: "display", default: target.friendly_name || target.host },
+  ];
+  if (target.type === "ssh") {
+    fields.push({
+      name: "password",
+      label: "Password (leave blank if using key)",
+      type: "password",
+      default: "",
+      placeholder: "Optional",
     });
-  });
-
-  function getFormData() {
-    return {
-      session_name: (overlay.querySelector("#session-creator-name")?.value ?? "").trim(),
-      type: (overlay.querySelector("#session-creator-type")?.value ?? "ssh").toLowerCase(),
-      host: (overlay.querySelector("#session-creator-host")?.value ?? "").trim(),
-      port: (overlay.querySelector("#session-creator-port")?.value ?? "22").trim(),
-      username: (overlay.querySelector("#session-creator-username")?.value ?? "").trim(),
-      password: (overlay.querySelector("#session-creator-password")?.value ?? "").trim(),
-    };
   }
-
-  overlay.querySelector(".modal-cancel").addEventListener("click", () => close(null));
-  overlay.querySelector(".session-save-btn").addEventListener("click", () => close({ action: "save", data: getFormData() }));
-  overlay.querySelector(".session-connect-btn").addEventListener("click", () => close({ action: "connect", data: getFormData() }));
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    close({ action: "connect", data: getFormData() });
-  });
-
-  bindEscape(overlay, () => close(null));
-  container.appendChild(overlay);
-  trapFocus(overlay.querySelector(".modal-dialog"));
-  const firstInput = overlay.querySelector(".modal-input");
-  if (firstInput) {
-    firstInput.focus();
-    if (typeof firstInput.select === "function") firstInput.select();
-  }
-
-  return promise;
+  const form = await modalForm(fields, "Connect to " + (target.friendly_name || target.host));
+  if (!form) return;
+  const payload = { target_id: target.id };
+  if (target.type === "ssh" && form.password) payload.password = form.password;
+  await createSessionAndConnect(payload, sessionLabel({ type: target.type, host: target.host, port: target.port }));
 }
 
-async function handleSessionCreatorResult(result, initialTarget) {
-  if (!result) return;
-  const { action, data } = result;
-  const host = (data.host || "").trim();
-  const port = parseInt(data.port, 10) || (data.type === "telnet" ? 23 : 22);
-  const connType = (data.type || "ssh").toLowerCase();
-  const username = (data.username || "").trim() || undefined;
-  const password = (data.password || "").trim() || undefined;
-  const friendlyName = (data.session_name || host).trim();
-
-  if (action === "save") {
-    try {
-      if (initialTarget) {
-        const payload = {
-          friendly_name: friendlyName || initialTarget.host,
-          host,
-          port,
-          type: connType,
-          username: username || null,
-        };
-        if (password) payload.password = password;
-        await apiPut(
-          `/api/v1/remote-console/targets/${encodeURIComponent(initialTarget.id)}`,
-          payload,
-          { timeoutMs: REMOTE_API_TIMEOUT_MS }
-        );
-        showToast("Session updated.", "success");
-      } else {
-        if (!host) {
-          showToast("Host is required to save.", "error");
-          return;
-        }
-        const payload = {
-          host,
-          port,
-          type: connType,
-          friendly_name: friendlyName || host,
-          username: username || null,
-        };
-        if (password) payload.password = password;
-        await apiPost("/api/v1/remote-console/targets", payload, { timeoutMs: REMOTE_API_TIMEOUT_MS });
-        showToast("Session saved.", "success");
-      }
-      await loadTargets();
-      renderTargets();
-    } catch (e) {
-      showToast(e?.message || "Unable to save.", "error");
-    }
-    return;
-  }
-
-  if (action === "connect") {
-    if (!host) {
-      showToast("Host is required to connect.", "error");
+async function openNewSessionModal() {
+  const targetOptions = targetCache.map((t) => ({
+    value: t.id,
+    label: (t.friendly_name || t.host) + " (" + (t.type === "ssh" ? "SSH" : "Telnet") + ")",
+  }));
+  const fields = [
+    {
+      name: "mode",
+      label: "Mode",
+      type: "select",
+      default: targetOptions.length ? "saved" : "quick",
+      options: [
+        { value: "saved", label: "Saved target" },
+        { value: "quick", label: "Quick connect" },
+      ],
+    },
+    {
+      name: "target_id",
+      label: "Target",
+      type: "select",
+      default: targetOptions[0]?.value ?? "",
+      options: targetOptions.length ? targetOptions : [{ value: "", label: "No targets saved" }],
+    },
+    { name: "password", label: "Password (for saved SSH)", type: "password", default: "", placeholder: "Optional" },
+    { name: "host", label: "Host (quick connect)", type: "text", default: "", placeholder: "e.g. 192.168.1.1" },
+    { name: "port", label: "Port (quick connect)", type: "text", default: "22", placeholder: "22 or 23" },
+    {
+      name: "type",
+      label: "Type (quick connect)",
+      type: "select",
+      default: "ssh",
+      options: [
+        { value: "ssh", label: "SSH" },
+        { value: "telnet", label: "Telnet" },
+      ],
+    },
+    { name: "username", label: "Username (quick connect)", type: "text", default: "", placeholder: "Optional" },
+    { name: "quick_password", label: "Password (quick connect)", type: "password", default: "", placeholder: "Optional" },
+  ];
+  const form = await modalForm(fields, "New Session");
+  if (!form) return;
+  let payload;
+  let label;
+  if (form.mode === "saved" && form.target_id) {
+    const t = targetCache.find((x) => x.id === form.target_id);
+    if (!t) {
+      showToast("Target not found.", "error");
       return;
     }
-    const payload = initialTarget
-      ? { target_id: initialTarget.id }
-      : { host, port, type: connType, username };
-    if (password !== undefined && password !== "") payload.password = password;
-    const label = sessionLabel({ type: connType, host, port });
-    await createSessionAndConnect(payload, label);
+    payload = { target_id: form.target_id };
+    if (t.type === "ssh" && form.password) payload.password = form.password;
+    label = (t.friendly_name || t.host) + " " + (t.type === "ssh" ? "SSH" : "Telnet");
+  } else {
+    const host = (form.host || "").trim();
+    if (!host) {
+      showToast("Host is required for quick connect.", "error");
+      return;
+    }
+    const port = parseInt(form.port, 10) || 22;
+    payload = { host, port, type: form.type || "ssh", username: (form.username || "").trim() || undefined };
+    if (form.quick_password) payload.password = form.quick_password;
+    label = (form.type === "telnet" ? "Telnet" : "SSH") + " " + host + ":" + port;
   }
+  await createSessionAndConnect(payload, label);
 }
 
 async function createSessionAndConnect(payload, label) {
@@ -558,6 +449,62 @@ async function createSessionAndConnect(payload, label) {
   }
 }
 
+async function openAddTargetModal() {
+  const form = await modalForm(
+    [
+      { name: "friendly_name", label: "Name", type: "text", default: "", placeholder: "e.g. Router A" },
+      { name: "host", label: "Host", type: "text", default: "", placeholder: "192.168.1.1 or hostname" },
+      { name: "port", label: "Port", type: "text", default: "22", placeholder: "22 (SSH) or 23 (Telnet)" },
+      {
+        name: "type",
+        label: "Type",
+        type: "select",
+        default: "ssh",
+        options: [
+          { value: "ssh", label: "SSH" },
+          { value: "telnet", label: "Telnet" },
+        ],
+      },
+      { name: "username", label: "Username", type: "text", default: "", placeholder: "Optional" },
+      {
+        name: "auth_type",
+        label: "Auth (SSH)",
+        type: "select",
+        default: "password",
+        options: [
+          { value: "password", label: "Password (enter at connect)" },
+          { value: "key", label: "Private key path" },
+        ],
+      },
+      { name: "private_key_path", label: "Private key path", type: "text", default: "", placeholder: "e.g. /home/pi/.ssh/id_rsa" },
+    ],
+    "Add Target"
+  );
+  if (!form) return;
+  const host = (form.host || "").trim();
+  if (!host) {
+    showToast("Host is required.", "error");
+    return;
+  }
+  const port = parseInt(form.port, 10) || 22;
+  const payload = {
+    host,
+    port,
+    type: (form.type || "ssh").toLowerCase(),
+    friendly_name: (form.friendly_name || host).trim(),
+    username: (form.username || "").trim() || undefined,
+    auth_type: form.auth_type === "key" ? "key" : undefined,
+    private_key_path: form.auth_type === "key" && form.private_key_path ? form.private_key_path.trim() : undefined,
+  };
+  try {
+    await apiPost("/api/v1/remote-console/targets", payload, { timeoutMs: REMOTE_API_TIMEOUT_MS });
+    showToast("Target added.", "success");
+    await loadTargets();
+    renderTargets();
+  } catch (e) {
+    showToast(e?.message || "Unable to add target.", "error");
+  }
+}
 
 async function loadTargets() {
   try {
@@ -603,17 +550,11 @@ async function init() {
   }
   const newBtn = document.getElementById("new-remote-session");
   if (newBtn) {
-    newBtn.addEventListener("click", async () => {
-      const result = await openSessionCreatorModal();
-      await handleSessionCreatorResult(result, null);
-    });
+    newBtn.addEventListener("click", () => openNewSessionModal());
   }
   const addTargetBtn = document.getElementById("add-target-btn");
   if (addTargetBtn) {
-    addTargetBtn.addEventListener("click", async () => {
-      const result = await openSessionCreatorModal();
-      await handleSessionCreatorResult(result, null);
-    });
+    addTargetBtn.addEventListener("click", () => openAddTargetModal());
   }
   await loadTargets();
   await loadSessions();

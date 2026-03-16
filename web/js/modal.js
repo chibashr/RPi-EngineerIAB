@@ -12,7 +12,7 @@ const CONTAINER_ID = "rpi-modal-container";
 /**
  * @returns {HTMLElement}
  */
-export function getContainer() {
+function getContainer() {
   let el = document.getElementById(CONTAINER_ID);
   if (!el) {
     el = document.createElement("div");
@@ -28,7 +28,7 @@ export function getContainer() {
  * @param {HTMLElement} overlay
  * @param {() => void} onClose
  */
-export function bindEscape(overlay, onClose) {
+function bindEscape(overlay, onClose) {
   const handler = (e) => {
     if (e.key === "Escape") {
       e.preventDefault();
@@ -43,7 +43,7 @@ export function bindEscape(overlay, onClose) {
  * Focus trap: keep focus inside the dialog while open.
  * @param {HTMLElement} dialog
  */
-export function trapFocus(dialog) {
+function trapFocus(dialog) {
   const focusables = dialog.querySelectorAll(
     'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
   );
@@ -284,11 +284,10 @@ export function modalForm(fields, title, options = {}) {
       `;
       }
 
-      const ac = type === "password" ? " autocomplete=\"off\"" : (f.autocomplete != null ? ` autocomplete="${escapeHtml(f.autocomplete)}"` : "");
       return `
         <div class="field" data-field-name="${escapeHtml(f.name)}">
           ${label}
-          <input type="${escapeHtml(type)}" id="${id}" name="${escapeHtml(f.name)}" class="modal-input" value="${def}"${ph}${ac} />
+          <input type="${escapeHtml(type)}" id="${id}" name="${escapeHtml(f.name)}" class="modal-input" value="${def}"${ph} />
         </div>
       `;
     })
@@ -341,9 +340,7 @@ export function modalForm(fields, title, options = {}) {
   const firstInput = overlay.querySelector(".modal-input");
   if (firstInput) {
     firstInput.focus();
-    if (typeof firstInput.select === "function") {
-      firstInput.select();
-    }
+    firstInput.select();
   }
   if (typeof options.onOpen === "function") {
     options.onOpen(overlay);
@@ -488,7 +485,7 @@ export function modalHelpSections(title, sections) {
   return Promise.resolve();
 }
 
-export function escapeHtml(str) {
+function escapeHtml(str) {
   if (str == null) return "";
   const div = document.createElement("div");
   div.textContent = str;

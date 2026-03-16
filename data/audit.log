@@ -130,3 +130,15 @@
 {"event": "remote_console_session_created", "session_id": "06bc0c0f", "host": "192.168.1.101", "timestamp": "2026-03-15T21:39:10.226Z"}
 {"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/sessions/00000000-0000-0000-0000-000000000000", "timestamp": "2026-03-15T21:39:10.283Z"}
 {"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/sessions/00000000-0000-0000-0000-000000000000", "timestamp": "2026-03-15T21:39:10.339Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/targets", "timestamp": "2026-03-15T22:46:21.780Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/targets/00000000-0000-0000-0000-000000000000", "timestamp": "2026-03-15T22:46:21.836Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/targets", "timestamp": "2026-03-15T22:46:21.953Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/targets", "timestamp": "2026-03-15T22:46:22.008Z"}
+{"event": "remote_console_target_created", "target_id": "371d2d19", "timestamp": "2026-03-15T22:46:22.010Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/targets/00000000-0000-0000-0000-000000000000", "timestamp": "2026-03-15T22:46:22.067Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/sessions", "timestamp": "2026-03-15T22:46:22.124Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/sessions", "timestamp": "2026-03-15T22:46:22.188Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/sessions", "timestamp": "2026-03-15T22:46:22.243Z"}
+{"event": "remote_console_session_created", "session_id": "90b61078", "host": "192.168.1.101", "timestamp": "2026-03-15T22:46:22.246Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/sessions/00000000-0000-0000-0000-000000000000", "timestamp": "2026-03-15T22:46:22.301Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/sessions/00000000-0000-0000-0000-000000000000", "timestamp": "2026-03-15T22:46:22.355Z"}

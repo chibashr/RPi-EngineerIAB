@@ -23,13 +23,3 @@
 .serial-list-item .remote-type-badge {
   margin-left: auto;
 }
-
-.session-type-switcher .btn-group-inline {
-  display: inline-flex;
-  gap: 0.25rem;
-}
-
-.session-type-switcher .session-type-btn.is-active {
-  font-weight: 600;
-  opacity: 1;
-}

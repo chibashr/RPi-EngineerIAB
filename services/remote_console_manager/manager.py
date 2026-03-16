@@ -49,7 +49,6 @@ class RemoteConsoleTarget:
     port: int
     friendly_name: str
     username: str | None = None
-    password: str | None = None  # persisted; never returned by API (write-only)
     auth_type: str | None = None  # "password" | "key"
     private_key_path: str | None = None
     created_at: str = field(default_factory=_timestamp)
@@ -104,7 +103,6 @@ class RemoteConsoleManager:
                     port=int(t.get("port", 22 if t.get("type") == "ssh" else 23)),
                     friendly_name=str(t.get("friendly_name", "") or t.get("host", "")),
                     username=t.get("username"),
-                    password=t.get("password"),
                     auth_type=t.get("auth_type"),
                     private_key_path=t.get("private_key_path"),
                     created_at=str(t.get("created_at", _timestamp())),
@@ -119,20 +117,19 @@ class RemoteConsoleManager:
             path.parent.mkdir(parents=True, exist_ok=True)
             targets_list = []
             for t in self._targets.values():
-                row = {
-                    "id": t.id,
-                    "type": t.type,
-                    "host": t.host,
-                    "port": t.port,
-                    "friendly_name": t.friendly_name,
-                    "username": t.username,
-                    "auth_type": t.auth_type,
-                    "private_key_path": t.private_key_path,
-                    "created_at": t.created_at,
-                }
-                if t.password is not None:
-                    row["password"] = t.password
-                targets_list.append(row)
+                targets_list.append(
+                    {
+                        "id": t.id,
+                        "type": t.type,
+                        "host": t.host,
+                        "port": t.port,
+                        "friendly_name": t.friendly_name,
+                        "username": t.username,
+                        "auth_type": t.auth_type,
+                        "private_key_path": t.private_key_path,
+                        "created_at": t.created_at,
+                    }
+                )
             path.write_text(
                 json.dumps({"targets": targets_list, "version": 1}, indent=2),
                 encoding="utf-8",
@@ -188,9 +185,6 @@ class RemoteConsoleManager:
         username = payload.get("username")
         if username is not None:
             username = str(username).strip() or None
-        password = payload.get("password")
-        if password is not None:
-            password = str(password)
         auth_type = payload.get("auth_type")
         if auth_type is not None:
             auth_type = str(auth_type).strip().lower() or None
@@ -204,7 +198,6 @@ class RemoteConsoleManager:
             port=port,
             friendly_name=friendly_name,
             username=username,
-            password=password,
             auth_type=auth_type,
             private_key_path=private_key_path,
         )
@@ -221,10 +214,6 @@ class RemoteConsoleManager:
             t.host = str(payload["host"]).strip()
         if "port" in payload and payload["port"] is not None:
             t.port = int(payload["port"])
-        if "type" in payload and payload["type"] is not None:
-            ct = str(payload["type"]).strip().lower()
-            if ct in ("ssh", "telnet"):
-                t.type = ct
         if "friendly_name" in payload:
             t.friendly_name = (payload["friendly_name"] or t.host).strip()
         if "username" in payload:
@@ -233,8 +222,6 @@ class RemoteConsoleManager:
             t.auth_type = str(payload["auth_type"]).strip().lower() or None
         if "private_key_path" in payload:
             t.private_key_path = str(payload["private_key_path"]).strip() or None
-        if "password" in payload:
-            t.password = str(payload["password"]) if payload["password"] is not None else None
         self._save_targets()
         return self.get_target(target_id)
 
@@ -257,7 +244,6 @@ class RemoteConsoleManager:
             t = self._targets.get(target_id)
             if not t:
                 raise KeyError("Target not found")
-            session_password = password if password is not None else getattr(t, "password", None)
             session = RemoteConsoleSession(
                 session_id=str(uuid.uuid4()),
                 target_id=target_id,
@@ -265,7 +251,7 @@ class RemoteConsoleManager:
                 host=t.host,
                 port=t.port,
                 username=t.username,
-                password=session_password,
+                password=password,
                 private_key_path=t.private_key_path,
             )
         else:

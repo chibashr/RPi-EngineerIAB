@@ -40,22 +40,21 @@ export async function apiGet(endpoint, options = {}) {
   const url = new URL(safeEndpoint, window.location.origin);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const { timeoutMs: _omit, ...fetchOptions } = options;
-  const doFetch = (headers) =>
+  const response = await withTimeout(
     fetch(url.toString(), {
       method: "GET",
-      headers: { Accept: "application/json", ...headers },
+      headers: { Accept: "application/json" },
       cache: "no-store",
       ...fetchOptions,
-    });
-  let response = await withTimeout(doFetch(authHeaders()), timeoutMs);
-  if (response.status === 401) {
-    await showLoginModal();
-    response = await withTimeout(doFetch(authHeaders()), timeoutMs);
-  }
+    }),
+    timeoutMs
+  );
+
   if (!response.ok) {
     const message = `Request failed (${response.status})`;
     throw new Error(message);
   }
+
   return response.json();
 }
 
