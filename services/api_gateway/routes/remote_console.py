@@ -1,12 +1,11 @@
-"""Remote console (SSH/Telnet) API routes. Admin-only."""
+"""Remote console (SSH/Telnet) API routes. No admin required."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body
 
 from lib.audit import audit_log
 from lib.module_logger import get_service_logger
-from services.api_gateway.routes.auth import require_admin
 from services.remote_console_manager import remote_console_manager
 
 from ..response import error_response, success_response
@@ -16,12 +15,12 @@ router = APIRouter(prefix="/api/v1/remote-console", tags=["remote-console"])
 
 
 @router.get("/targets")
-def list_targets(_: str = Depends(require_admin)):
+def list_targets():
     return success_response(remote_console_manager.list_targets())
 
 
 @router.get("/targets/{target_id}")
-def get_target(target_id: str, _: str = Depends(require_admin)):
+def get_target(target_id: str):
     try:
         data = remote_console_manager.get_target(target_id)
     except KeyError as exc:
@@ -30,10 +29,7 @@ def get_target(target_id: str, _: str = Depends(require_admin)):
 
 
 @router.post("/targets")
-def create_target(
-    payload: dict | None = Body(default=None),
-    _: str = Depends(require_admin),
-):
+def create_target(payload: dict | None = Body(default=None)):
     payload = payload or {}
     try:
         data = remote_console_manager.create_target(payload)
@@ -47,7 +43,6 @@ def create_target(
 def update_target(
     target_id: str,
     payload: dict | None = Body(default=None),
-    _: str = Depends(require_admin),
 ):
     payload = payload or {}
     try:
@@ -58,7 +53,7 @@ def update_target(
 
 
 @router.delete("/targets/{target_id}")
-def delete_target(target_id: str, _: str = Depends(require_admin)):
+def delete_target(target_id: str):
     try:
         data = remote_console_manager.delete_target(target_id)
         audit_log({"event": "remote_console_target_deleted", "target_id": target_id[:8]})
@@ -68,15 +63,12 @@ def delete_target(target_id: str, _: str = Depends(require_admin)):
 
 
 @router.get("/sessions")
-def list_sessions(_: str = Depends(require_admin)):
+def list_sessions():
     return success_response(remote_console_manager.list_sessions())
 
 
 @router.post("/sessions")
-def create_session(
-    payload: dict | None = Body(default=None),
-    _: str = Depends(require_admin),
-):
+def create_session(payload: dict | None = Body(default=None)):
     payload = payload or {}
     logger.info("create_session API: target_id=%s host=%s", payload.get("target_id"), payload.get("host"))
     try:
@@ -101,7 +93,7 @@ def create_session(
 
 
 @router.get("/sessions/{session_id}")
-def get_session(session_id: str, _: str = Depends(require_admin)):
+def get_session(session_id: str):
     try:
         data = remote_console_manager.get_session(session_id)
     except KeyError as exc:
@@ -110,7 +102,7 @@ def get_session(session_id: str, _: str = Depends(require_admin)):
 
 
 @router.delete("/sessions/{session_id}")
-def delete_session(session_id: str, _: str = Depends(require_admin)):
+def delete_session(session_id: str):
     try:
         data = remote_console_manager.delete_session(session_id)
         audit_log({"event": "remote_console_session_deleted", "session_id": session_id[:8]})
