@@ -144,3 +144,5 @@
 {"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/remote-console/sessions/00000000-0000-0000-0000-000000000000", "timestamp": "2026-03-15T22:46:22.355Z"}
 {"event": "remote_console_target_created", "target_id": "80e119dd", "timestamp": "2026-03-16T00:19:28.656Z"}
 {"event": "remote_console_session_created", "session_id": "16e63b80", "host": "192.168.1.101", "timestamp": "2026-03-16T00:19:28.906Z"}
+{"event": "login_success", "source_ip": "testclient", "timestamp": "2026-03-16T00:22:02.527Z"}
+{"event": "login_failure", "source_ip": "testclient", "locked_out": false, "timestamp": "2026-03-16T00:22:02.583Z"}

@@ -107,7 +107,7 @@ def create_token() -> str:
 
 
 def validate_admin_password(password: str) -> bool:
-    """PAM for user 'pi' first; on failure/ImportError use bcrypt from config."""
+    """Validate against Pi OS user 'pi' (PAM). Bcrypt fallback only when PAM unavailable (e.g. dev)."""
     if not password:
         return False
     try:
@@ -116,7 +116,13 @@ def validate_admin_password(password: str) -> bool:
         p = pam.pam()
         if p.authenticate("pi", password):
             return True
-    except (ImportError, Exception):
+        # PAM available and auth failed: only the Pi password is valid; do not fall back to bcrypt
+        return False
+    except ImportError:
+        # No PAM (e.g. Windows dev): use bcrypt from config for testing
+        pass
+    except Exception:
+        # PAM misconfigured or runtime error: allow bcrypt fallback so admin can still log in
         pass
     cfg = _read_config()
     stored = cfg.get("auth", "password_hash", fallback=None) or ""
