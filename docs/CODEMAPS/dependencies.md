@@ -1,6 +1,6 @@
 # Dependencies
 
-<!-- Generated: 2026-03-15 | Docs: ENV.md, RUNBOOK.md synced | Token estimate: ~400 -->
+<!-- Generated: 2026-03-17 | Docs: ENV.md, RUNBOOK.md synced | Token estimate: ~420 -->
 
 ## External Services
 
@@ -21,6 +21,7 @@
 | slowapi | Rate limiting (e.g. login) |
 | python-pam | PAM auth (Pi OS admin) |
 | bcrypt | Password hash (auth.conf fallback) |
+| paramiko | SSH remote console (optional; required for SSH targets) |
 
 ## Dev (requirements-dev.txt)
 

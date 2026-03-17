@@ -1,6 +1,6 @@
 # Backend
 
-<!-- Generated: 2026-03-15 | Files scanned: 180+ | Token estimate: ~900 -->
+<!-- Generated: 2026-03-17 | Files scanned: 431 | Token estimate: ~920 -->
 
 ## Routes
 
@@ -25,6 +25,7 @@
 **logs** — GET /system, /export
 **modules** — GET /list, /components, /available, /updates; POST /install, /enable/<id>, /disable/<id>, /install-from-repo, /update/<id>; DELETE /uninstall/<id>
 **remote** — GET /status, /info; POST /password, /teamviewer/reset-password, /teamviewer/generate-password, /teamviewer/setup-account
+**remote-console** — GET /targets, /targets/<id>, /sessions, /sessions/<id>; POST /targets, /sessions; PUT /targets/<id>; DELETE /targets/<id>, /sessions/<id>
 
 ### Module APIs (deferred Phase 6)
 
@@ -39,6 +40,7 @@
 |------|---------|
 | /ws/status | Live status stream (system_metrics, network_status, network_interfaces, monitor_status) |
 | /ws/serial/{session_id} | Serial session I/O (bidirectional) |
+| /ws/remote-console/{session_id} | Remote console I/O (SSH/Telnet, bidirectional) |
 | /ws/updates/apply | Update apply progress stream |
 | /ws/capture/{capture_id} | Packet capture stream (tshark -r -l) |
 
@@ -61,10 +63,11 @@
 - logs_router → routes/logs.py → logging_service
 - modules_router → routes/modules.py → module_manager
 - remote_router → routes/remote.py → remote_access_manager
+- remote_console_router → routes/remote_console.py → remote_console_manager
 
 ## Key Files
 
 - `services/api_gateway/routes/__init__.py` — register_routes (auth_router first), APIRouter imports
-- `services/api_gateway/websockets.py` — register_websockets (status, serial, updates, capture)
+- `services/api_gateway/websockets.py` — register_websockets (status, serial, remote console, updates, capture)
 - `services/api_gateway/response.py` — success_response, error_response (Starlette JSONResponse)
 - Each `services/*_manager/manager.py` — domain logic
