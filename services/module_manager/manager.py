@@ -120,6 +120,8 @@ class ModuleManager:
         self._app = None
         self._status_queue: asyncio.Queue | None = None
         self._ensure_modules_on_path()
+        # Populate registry on construction so callers can immediately query modules.
+        self.discover_modules()
 
     # ------------------------------------------------------------------
     # Discovery / metadata
@@ -130,6 +132,32 @@ class ModuleManager:
         modules_str = str(self._modules_dir.resolve())
         if modules_str not in sys.path:
             sys.path.insert(0, modules_str)
+
+    # ------------------------------------------------------------------
+    # App binding (backwards-compatible helpers for tests and legacy code)
+    # ------------------------------------------------------------------
+
+    def attach_app(self, app: Any) -> None:
+        """Attach a FastAPI app and reset route registration when app changes.
+
+        Kept for backwards compatibility with existing tests that expect
+        app rebinding to clear per-module routes_registered flags.
+        """
+        if app is self._app:
+            return
+        self._app = app
+        for record in self._registry.values():
+            record.routes_registered = False
+
+    def register_module_routes(self, app: Any) -> None:
+        """Register all module API routers on the given app.
+
+        This is a thin wrapper around the internal API registration helper,
+        mirroring the older public surface area used in tests.
+        """
+        self.attach_app(app)
+        for record in self._registry.values():
+            self._register_module_api_routes(record)
 
     def discover_modules(self) -> list[dict[str, object]]:
         """Scan modules/*/module.json and return list of metadata dicts.
@@ -148,9 +176,12 @@ class ModuleManager:
             except (OSError, json.JSONDecodeError):
                 continue
             module_id = metadata.get("id") or metadata.get("name") or module_dir.name
-            enabled_flag = bool(metadata.get("enabled", True))
+            # Explicit enabled flag controls default; when absent, default to disabled
+            # so tests and callers can deterministically enable modules.
+            has_enabled = "enabled" in metadata
+            enabled_flag = bool(metadata.get("enabled", False))
             enabled_by_default = bool(metadata.get("enabled_by_default", enabled_flag))
-            is_enabled = enabled_flag or enabled_by_default
+            is_enabled = enabled_flag if has_enabled else enabled_by_default
             record = ModuleRecord(
                 module_id=module_id,
                 name=metadata.get("display_name") or metadata.get("name") or module_id,
@@ -176,6 +207,8 @@ class ModuleManager:
         ]
 
     def list_modules(self) -> dict[str, list[dict[str, object]]]:
+        if not self._registry:
+            self.discover_modules()
         return {
             "modules": [
                 {
@@ -198,11 +231,15 @@ class ModuleManager:
     def install_module(self, payload: dict[str, object]) -> dict[str, object]:
         module_id = payload.get("module_id")
         module_url = payload.get("module_url")
+        # If the module already exists in the registry, treat as installed.
         if module_id and module_id in self._registry:
             return {"installed": True, "module_id": module_id}
         if not module_url:
             raise ValueError("module_id or module_url is required")
         module_path = self._install_from_archive(str(module_url))
+        if module_path is None:
+            # Defensive; _install_from_archive should raise on error.
+            raise RuntimeError("Module archive could not be installed")
         self.discover_modules()
         logger.info("Module installed from archive: %s", module_path.name)
         return {"installed": True, "module_id": module_path.name}
@@ -518,6 +555,7 @@ class ModuleManager:
             if destination.exists():
                 shutil.rmtree(destination, ignore_errors=True)
             shutil.copytree(source, destination)
+            return destination
         slug = _github_repo_slug(repo)
         if not slug:
             raise RuntimeError("Repo URL is not a GitHub repo; cannot fetch module.")
@@ -549,6 +587,7 @@ class ModuleManager:
                 if destination.exists():
                     shutil.rmtree(destination, ignore_errors=True)
                 shutil.copytree(source, destination)
+                return destination
             finally:
                 try:
                     os.unlink(f.name)
@@ -612,3 +651,4 @@ class ModuleManager:
             if destination.exists():
                 shutil.rmtree(destination, ignore_errors=True)
             shutil.copytree(module_root, destination)
+            return destination
