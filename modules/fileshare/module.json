@@ -1,0 +1,9 @@
+{
+  "id": "fileshare",
+  "name": "File Share",
+  "prefix": "fileshare",
+  "version": "1.0.0",
+  "enabled": true,
+  "description": "File sharing service",
+  "has_websockets": false
+}

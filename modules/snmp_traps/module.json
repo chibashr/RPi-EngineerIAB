@@ -1,0 +1,9 @@
+{
+  "id": "snmp_traps",
+  "name": "SNMP Traps",
+  "prefix": "snmp_traps",
+  "version": "1.0.0",
+  "enabled": true,
+  "description": "SNMP trap receiver and viewer",
+  "has_websockets": false
+}

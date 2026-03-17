@@ -1,7 +1,7 @@
 import { apiGet, apiPost, extractData } from "../api.js";
 import { copyTextToClipboard } from "../components.js";
 import { modalForm, modalPrompt } from "../modal.js";
-import { createWebSocketClient } from "../websocket.js";
+import { registerStatusHandler, onStatusConnection } from "../websocket.js";
 import { setAlerts, formatAlertTimestamp } from "../notifications.js";
 
 const DASHBOARD_WIDGETS_STORAGE_KEY = "rpi-dashboard-widgets";
@@ -129,7 +129,6 @@ const elements = {
 };
 
 let pollId = null;
-let statusWs = null;
 let hasShownWsError = false;
 const MAX_POLL_INTERVAL = 5000;
 
@@ -593,8 +592,28 @@ function applyDashboardData(data) {
 
 async function loadDashboard(options = {}) {
   try {
-    const payload = await apiGet("/api/v1/dashboard/status");
-    const data = extractData(payload) || {};
+    const payload = await apiGet("/api/v1/dashboard");
+    const root = extractData(payload) || {};
+    const system = root.system || {};
+    const network = root.network || {};
+    const modules = root.modules || [];
+    const captureModule = modules.find((m) => m.id === "capture") || {};
+    const serialModule = modules.find((m) => m.id === "serial") || {};
+    const data = {
+      resources: system.resources || {},
+      services: system.services || {},
+      interfaces: network.interfaces || [],
+      captures:
+        captureModule.data?.captures ||
+        captureModule.data?.active_captures ||
+        [],
+      devices:
+        serialModule.data?.devices ||
+        serialModule.data?.active_sessions ||
+        [],
+      alerts: system.alerts || [],
+      tools: system.tools || [],
+    };
     applyDashboardData(data);
   } catch (error) {
     if (!options.suppressError) {
@@ -717,8 +736,7 @@ function stopPolling() {
 }
 
 function initStatusWebSocket() {
-  statusWs = createWebSocketClient("/ws/status", { autoReconnect: true });
-  statusWs.onStatus((status) => {
+  onStatusConnection((status) => {
     if (status === "connected") {
       updateBanner("Live updates connected.", false);
       hasShownWsError = false;
@@ -731,34 +749,20 @@ function initStatusWebSocket() {
       startPolling();
     }
   });
-  statusWs.on("system_metrics", (message) => {
-    const data = message.data || {};
-    setMetric(elements.metrics.cpu, data.resources?.cpu_percent, "%");
-    setMetric(elements.metrics.memory, data.resources?.memory_percent, "%");
-    setMetric(elements.metrics.temp, data.resources?.temperature_c, " C", 100);
-    setMetric(elements.metrics.storage, data.resources?.disk_percent, "%");
-    renderServices(data.services);
+
+  registerStatusHandler("system", "metrics", (data) => {
+    const d = data || {};
+    setMetric(elements.metrics.cpu, d.resources?.cpu_percent, "%");
+    setMetric(elements.metrics.memory, d.resources?.memory_percent, "%");
+    setMetric(elements.metrics.temp, d.resources?.temperature_c, " C", 100);
+    setMetric(elements.metrics.storage, d.resources?.disk_percent, "%");
+    renderServices(d.services);
   });
-  statusWs.on("network_status", (message) => {
-    const data = message.data || {};
-    if (elements.network.summary) {
-      elements.network.summary.textContent =
-        data.wan_status === "connected" && data.wan_interface
-          ? `WAN Connected via ${data.wan_interface}`
-          : "No active WAN connection.";
-    }
+
+  registerStatusHandler("network", "interfaces", (data) => {
+    const d = data || {};
+    renderNetwork(d.interfaces || []);
   });
-  statusWs.on("network_interfaces", (message) => {
-    const data = message.data || {};
-    renderNetwork(data.interfaces || []);
-  });
-  statusWs.on("monitor_status", (message) => {
-    const data = message.data || {};
-    const alerts = data.alerts || [];
-    renderAlerts(alerts);
-    setAlerts(alerts);
-  });
-  statusWs.connect();
 }
 
 function init() {
@@ -774,8 +778,5 @@ function init() {
 
 document.addEventListener("DOMContentLoaded", init);
 window.addEventListener("beforeunload", () => {
-  if (statusWs) {
-    statusWs.close();
-  }
   stopPolling();
 });

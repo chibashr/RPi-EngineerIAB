@@ -1,0 +1,9 @@
+{
+  "id": "capture",
+  "name": "Packet Capture",
+  "prefix": "capture",
+  "version": "1.0.0",
+  "enabled": true,
+  "description": "Network packet capture and analysis",
+  "has_websockets": true
+}

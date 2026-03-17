@@ -1,0 +1,9 @@
+{
+  "id": "remote_console",
+  "name": "Remote Console",
+  "prefix": "remote-console",
+  "version": "1.0.0",
+  "enabled": true,
+  "description": "SSH and Telnet remote console sessions",
+  "has_websockets": true
+}

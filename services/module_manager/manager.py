@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import importlib
 import json
 import os
 import re
@@ -14,16 +16,15 @@ import urllib.request
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any
 
-import importlib
+from lib.module_logger import get_service_logger
 
 # Same repo/branch as app updates (see services.update_manager.manager).
 DEFAULT_UPDATE_REPO = "https://github.com/chibashr/RPi-EngineerIAB.git"
 DEFAULT_UPDATE_BRANCH = "main"
 MODULES_SUBDIR = "modules"
 
-from lib.module_logger import get_service_logger
 
 logger = get_service_logger(__name__)
 
@@ -49,7 +50,7 @@ def _safe_extract(archive: zipfile.ZipFile, destination: Path) -> None:
         archive.extract(member, destination)
 
 
-def _github_repo_slug(repo_url: str) -> Optional[str]:
+def _github_repo_slug(repo_url: str) -> str | None:
     """Return 'owner/repo' for GitHub URLs, else None."""
     if not repo_url or "github.com" not in repo_url:
         return None
@@ -65,13 +66,13 @@ def _github_repo_slug(repo_url: str) -> Optional[str]:
     return None
 
 
-def _parse_version(version: str) -> Tuple[int, ...]:
+def _parse_version(version: str) -> tuple[int, ...]:
     """Parse semver-like string into comparable tuple; non-numeric segments become 0."""
     if not version or not isinstance(version, str):
         return (0,)
     parts = re.sub(r"[^0-9.]", "", version).strip(".").split(".") or ["0"]
     try:
-        return tuple(int(p) for p in parts[: 4])
+        return tuple(int(p) for p in parts[:4])
     except ValueError:
         return (0,)
 
@@ -91,7 +92,9 @@ class ModuleRecord:
     enabled: bool = False
     state: str = "installed"
     routes_registered: bool = False
-    metadata: Dict[str, object] = field(default_factory=dict)
+    metadata: dict[str, object] = field(default_factory=dict)
+    failed: bool = False
+    last_error: str | None = None
 
 
 class ModuleManager:
@@ -113,16 +116,14 @@ class ModuleManager:
             repo_root / "data",
         )
         self._state_file = self._data_dir / "modules" / "state.json"
-        self._registry: Dict[str, ModuleRecord] = {}
+        self._registry: dict[str, ModuleRecord] = {}
         self._app = None
+        self._status_queue: asyncio.Queue | None = None
         self._ensure_modules_on_path()
-        self.discover_modules()
 
-    def attach_app(self, app) -> None:  # type: ignore[no-untyped-def]
-        if getattr(self, "_app", None) is not app:
-            for record in self._registry.values():
-                record.routes_registered = False
-        self._app = app
+    # ------------------------------------------------------------------
+    # Discovery / metadata
+    # ------------------------------------------------------------------
 
     def _ensure_modules_on_path(self) -> None:
         """Ensure the modules directory is on sys.path so import_module(module_id.api) resolves."""
@@ -130,10 +131,12 @@ class ModuleManager:
         if modules_str not in sys.path:
             sys.path.insert(0, modules_str)
 
-    def discover_modules(self) -> Dict[str, List[Dict[str, object]]]:
+    def discover_modules(self) -> list[dict[str, object]]:
+        """Scan modules/*/module.json and return list of metadata dicts.
+
+        The returned dicts have: id, name, version, enabled, status, path, metadata.
+        """
         self._registry.clear()
-        enabled_modules = set(self._load_enabled_modules())
-        state_exists = self._state_file.exists()
         for module_dir in sorted(self._modules_dir.iterdir()):
             if not module_dir.is_dir():
                 continue
@@ -144,11 +147,10 @@ class ModuleManager:
                 metadata = json.loads(meta_path.read_text())
             except (OSError, json.JSONDecodeError):
                 continue
-            module_id = metadata.get("name") or module_dir.name
-            enabled_by_default = bool(metadata.get("enabled_by_default", False))
-            is_enabled = (
-                module_id in enabled_modules or (not state_exists and enabled_by_default)
-            )
+            module_id = metadata.get("id") or metadata.get("name") or module_dir.name
+            enabled_flag = bool(metadata.get("enabled", True))
+            enabled_by_default = bool(metadata.get("enabled_by_default", enabled_flag))
+            is_enabled = enabled_flag or enabled_by_default
             record = ModuleRecord(
                 module_id=module_id,
                 name=metadata.get("display_name") or metadata.get("name") or module_id,
@@ -160,9 +162,20 @@ class ModuleManager:
             )
             record.state = "enabled" if record.enabled else "disabled"
             self._registry[module_id] = record
-        return {"modules": self.list_modules()["modules"]}
+        return [
+            {
+                "id": r.module_id,
+                "name": r.name,
+                "version": r.version,
+                "enabled": r.enabled,
+                "status": r.state,
+                "path": str(r.path),
+                "metadata": r.metadata,
+            }
+            for r in self._registry.values()
+        ]
 
-    def list_modules(self) -> Dict[str, List[Dict[str, object]]]:
+    def list_modules(self) -> dict[str, list[dict[str, object]]]:
         return {
             "modules": [
                 {
@@ -170,6 +183,7 @@ class ModuleManager:
                     "name": record.name,
                     "version": record.version,
                     "enabled": record.enabled,
+                    "status": record.state,
                     "description": record.description,
                     "web_components": record.metadata.get("web_components", []),
                 }
@@ -181,7 +195,7 @@ class ModuleManager:
         record = self._registry.get(module_id)
         return bool(record and record.enabled)
 
-    def install_module(self, payload: Dict[str, object]) -> Dict[str, object]:
+    def install_module(self, payload: dict[str, object]) -> dict[str, object]:
         module_id = payload.get("module_id")
         module_url = payload.get("module_url")
         if module_id and module_id in self._registry:
@@ -193,7 +207,7 @@ class ModuleManager:
         logger.info("Module installed from archive: %s", module_path.name)
         return {"installed": True, "module_id": module_path.name}
 
-    def uninstall_module(self, module_id: str) -> Dict[str, object]:
+    def uninstall_module(self, module_id: str) -> dict[str, object]:
         record = self._registry.get(module_id)
         if not record:
             raise KeyError("Module not found")
@@ -205,43 +219,61 @@ class ModuleManager:
         logger.info("Module uninstalled: %s", module_id)
         return {"uninstalled": True, "module_id": module_id}
 
-    def enable_module(self, module_id: str) -> Dict[str, object]:
+    def enable_module(self, module_id: str) -> dict[str, object]:
         record = self._registry.get(module_id)
         if not record:
             raise KeyError("Module not found")
         record.enabled = True
         record.state = "enabled"
+        self._update_module_enabled_flag(record, True)
         logger.info("Module enabled: %s", module_id)
         self._save_enabled_modules()
-        if not record.routes_registered:
-            self._register_module_api_routes(record)
-        self._start_module(record)
         return {"enabled": True, "module_id": module_id}
 
-    def disable_module(self, module_id: str) -> Dict[str, object]:
+    def disable_module(self, module_id: str) -> dict[str, object]:
         record = self._registry.get(module_id)
         if not record:
             raise KeyError("Module not found")
         record.enabled = False
         record.state = "disabled"
+        self._update_module_enabled_flag(record, False)
         logger.info("Module disabled: %s", module_id)
         self._save_enabled_modules()
         self._shutdown_module(record)
         return {"enabled": False, "module_id": module_id}
 
-    def register_module_routes(self, app) -> None:  # type: ignore[no-untyped-def]
-        """Register API routes for all installed modules, then start only enabled ones.
-        Must be called at startup (e.g. FastAPI lifespan) before first request."""
-        self.attach_app(app)
+    def _update_module_enabled_flag(self, record: ModuleRecord, enabled: bool) -> None:
+        """Persist enabled flag to module.json for restart-based lifecycle."""
+        meta_path = record.path / "module.json"
+        if not meta_path.exists():
+            return
+        try:
+            data = json.loads(meta_path.read_text())
+            if not isinstance(data, dict):
+                return
+            data["enabled"] = bool(enabled)
+            meta_path.write_text(json.dumps(data, indent=2))
+        except (OSError, json.JSONDecodeError):
+            logger.warning("Failed to update enabled flag for module %s", record.module_id)
+
+    # ------------------------------------------------------------------
+    # Core bootstrap: discovery + initialize + websocket registration
+    # ------------------------------------------------------------------
+
+    def discover_and_initialize(self, app, status_queue: asyncio.Queue[Any]) -> None:  # type: ignore[no-untyped-def]
+        """Discover modules, register their API routers, and initialize enabled ones.
+
+        Called once from create_app() during startup.
+        """
+        self._app = app
+        self._status_queue = status_queue
+        self.discover_modules()
         for record in self._registry.values():
             self._register_module_api_routes(record)
         for record in self._registry.values():
             if record.enabled:
-                self._start_module(record)
-
-    def discover_and_register(self, app) -> None:  # type: ignore[no-untyped-def]
-        """Discover modules and register their FastAPI routers. Call during app lifespan startup."""
-        self.register_module_routes(app)
+                self._initialize_module(record, app, status_queue)
+                self._register_module_websockets(record, app)
 
     def cleanup(self) -> None:
         """Shut down all enabled modules. Call during app lifespan shutdown."""
@@ -249,8 +281,8 @@ class ModuleManager:
             if record.enabled:
                 self._shutdown_module(record)
 
-    def get_web_components(self) -> List[Dict[str, object]]:
-        components: List[Dict[str, object]] = []
+    def get_web_components(self) -> list[dict[str, object]]:
+        components: list[dict[str, object]] = []
         for record in self._registry.values():
             if not record.enabled:
                 continue
@@ -260,7 +292,7 @@ class ModuleManager:
                 components.append(item)
         return components
 
-    def resolve_web_asset(self, module_id: str, asset_path: str) -> Optional[Path]:
+    def resolve_web_asset(self, module_id: str, asset_path: str) -> Path | None:
         """Resolve a module web asset path. Tries registry first, then modules dir on disk."""
         record = self._registry.get(module_id)
         web_root: Path = record.path / "web" if record else self._modules_dir / module_id / "web"
@@ -273,9 +305,7 @@ class ModuleManager:
         return None
 
     def _register_module_api_routes(self, record: ModuleRecord) -> None:
-        """Register a module's FastAPI router. Routes are mounted at startup; FastAPI does not
-        support adding routes after lifespan completes. Enable/disable: when disabled, handlers
-        should return 404 (or 409) — routes remain mounted but module is logically off."""
+        """Register a module's FastAPI router if api.py defines `router`."""
         if record.routes_registered or not self._app:
             return
         api_path = record.path / "api.py"
@@ -286,6 +316,8 @@ class ModuleManager:
         except Exception as exc:
             logger.warning("Module load failed id=%s error=%s", record.module_id, exc)
             record.state = "error"
+            record.failed = True
+            record.last_error = str(exc)
             return
         logger.info("Module loaded id=%s", record.module_id)
         router = getattr(module, "router", None)
@@ -298,6 +330,8 @@ class ModuleManager:
             except Exception as exc:
                 logger.warning("Module load failed id=%s error=%s", record.module_id, exc)
                 record.state = "error"
+                record.failed = True
+                record.last_error = str(exc)
 
     def _get_module_api_prefix(self, record: ModuleRecord) -> str:
         """Derive API prefix from module metadata or convention."""
@@ -310,31 +344,48 @@ class ModuleManager:
                     return "/" + "/".join(parts[:3])
         return f"/api/v1/{record.module_id}"
 
-    def _start_module(self, record: ModuleRecord) -> None:
-        """Start a module's service (main.initialize()); API routes must already be registered."""
+    def _load_module_main(self, record: ModuleRecord):
         main_path = record.path / "main.py"
         if not main_path.exists():
+            return None
+        try:
+            return importlib.import_module(f"{record.module_id}.main")
+        except Exception as exc:
+            logger.warning("Module main import failed id=%s error=%s", record.module_id, exc)
+            record.state = "error"
+            record.failed = True
+            record.last_error = str(exc)
+            return None
+
+    def _initialize_module(self, record: ModuleRecord, app, status_queue: asyncio.Queue[Any]) -> None:  # type: ignore[no-untyped-def]
+        """Invoke module.initialize(app, status_queue) if present; errors are logged and do not stop startup."""
+        module = self._load_module_main(record)
+        if not module or not hasattr(module, "initialize"):
             return
         try:
-            module = importlib.import_module(f"{record.module_id}.main")
-        except Exception:
+            module.initialize(app, status_queue)
+            record.state = "running"
+            logger.info("Module initialized id=%s", record.module_id)
+        except Exception as exc:
+            logger.warning("Module initialize failed id=%s error=%s", record.module_id, exc, exc_info=True)
             record.state = "error"
+            record.failed = True
+            record.last_error = str(exc)
+
+    def _register_module_websockets(self, record: ModuleRecord, app) -> None:  # type: ignore[no-untyped-def]
+        """Call module.register_websockets(app) if defined; errors are logged and ignored."""
+        module = self._load_module_main(record)
+        if not module or not hasattr(module, "register_websockets"):
             return
-        if module and hasattr(module, "initialize"):
-            try:
-                module.initialize()
-            except Exception:
-                record.state = "error"
+        try:
+            module.register_websockets(app)
+            logger.info("Module websockets registered id=%s", record.module_id)
+        except Exception as exc:
+            logger.warning("Module register_websockets failed id=%s error=%s", record.module_id, exc, exc_info=True)
 
     def _shutdown_module(self, record: ModuleRecord) -> None:
-        main_path = record.path / "main.py"
-        if not main_path.exists():
-            return
-        try:
-            module = importlib.import_module(f"{record.module_id}.main")
-        except Exception as exc:
-            logger.warning("Module main import for shutdown %s: %s", record.module_id, exc)
-            record.state = "error"
+        module = self._load_module_main(record)
+        if not module:
             return
         if module and hasattr(module, "shutdown"):
             try:
@@ -344,7 +395,7 @@ class ModuleManager:
                 logger.warning("Module shutdown failed %s: %s", record.module_id, exc)
                 record.state = "error"
 
-    def _load_enabled_modules(self) -> List[str]:
+    def _load_enabled_modules(self) -> list[str]:
         if not self._state_file.exists():
             return []
         try:
@@ -358,12 +409,12 @@ class ModuleManager:
         self._state_file.parent.mkdir(parents=True, exist_ok=True)
         self._state_file.write_text(json.dumps({"enabled_modules": enabled}, indent=2))
 
-    def _list_repo_modules_from_local(self) -> List[Dict[str, object]]:
+    def _list_repo_modules_from_local(self) -> list[dict[str, object]]:
         """List modules from repo when running from a clone (modules/ under repo root)."""
         repo_modules = self._repo_root / MODULES_SUBDIR
         if not repo_modules.is_dir():
             return []
-        out: List[Dict[str, object]] = []
+        out: list[dict[str, object]] = []
         for module_dir in sorted(repo_modules.iterdir()):
             if not module_dir.is_dir():
                 continue
@@ -375,17 +426,19 @@ class ModuleManager:
             except (OSError, json.JSONDecodeError):
                 continue
             module_id = metadata.get("name") or module_dir.name
-            out.append({
-                "id": module_id,
-                "name": metadata.get("display_name") or metadata.get("name") or module_id,
-                "version": metadata.get("version", "0.0.0"),
-                "description": metadata.get("description", ""),
-            })
+            out.append(
+                {
+                    "id": module_id,
+                    "name": metadata.get("display_name") or metadata.get("name") or module_id,
+                    "version": metadata.get("version", "0.0.0"),
+                    "description": metadata.get("description", ""),
+                }
+            )
         return out
 
-    def _list_repo_modules_from_github(self, repo_slug: str, branch: str) -> List[Dict[str, object]]:
+    def _list_repo_modules_from_github(self, repo_slug: str, branch: str) -> list[dict[str, object]]:
         """List modules from GitHub API (contents/modules, then each module.json)."""
-        out: List[Dict[str, object]] = []
+        out: list[dict[str, object]] = []
         try:
             url = f"https://api.github.com/repos/{repo_slug}/contents/{MODULES_SUBDIR}?ref={urllib.parse.quote(branch)}"
             req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json"})
@@ -413,15 +466,17 @@ class ModuleManager:
             except Exception:
                 continue
             module_id = meta_json.get("name") or name
-            out.append({
-                "id": module_id,
-                "name": meta_json.get("display_name") or meta_json.get("name") or module_id,
-                "version": meta_json.get("version", "0.0.0"),
-                "description": meta_json.get("description", ""),
-            })
+            out.append(
+                {
+                    "id": module_id,
+                    "name": meta_json.get("display_name") or meta_json.get("name") or module_id,
+                    "version": meta_json.get("version", "0.0.0"),
+                    "description": meta_json.get("description", ""),
+                }
+            )
         return out
 
-    def list_available_from_repo(self) -> Dict[str, object]:
+    def list_available_from_repo(self) -> dict[str, object]:
         """List modules available in the app update repo; mark installed and update availability."""
         repo = os.getenv("RPI_ENGINEER_UPDATE_REPO", DEFAULT_UPDATE_REPO)
         branch = os.getenv("RPI_ENGINEER_UPDATE_BRANCH", DEFAULT_UPDATE_BRANCH)
@@ -435,7 +490,7 @@ class ModuleManager:
                 return {"available": [], "message": "Repo URL is not a GitHub repo."}
             raw = self._list_repo_modules_from_github(slug, branch)
         installed = {r.module_id: r for r in self._registry.values()}
-        available: List[Dict[str, object]] = []
+        available: list[dict[str, object]] = []
         for m in raw:
             mid = m.get("id") or m.get("name")
             if not mid:
@@ -445,9 +500,7 @@ class ModuleManager:
             entry = dict(m)
             entry["installed"] = rec is not None
             entry["installed_version"] = rec.version if rec else None
-            entry["update_available"] = bool(
-                rec and _version_gt(repo_version, rec.version)
-            )
+            entry["update_available"] = bool(rec and _version_gt(repo_version, rec.version))
             available.append(entry)
         return {"available": available}
 
@@ -465,12 +518,11 @@ class ModuleManager:
             if destination.exists():
                 shutil.rmtree(destination, ignore_errors=True)
             shutil.copytree(source, destination)
-            return destination
         slug = _github_repo_slug(repo)
         if not slug:
             raise RuntimeError("Repo URL is not a GitHub repo; cannot fetch module.")
         archive_url = f"https://github.com/{slug}/archive/refs/heads/{urllib.parse.quote(branch)}.zip"
-        extract_root: Optional[Path] = None
+        extract_root: Path | None = None
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as f:
             try:
                 req = urllib.request.Request(archive_url, headers={"Accept": "application/zip"})
@@ -497,7 +549,6 @@ class ModuleManager:
                 if destination.exists():
                     shutil.rmtree(destination, ignore_errors=True)
                 shutil.copytree(source, destination)
-                return destination
             finally:
                 try:
                     os.unlink(f.name)
@@ -506,7 +557,7 @@ class ModuleManager:
                 if extract_root is not None and extract_root.exists():
                     shutil.rmtree(extract_root, ignore_errors=True)
 
-    def install_module_from_repo(self, module_id: str) -> Dict[str, object]:
+    def install_module_from_repo(self, module_id: str) -> dict[str, object]:
         """Install a module from the app update repo (same repo/branch as app updates)."""
         if not module_id or not isinstance(module_id, str):
             raise ValueError("module_id is required")
@@ -514,24 +565,26 @@ class ModuleManager:
         self.discover_modules()
         return {"installed": True, "module_id": module_id.strip()}
 
-    def check_module_updates(self) -> Dict[str, object]:
+    def check_module_updates(self) -> dict[str, object]:
         """For each installed module, report if a newer version is available in the repo."""
         payload = self.list_available_from_repo()
         available_list = payload.get("available") or []
-        updates: List[Dict[str, object]] = []
+        updates: list[dict[str, object]] = []
         for m in available_list:
             if not m.get("installed"):
                 continue
             if m.get("update_available"):
-                updates.append({
-                    "module_id": m.get("id"),
-                    "name": m.get("name"),
-                    "current_version": m.get("installed_version"),
-                    "available_version": m.get("version"),
-                })
+                updates.append(
+                    {
+                        "module_id": m.get("id"),
+                        "name": m.get("name"),
+                        "current_version": m.get("installed_version"),
+                        "available_version": m.get("version"),
+                    }
+                )
         return {"updates": updates}
 
-    def update_module(self, module_id: str) -> Dict[str, object]:
+    def update_module(self, module_id: str) -> dict[str, object]:
         """Update an installed module from the repo (overwrites files; enabled state preserved)."""
         record = self._registry.get(module_id)
         if not record:
@@ -559,4 +612,3 @@ class ModuleManager:
             if destination.exists():
                 shutil.rmtree(destination, ignore_errors=True)
             shutil.copytree(module_root, destination)
-            return destination

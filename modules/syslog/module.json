@@ -1,0 +1,9 @@
+{
+  "id": "syslog",
+  "name": "Syslog",
+  "prefix": "syslog",
+  "version": "1.0.0",
+  "enabled": true,
+  "description": "Syslog receiver and viewer",
+  "has_websockets": false
+}

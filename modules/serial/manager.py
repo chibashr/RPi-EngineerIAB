@@ -1,21 +1,24 @@
-"""Serial Manager implementation for device and session management."""
-
 from __future__ import annotations
-
-import sys
-from pathlib import Path
-
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
 
 import calendar
 import json
 import os
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from pathlib import Path
+
+from lib.module_logger import get_service_logger
+
+_threadpool = ThreadPoolExecutor(max_workers=4)
+
+logger = get_service_logger("serial")
+LOG_DIR = Path("/opt/rpi-engineer/data/serial_logs")
+EXPORT_DIR = LOG_DIR / "exports"
+CONFIG_PATH = LOG_DIR.parent / "serial_devices.json"
+MAX_SESSIONS = 5
+DEVICE_SCAN_CACHE_TTL = 5.0
 
 try:
     import pyudev  # type: ignore
@@ -28,44 +31,33 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     serial = None
 
-from concurrent.futures import ThreadPoolExecutor
 
-from lib.module_logger import get_service_logger
-
-_threadpool = ThreadPoolExecutor(max_workers=4)
-
-logger = get_service_logger(__name__)
-LOG_DIR = Path("/opt/rpi-engineer/data/serial_logs")
-EXPORT_DIR = LOG_DIR / "exports"
-CONFIG_PATH = LOG_DIR.parent / "serial_devices.json"
-MAX_SESSIONS = 5
-DEVICE_SCAN_CACHE_TTL = 5.0
-
-
-def _pyudev_scan_ports() -> List[Tuple[str, str, Optional[object]]]:
+def _pyudev_scan_ports() -> list[tuple[str, str, object | None]]:
     """Run in threadpool: return list of (node, description, vid) for tty devices."""
     if not pyudev:
         return []
     context = pyudev.Context()
-    result: List[Tuple[str, str, Optional[object]]] = []
+    result: list[tuple[str, str, object | None]] = []
     for device in context.list_devices(subsystem="tty"):
         node = device.device_node
         if not node:
             continue
-        result.append((
-            node,
-            device.get("ID_MODEL", "Serial Device") or "Serial Device",
-            device.get("ID_VENDOR_ID"),
-        ))
+        result.append(
+            (
+                node,
+                device.get("ID_MODEL", "Serial Device") or "Serial Device",
+                device.get("ID_VENDOR_ID"),
+            )
+        )
     return result
 
 
-def _dev_glob_scan() -> List[Tuple[str, str, None]]:
+def _dev_glob_scan() -> list[tuple[str, str, None]]:
     """Run in threadpool: return list of (path, description, vid) from /dev glob."""
     dev_root = Path("/dev")
     if not dev_root.exists():
         return []
-    result: List[Tuple[str, str, None]] = []
+    result: list[tuple[str, str, None]] = []
     for path in dev_root.glob("ttyUSB*"):
         result.append((str(path), "Serial Device", None))
     for path in dev_root.glob("ttyACM*"):
@@ -77,29 +69,29 @@ def _dev_glob_scan() -> List[Tuple[str, str, None]]:
 class SerialSession:
     session_id: str
     device_id: str
-    config: Dict[str, object]
+    config: dict[str, object]
     created_at: str
     status: str = "active"
     logging_paused: bool = False
     bytes_tx: int = 0
     bytes_rx: int = 0
-    log_path: Optional[Path] = None
+    log_path: Path | None = None
     websocket_connected: bool = False
-    metadata: Dict[str, object] = field(default_factory=dict)
+    metadata: dict[str, object] = field(default_factory=dict)
 
 
 class SerialManager:
     """Serial device detection and session lifecycle."""
 
     def __init__(self) -> None:
-        self._device_configs: Dict[str, Dict[str, object]] = {}
-        self._sessions: Dict[str, SerialSession] = {}
-        self._device_cache: List[Dict[str, object]] = []
+        self._device_configs: dict[str, dict[str, object]] = {}
+        self._sessions: dict[str, SerialSession] = {}
+        self._device_cache: list[dict[str, object]] = []
         self._device_cache_time: float = 0.0
         self._load_device_configs()
         logger.info("Serial manager started")
 
-    def list_devices(self, force_refresh: bool = False) -> Dict[str, List[Dict[str, object]]]:
+    def list_devices(self, force_refresh: bool = False) -> dict[str, list[dict[str, object]]]:
         raw = self._scan_devices(use_cache=not force_refresh)
         logger.info("list_devices: scanned %d device(s)", len(raw))
         devices = []
@@ -119,7 +111,7 @@ class SerialManager:
             )
         return {"devices": devices}
 
-    def get_device(self, device_id: str) -> Dict[str, object]:
+    def get_device(self, device_id: str) -> dict[str, object]:
         device = self._device_by_id(device_id)
         if not device:
             raise KeyError("Device not found")
@@ -134,7 +126,7 @@ class SerialManager:
             "config": config,
         }
 
-    def update_device(self, device_id: str, payload: Dict[str, object]) -> Dict[str, object]:
+    def update_device(self, device_id: str, payload: dict[str, object]) -> dict[str, object]:
         if not self._device_by_id(device_id):
             raise KeyError("Device not found")
         allowed = {
@@ -159,7 +151,7 @@ class SerialManager:
         self._save_device_configs()
         return {"id": device_id, "config": config}
 
-    def test_device(self, device_id: str) -> Dict[str, object]:
+    def test_device(self, device_id: str) -> dict[str, object]:
         if not serial:
             raise RuntimeError("pyserial not installed")
         device = self._device_by_id(device_id)
@@ -170,15 +162,19 @@ class SerialManager:
         try:
             with serial.Serial(device_id, baudrate=baud_rate, timeout=1):
                 pass
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover - hardware dependent
             logger.warning("Device test failed %s: %s", device_id, exc)
             raise RuntimeError(str(exc)) from exc
         return {"id": device_id, "status": "ok"}
 
-    def create_session(self, payload: Dict[str, object]) -> Dict[str, object]:
+    def create_session(self, payload: dict[str, object]) -> dict[str, object]:
         device_id = payload.get("device_id")
         config = payload.get("config", {}) or {}
-        logger.info("create_session: request device_id=%r config_keys=%s", device_id, list(config.keys()) if config else [])
+        logger.info(
+            "create_session: request device_id=%r config_keys=%s",
+            device_id,
+            list(config.keys()) if config else [],
+        )
         if not device_id:
             logger.warning("create_session: device_id missing")
             raise ValueError("device_id is required")
@@ -207,7 +203,6 @@ class SerialManager:
             log_path=log_path,
         )
         self._sessions[session_id] = session
-        baud = int(merged_config.get("baud_rate", 9600))
         logger.info("Serial session started session_id=%s device=%s", session_id, device_id)
         return {
             "session_id": session_id,
@@ -215,7 +210,7 @@ class SerialManager:
             "websocket_url": f"{_ws_base()}/ws/serial/{session_id}",
         }
 
-    def list_sessions(self) -> Dict[str, List[Dict[str, object]]]:
+    def list_sessions(self) -> dict[str, list[dict[str, object]]]:
         return {
             "sessions": [
                 {
@@ -229,7 +224,7 @@ class SerialManager:
             ]
         }
 
-    def get_session(self, session_id: str) -> Dict[str, object]:
+    def get_session(self, session_id: str) -> dict[str, object]:
         session = self._sessions.get(session_id)
         if not session:
             raise KeyError("Session not found")
@@ -242,7 +237,7 @@ class SerialManager:
             "bytes_rx": session.bytes_rx,
         }
 
-    def update_session(self, session_id: str, payload: Dict[str, object]) -> Dict[str, object]:
+    def update_session(self, session_id: str, payload: dict[str, object]) -> dict[str, object]:
         session = self._sessions.get(session_id)
         if not session:
             raise KeyError("Session not found")
@@ -250,7 +245,7 @@ class SerialManager:
             session.logging_paused = bool(payload["logging_paused"])
         return {"session_id": session_id, "logging_paused": session.logging_paused}
 
-    def delete_session(self, session_id: str) -> Dict[str, object]:
+    def delete_session(self, session_id: str) -> dict[str, object]:
         session = self._sessions.pop(session_id, None)
         if not session:
             raise KeyError("Session not found")
@@ -265,7 +260,7 @@ class SerialManager:
             session.status = "closed"
             logger.info("Serial session ended session_id=%s", session_id)
 
-    def list_logs(self, device: Optional[str], since: Optional[str], limit: int) -> Dict[str, object]:
+    def list_logs(self, device: str | None, since: str | None, limit: int) -> dict[str, object]:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         logs = []
         for path in sorted(LOG_DIR.glob("*.log")):
@@ -279,9 +274,7 @@ class SerialManager:
             duration_sec = None
             if created:
                 try:
-                    created_ts = calendar.timegm(
-                        time.strptime(created[:19], "%Y-%m-%dT%H:%M:%S")
-                    )
+                    created_ts = calendar.timegm(time.strptime(created[:19], "%Y-%m-%dT%H:%M:%S"))
                     modified_ts = path.stat().st_mtime
                     duration_sec = max(0, int(modified_ts - created_ts))
                 except (ValueError, OSError):
@@ -302,7 +295,7 @@ class SerialManager:
             logs = logs[:limit]
         return {"logs": logs}
 
-    def _parse_log_header(self, content: str) -> Tuple[Optional[str], Optional[str]]:
+    def _parse_log_header(self, content: str) -> tuple[str | None, str | None]:
         """Parse Device and Created from log header. Returns (device_id, created_iso)."""
         device_id = None
         created = None
@@ -313,7 +306,7 @@ class SerialManager:
                 created = line[8:].strip()
         return (device_id, created)
 
-    def _get_log_display_name(self, log_id: str) -> Optional[str]:
+    def _get_log_display_name(self, log_id: str) -> str | None:
         """Read display name from metadata file if present."""
         meta_path = LOG_DIR / f"{log_id}.meta.json"
         if not meta_path.exists():
@@ -324,7 +317,7 @@ class SerialManager:
         except (json.JSONDecodeError, OSError):
             return None
 
-    def rename_log(self, log_id: str, display_name: str) -> Dict[str, object]:
+    def rename_log(self, log_id: str, display_name: str) -> dict[str, object]:
         path = LOG_DIR / f"{log_id}.log"
         if not path.exists():
             raise KeyError("Log not found")
@@ -332,20 +325,20 @@ class SerialManager:
         meta_path.write_text(json.dumps({"display_name": display_name.strip()}), encoding="utf-8")
         return {"id": log_id, "name": display_name.strip()}
 
-    def get_log_content(self, log_id: str) -> Dict[str, object]:
+    def get_log_content(self, log_id: str) -> dict[str, object]:
         path = LOG_DIR / f"{log_id}.log"
         if not path.exists():
             raise KeyError("Log not found")
         return {"id": log_id, "content": path.read_text(errors="ignore")}
 
-    def delete_log(self, log_id: str) -> Dict[str, object]:
+    def delete_log(self, log_id: str) -> dict[str, object]:
         path = LOG_DIR / f"{log_id}.log"
         if not path.exists():
             raise KeyError("Log not found")
         path.unlink()
         return {"id": log_id, "deleted": True}
 
-    def export_logs(self, log_ids: List[str]) -> Dict[str, object]:
+    def export_logs(self, log_ids: list[str]) -> dict[str, object]:
         EXPORT_DIR.mkdir(parents=True, exist_ok=True)
         archive_path = EXPORT_DIR / f"serial_logs_{int(time.time())}.zip"
         import zipfile
@@ -360,7 +353,11 @@ class SerialManager:
     def get_session_record(self, session_id: str) -> SerialSession:
         session = self._sessions.get(session_id)
         if not session:
-            logger.warning("get_session_record: session %s not found (active: %s)", session_id[:8] if session_id else "?", list(self._sessions.keys())[:3])
+            logger.warning(
+                "get_session_record: session %s not found (active: %s)",
+                session_id[:8] if session_id else "?",
+                list(self._sessions.keys())[:3],
+            )
             raise KeyError("Session not found")
         return session
 
@@ -401,7 +398,11 @@ class SerialManager:
             configs = data.get("devices", {})
             if isinstance(configs, dict):
                 self._device_configs.update(configs)
-                logger.info("Loaded %d serial device config(s) from %s", len(configs), CONFIG_PATH)
+                logger.info(
+                    "Loaded %d serial device config(s) from %s",
+                    len(configs),
+                    CONFIG_PATH,
+                )
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Could not load serial device configs from %s: %s", CONFIG_PATH, exc)
 
@@ -417,13 +418,13 @@ class SerialManager:
     def _device_in_use(self, device_id: str) -> bool:
         return any(session.device_id == device_id for session in self._sessions.values())
 
-    def _device_by_id(self, device_id: str) -> Optional[Dict[str, object]]:
+    def _device_by_id(self, device_id: str) -> dict[str, object] | None:
         for device in self._scan_devices():
             if device["id"] == device_id:
                 return device
         return None
 
-    def _scan_devices(self, use_cache: bool = True) -> List[Dict[str, object]]:
+    def _scan_devices(self, use_cache: bool = True) -> list[dict[str, object]]:
         now = time.time()
         if use_cache and self._device_cache and (now - self._device_cache_time) < DEVICE_SCAN_CACHE_TTL:
             return self._device_cache
@@ -449,7 +450,7 @@ class SerialManager:
                 devices.append(self._port_to_device(path, description, vid))
         # Deduplicate by device id (same path can appear from multiple scan sources)
         seen: set[str] = set()
-        unique: List[Dict[str, object]] = []
+        unique: list[dict[str, object]] = []
         for dev in devices:
             did = dev.get("id") or dev.get("path")
             if did and did not in seen:
@@ -459,7 +460,7 @@ class SerialManager:
         self._device_cache_time = now
         return unique
 
-    def _port_to_device(self, path: str, description: str, vid: Optional[int]) -> Dict[str, object]:
+    def _port_to_device(self, path: str, description: str, vid: int | None) -> dict[str, object]:
         chipset = _chipset_from_vid(vid)
         friendly = (description or "").strip()
         if not friendly or friendly.lower() == "n/a":
@@ -471,8 +472,19 @@ class SerialManager:
             "chipset": chipset,
         }
 
+    def get_active_session_ids(self) -> list[str]:
+        """Return list of active session IDs for status reporting."""
+        return [session_id for session_id, s in self._sessions.items() if s.status == "active"]
 
-def _chipset_from_vid(vid: Optional[object]) -> str:
+    def get_export_archive_path(self, name: str) -> Path:
+        """Return path to an existing export archive, raises if not found."""
+        archive_path = EXPORT_DIR / name
+        if not archive_path.exists():
+            raise FileNotFoundError(str(archive_path))
+        return archive_path
+
+
+def _chipset_from_vid(vid: object | None) -> str:
     if vid is None:
         return "Unknown"
     try:
@@ -489,3 +501,10 @@ def _timestamp() -> str:
 
 def _ws_base() -> str:
     return os.getenv("RPI_ENGINEER_WS_BASE", "ws://192.168.50.1")
+
+
+_serial_manager = SerialManager()
+
+
+def get_serial_manager() -> SerialManager:
+    return _serial_manager

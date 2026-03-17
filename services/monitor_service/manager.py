@@ -9,12 +9,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from datetime import datetime, timezone
-from typing import Dict, List
+from datetime import datetime, timezone  # noqa: E402
 
-from lib.module_logger import get_service_logger
-from services.network_manager import NetworkManager
-from services.system_manager import SystemManager
+from lib.module_logger import get_service_logger  # noqa: E402
+from services.network_manager import NetworkManager  # noqa: E402
+from services.system_manager import SystemManager  # noqa: E402
 
 logger = get_service_logger(__name__)
 
@@ -24,13 +23,17 @@ def _timestamp() -> str:
 
 
 class MonitorService:
-    """Collect metrics, health status, and alerts."""
+    """Collect metrics, health status, and alerts and push them via status_queue."""
 
-    def __init__(self) -> None:
+    def __init__(self, status_queue=None) -> None:  # type: ignore[no-untyped-def]
         self._system_manager = SystemManager()
         self._network_manager = NetworkManager()
+        self._status_queue = status_queue
 
-    def get_status(self) -> Dict[str, object]:
+    def set_status_queue(self, status_queue) -> None:  # type: ignore[no-untyped-def]
+        self._status_queue = status_queue
+
+    def get_status(self) -> dict[str, object]:
         system_status = self._system_manager.get_status()
         network_status = self._network_manager.get_status()
         health, alerts = self._evaluate_health(system_status, network_status)
@@ -44,9 +47,9 @@ class MonitorService:
         }
 
     def _evaluate_health(
-        self, system_status: Dict[str, object], network_status: Dict[str, object]
-    ) -> tuple[Dict[str, object], List[Dict[str, object]]]:
-        alerts: List[Dict[str, object]] = []
+        self, system_status: dict[str, object], network_status: dict[str, object]
+    ) -> tuple[dict[str, object], list[dict[str, object]]]:
+        alerts: list[dict[str, object]] = []
         resources = system_status.get("resources", {}) or {}
         services = system_status.get("services", {}) or {}
         disk_percent = float(resources.get("disk_percent") or 0)
@@ -104,5 +107,34 @@ class MonitorService:
         }
         return health, alerts
 
-    def _alert(self, severity: str, message: str) -> Dict[str, object]:
+    def _alert(self, severity: str, message: str) -> dict[str, object]:
         return {"severity": severity, "message": message, "timestamp": _timestamp()}
+
+    async def run(self, interval_seconds: float = 5.0) -> None:
+        """Push core system + network metrics to status_queue on a fixed interval."""
+        import asyncio
+
+        while True:
+            try:
+                status = self.get_status()
+                resources = status.get("metrics") or {}
+                system_msg = {
+                    "source": "system",
+                    "type": "metrics",
+                    "data": {
+                        "cpu": resources.get("cpu_percent"),
+                        "memory": resources.get("memory_percent"),
+                        "disk": resources.get("disk_percent"),
+                    },
+                }
+                network_msg = {
+                    "source": "network",
+                    "type": "interfaces",
+                    "data": status.get("network") or {},
+                }
+                if self._status_queue is not None:
+                    await self._status_queue.put(system_msg)
+                    await self._status_queue.put(network_msg)
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("MonitorService run loop error: %s", exc, exc_info=True)
+            await asyncio.sleep(interval_seconds)

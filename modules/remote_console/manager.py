@@ -1,5 +1,3 @@
-"""Remote console (SSH/Telnet) manager: targets and sessions."""
-
 from __future__ import annotations
 
 import json
@@ -12,7 +10,7 @@ from typing import Any
 
 from lib.module_logger import get_service_logger
 
-logger = get_service_logger(__name__)
+logger = get_service_logger("remote_console")
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 MAX_SESSIONS = 5
@@ -41,8 +39,6 @@ def _ws_base() -> str:
 
 @dataclass
 class RemoteConsoleTarget:
-    """Saved connection target (SSH or Telnet)."""
-
     id: str
     type: str  # "ssh" | "telnet"
     host: str
@@ -56,15 +52,13 @@ class RemoteConsoleTarget:
 
 @dataclass
 class RemoteConsoleSession:
-    """Active session (connection params for WS handler; no I/O in manager)."""
-
     session_id: str
     target_id: str | None
     type: str  # "ssh" | "telnet"
     host: str
     port: int
     username: str | None
-    password: str | None = None  # in-memory only, for this session
+    password: str | None = None
     private_key_path: str | None = None
     created_at: str = field(default_factory=_timestamp)
     status: str = "active"
@@ -217,11 +211,15 @@ class RemoteConsoleManager:
         if "friendly_name" in payload:
             t.friendly_name = (payload["friendly_name"] or t.host).strip()
         if "username" in payload:
-            t.username = str(payload["username"]).strip() or None
+            t.username = (str(payload["username"]).strip() or None) if payload["username"] is not None else None
         if "auth_type" in payload:
-            t.auth_type = str(payload["auth_type"]).strip().lower() or None
+            t.auth_type = (
+                str(payload["auth_type"]).strip().lower() or None if payload["auth_type"] is not None else None
+            )
         if "private_key_path" in payload:
-            t.private_key_path = str(payload["private_key_path"]).strip() or None
+            t.private_key_path = (
+                str(payload["private_key_path"]).strip() or None if payload["private_key_path"] is not None else None
+            )
         self._save_targets()
         return self.get_target(target_id)
 
@@ -335,7 +333,6 @@ class RemoteConsoleManager:
         return {"session_id": session_id, "status": "closed"}
 
     def release_session(self, session_id: str) -> None:
-        """Remove session when WebSocket closes. Does not raise."""
         session = self._sessions.pop(session_id, None)
         if session:
             session.status = "closed"
@@ -356,3 +353,13 @@ class RemoteConsoleManager:
         s = self._sessions.get(session_id)
         if s:
             s.bytes_rx += size
+
+    def get_active_session_ids(self) -> list[str]:
+        return [session_id for session_id, s in self._sessions.items() if s.status == "active"]
+
+
+_remote_console_manager = RemoteConsoleManager()
+
+
+def get_remote_console_manager() -> RemoteConsoleManager:
+    return _remote_console_manager

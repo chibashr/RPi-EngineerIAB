@@ -81,11 +81,20 @@ def create_app() -> FastAPI:
 
     app.add_middleware(SecurityHeadersMiddleware)
 
-    register_routes(app)
-    register_websockets(app)
+    # Shared status queue for system, network, and modules
+    import asyncio
 
-    # Module routes must be registered before StaticFiles mount (catch-all)
-    module_manager.discover_and_register(app)
+    status_queue: asyncio.Queue[dict] = asyncio.Queue()
+    app.state.status_queue = status_queue
+
+    # 1. Register core routes
+    register_routes(app)
+
+    # 2. Discover and initialize modules (includes module API + module websockets)
+    module_manager.discover_and_initialize(app, status_queue)
+
+    # 3. Register core websockets (/ws/status, /ws/updates/apply)
+    register_websockets(app, status_queue=status_queue)
 
     # Module asset route (before static mount)
     @app.get("/modules/{module_id}/{asset_path:path}")

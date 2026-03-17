@@ -1,0 +1,9 @@
+{
+  "id": "serial",
+  "name": "Serial Console",
+  "prefix": "serial",
+  "version": "1.0.0",
+  "enabled": true,
+  "description": "Serial device management and console sessions",
+  "has_websockets": true
+}

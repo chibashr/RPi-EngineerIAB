@@ -9,6 +9,7 @@ class WebSocketClient {
     this.handlers = new Map();
     this.heartbeatId = null;
     this.statusCallback = null;
+    this.rawMessageHandler = null;
   }
 
   on(type, handler) {
@@ -17,6 +18,10 @@ class WebSocketClient {
 
   onStatus(callback) {
     this.statusCallback = callback;
+  }
+
+  setRawMessageHandler(handler) {
+    this.rawMessageHandler = typeof handler === "function" ? handler : null;
   }
 
   connect() {
@@ -42,6 +47,9 @@ class WebSocketClient {
     this.socket.addEventListener("message", (event) => {
       try {
         const message = JSON.parse(event.data);
+        if (this.rawMessageHandler) {
+          this.rawMessageHandler(message);
+        }
         const handler = this.handlers.get(message.type);
         if (handler) {
           handler(message);
@@ -111,3 +119,56 @@ export function createWebSocketClient(path, options) {
   const url = `${protocol}://${window.location.host}${safePath}`;
   return new WebSocketClient(url, options);
 }
+
+const statusHandlers = new Map();
+const statusConnectionCallbacks = [];
+let statusClient = null;
+
+function statusKey(source, type) {
+  return `${source || ""}:${type || ""}`;
+}
+
+function ensureStatusClient() {
+  if (statusClient) {
+    return;
+  }
+  statusClient = createWebSocketClient("/ws/status", { autoReconnect: true });
+  statusClient.setRawMessageHandler((message) => {
+    const { source, type, data } = message || {};
+    if (!source || !type) {
+      return;
+    }
+    const handler = statusHandlers.get(statusKey(source, type));
+    if (handler) {
+      handler(data, message);
+    }
+  });
+  statusClient.onStatus((status) => {
+    statusConnectionCallbacks.forEach((cb) => {
+      try {
+        cb(status);
+      } catch (_err) {
+        // Ignore handler errors
+      }
+    });
+  });
+  statusClient.connect();
+}
+
+export function registerStatusHandler(source, type, handler) {
+  if (typeof handler !== "function") {
+    return;
+  }
+  statusHandlers.set(statusKey(source, type), handler);
+  ensureStatusClient();
+}
+
+export function onStatusConnection(callback) {
+  if (typeof callback !== "function") {
+    return;
+  }
+  statusConnectionCallbacks.push(callback);
+  ensureStatusClient();
+}
+
+ensureStatusClient();
