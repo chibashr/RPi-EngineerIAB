@@ -2645,6 +2645,7 @@ prompt_missing_upgrade_config() {
     [ -z "$HOTSPOT_SSID" ] && prompt_hotspot_config
     [ "${#REMOTE_ACCESS_TOOLS[@]}" -eq 0 ] && prompt_remote_access
     [ "${#MODULE_SELECTIONS[@]}" -eq 0 ] && prompt_modules
+    return 0
 }
 
 main() {
