@@ -32,13 +32,13 @@ function renderLogs(files) {
   if (elements.logSelect) {
     const current = elements.logSelect.value;
     elements.logSelect.textContent = "";
-    
+
     // Add "All" option first
     const allOption = document.createElement("option");
     allOption.value = "all";
     allOption.textContent = "All";
     elements.logSelect.appendChild(allOption);
-    
+
     if (files.length) {
       files.forEach((file) => {
         const option = document.createElement("option");
@@ -63,7 +63,7 @@ function setMetric(element, value, unit, maxValue = 100) {
   const valueEl = element.querySelector(".metric-value");
   const meterEl = element.querySelector(".meter-fill");
   if (!valueEl || !meterEl) return;
-  
+
   const safeValue = Number.isFinite(value) ? value : null;
   const percentValue =
     safeValue === null
@@ -235,7 +235,7 @@ function renderAlerts(alerts, searchTerm = "", pageSize = 20, page = 1) {
     const row = document.createElement("tr");
     const isDismissed = dismissed.has(alertKey(alert));
     const severity = (alert.severity || "info").toLowerCase();
-    
+
     // Severity cell with badge
     const severityCell = document.createElement("td");
     const severityBadge = document.createElement("span");
@@ -311,9 +311,40 @@ function renderLogContent(lines) {
   }
   if (!lines?.length) {
     elements.logContent.textContent = "No log entries returned.";
+    elements.logContent.scrollTop = 0;
     return;
   }
-  elements.logContent.textContent = lines.join("\n");
+  const escapeHtml = (text) =>
+    String(text)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+  const getSeverityClass = (line) => {
+    // Basic heuristic: detect common level tokens in either plain-text or JSON-ish lines.
+    const upper = String(line).toUpperCase();
+    if (/\b(ERROR|CRITICAL|FATAL)\b/.test(upper)) return "log-line-error";
+    if (/\b(WARNING|WARN)\b/.test(upper)) return "log-line-warning";
+    return "";
+  };
+
+  const html = lines
+    .map((line) => {
+      const safe = escapeHtml(line);
+      const cls = getSeverityClass(line);
+      if (!cls) return `<span class="log-line">${safe}</span>`;
+      return `<span class="log-line ${cls}">${safe}</span>`;
+    })
+    .join("<br/>");
+
+  elements.logContent.innerHTML = html;
+  // Always show the most recent part of the log on page load / filter change.
+  requestAnimationFrame(() => {
+    if (!elements.logContent) return;
+    elements.logContent.scrollTop = elements.logContent.scrollHeight;
+  });
 }
 
 async function loadLogs() {
