@@ -35,7 +35,7 @@ EOF
     local auth_conf_path="$CONFIG_DIR/auth.conf"
     local existing_password_hash=""
     if [ -f "$auth_conf_path" ]; then
-        existing_password_hash="$(awk -F= '/^password_hash[[:space:]]*=/ {print $2; exit}' "$auth_conf_path" 2>/dev/null | tr -d '[:space:]' || true)"
+        existing_password_hash="$(awk -F= '/^[[:space:]]*password_hash[[:space:]]*=/ {print $2; exit}' "$auth_conf_path" 2>/dev/null | tr -d '[:space:]' || true)"
     fi
 
     # If this is a fresh run (wizard set ADMIN_PASSWORD), use it.
@@ -62,13 +62,20 @@ EOF
 
         local existing_token_secret=""
         if [ -f "$auth_conf_path" ]; then
-            existing_token_secret="$(awk -F= '/^token_secret[[:space:]]*=/ {print $2; exit}' "$auth_conf_path" 2>/dev/null | tr -d '[:space:]' || true)"
+            existing_token_secret="$(awk -F= '/^[[:space:]]*token_secret[[:space:]]*=/ {print $2; exit}' "$auth_conf_path" 2>/dev/null | tr -d '[:space:]' || true)"
+        fi
+
+        # The API gateway imports auth_service on startup and expects token_secret to exist.
+        # If token_secret is missing (or not detected due to formatting), generate one so
+        # the auth_service module does not need to write back to auth.conf at import time.
+        if [ -z "$existing_token_secret" ]; then
+            existing_token_secret="$("$INSTALL_DIR/venv/bin/python" -c "import secrets; print(secrets.token_hex(32))")"
         fi
 
         mkdir -p "$(dirname "$auth_conf_path")"
         {
             echo "[auth]"
-            [ -n "$existing_token_secret" ] && echo "token_secret=$existing_token_secret"
+            echo "token_secret=$existing_token_secret"
             echo "password_hash=$admin_pw_hash"
         } > "$auth_conf_path"
 
