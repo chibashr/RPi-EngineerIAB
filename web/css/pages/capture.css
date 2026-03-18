@@ -60,7 +60,9 @@
   padding: 0.5rem 0.75rem;
   border-radius: 8px;
   cursor: pointer;
-  border: none;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  transition: background-color 150ms ease, border-color 150ms ease;
 }
 
 .capture-active-item:hover {
@@ -80,12 +82,100 @@
 
 .capture-active-item .status-value {
   flex-shrink: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.capture-active-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  color: var(--color-muted);
+}
+
+.capture-active-meta-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.capture-active-state {
+  color: var(--color-fg);
+  font-weight: 600;
+}
+
+.capture-active-pill {
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--color-primary, #2563eb);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .capture-active-actions {
   flex-shrink: 0;
   display: flex;
   gap: 0.5rem;
+}
+
+.capture-active-metrics {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.capture-active-metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.capture-active-metric-label {
+  color: var(--color-muted);
+  font-weight: 600;
+}
+
+.capture-active-metric-value {
+  color: var(--color-fg);
+  font-weight: 600;
+}
+
+.capture-active-sep {
+  color: var(--color-muted);
+  opacity: 0.9;
+  user-select: none;
+}
+
+.capture-active-duration {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.85rem;
+  color: var(--color-fg);
+  font-weight: 600;
+}
+
+.capture-active-started {
+  font-size: 0.85rem;
+  color: var(--color-muted);
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.capture-active-started-label {
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.capture-active-started-time {
+  color: var(--color-fg);
+  font-weight: 600;
 }
 
 .capture-completed-item {

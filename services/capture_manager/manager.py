@@ -1,5 +1,7 @@
 """Capture Manager implementation for packet capture lifecycle."""
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import sys
@@ -19,7 +21,6 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 from lib.module_logger import get_service_logger
 from services.network_manager import NetworkManager
@@ -50,18 +51,18 @@ class CaptureJob:
     capture_id: str
     interface: str
     name: str
-    filter: Optional[str] = None
-    duration_seconds: Optional[int] = None
-    max_size_mb: Optional[int] = None
+    filter: str | None = None
+    duration_seconds: int | None = None
+    max_size_mb: int | None = None
     started_at: str = field(default_factory=lambda: _timestamp())
-    stopped_at: Optional[str] = None
-    file_path: Optional[Path] = None
-    process: Optional[subprocess.Popen] = None
-    packet_count: Optional[int] = None
-    byte_count: Optional[int] = None
+    stopped_at: str | None = None
+    file_path: Path | None = None
+    process: subprocess.Popen | None = None
+    packet_count: int | None = None
+    byte_count: int | None = None
 
 
-def _load_metadata() -> Dict[str, dict]:
+def _load_metadata() -> dict[str, dict]:
     """Load persisted capture metadata from disk."""
     path = _metadata_path()
     if not path.exists():
@@ -74,7 +75,7 @@ def _load_metadata() -> Dict[str, dict]:
         return {}
 
 
-def _save_metadata(metadata: Dict[str, dict]) -> None:
+def _save_metadata(metadata: dict[str, dict]) -> None:
     """Persist capture metadata to disk."""
     path = _metadata_path()
     try:
@@ -87,12 +88,12 @@ class CaptureManager:
     """Manage tcpdump captures and analysis."""
 
     def __init__(self) -> None:
-        self._active: Dict[str, CaptureJob] = {}
-        self._completed: Dict[str, CaptureJob] = {}
+        self._active: dict[str, CaptureJob] = {}
+        self._completed: dict[str, CaptureJob] = {}
         self._network_manager = NetworkManager()
         self._load_completed_from_disk()
 
-    def list_interfaces(self) -> Dict[str, List[str]]:
+    def list_interfaces(self) -> dict[str, list[str]]:
         try:
             ifaces = self._network_manager.list_interfaces().get("interfaces") or []
             interfaces = [iface["id"] for iface in ifaces if isinstance(iface, dict) and iface.get("id")]
@@ -103,7 +104,7 @@ class CaptureManager:
             interfaces = _fallback_interface_names()
         return {"interfaces": interfaces}
 
-    def start_capture(self, payload: Dict[str, object]) -> Dict[str, object]:
+    def start_capture(self, payload: dict[str, object]) -> dict[str, object]:
         interface = payload.get("interface")
         if not interface:
             raise ValueError("interface is required")
@@ -138,31 +139,54 @@ class CaptureManager:
             cmd += ["-C", str(job.max_size_mb), "-W", "1"]
         if job.filter:
             cmd += split_bpf_filter(job.filter)
-        job.process = subprocess.Popen(
-            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
+        job.process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self._active[capture_id] = job
         logger.info("Capture started id=%s interface=%s filter=%r", capture_id[:8], job.interface, job.filter)
         if job.duration_seconds:
-            threading.Thread(
-                target=self._stop_after, args=(capture_id, job.duration_seconds), daemon=True
-            ).start()
+            threading.Thread(target=self._stop_after, args=(capture_id, job.duration_seconds), daemon=True).start()
         if job.max_size_mb:
-            threading.Thread(
-                target=self._stop_on_size, args=(capture_id, job.max_size_mb), daemon=True
-            ).start()
+            threading.Thread(target=self._stop_on_size, args=(capture_id, job.max_size_mb), daemon=True).start()
         return self._job_payload(job)
 
-    def list_active(self) -> Dict[str, List[Dict[str, object]]]:
-        return {"captures": [self._job_payload(job) for job in self._active.values()]}
+    def list_active(self) -> dict[str, list[dict[str, object]]]:
+        captures: list[dict[str, object]] = []
+        for job in self._active.values():
+            payload = self._job_payload(job)
+            # For live captures, compute stats from the in-progress pcap file.
+            # This is best-effort: if capinfos/tshark are unavailable or the file
+            # isn't readable yet, we still return the core job metadata.
+            payload.update(self._live_packet_stats(job))
+            captures.append(payload)
+        return {"captures": captures}
 
-    def get_active(self, capture_id: str) -> Dict[str, object]:
+    def get_active(self, capture_id: str) -> dict[str, object]:
         job = self._active.get(capture_id)
         if not job:
             raise KeyError("Active capture not found")
-        return self._job_payload(job)
+        payload = self._job_payload(job)
+        payload.update(self._live_packet_stats(job))
+        return payload
 
-    def stop_capture(self, capture_id: str) -> Dict[str, object]:
+    def _live_packet_stats(self, job: CaptureJob) -> dict[str, int]:
+        """Best-effort packet/byte counts for active captures.
+
+        We prefer `capinfos` for reliability and speed. If unavailable, fall back
+        to `tshark` stats parsing. Any failure returns an empty dict so the API
+        remains usable even when the capture file isn't readable yet.
+        """
+        if not job.file_path or not job.file_path.exists():
+            return {}
+
+        try:
+            stats = _capinfos_stats(job.file_path)  # prefers capinfos
+            if stats and (stats.get("packet_count", 0) or stats.get("byte_count", 0)):
+                return stats
+            # capinfos may return {} for an unready/partial pcap; try tshark.
+            return _tshark_stats(job.file_path)
+        except Exception:
+            return {}
+
+    def stop_capture(self, capture_id: str) -> dict[str, object]:
         job = self._active.pop(capture_id, None)
         if not job:
             raise KeyError("Active capture not found")
@@ -179,16 +203,16 @@ class CaptureManager:
         logger.info("Capture stopped id=%s packets=%d", capture_id[:8], packets)
         return self._job_payload(job)
 
-    def list_completed(self) -> Dict[str, List[Dict[str, object]]]:
+    def list_completed(self) -> dict[str, list[dict[str, object]]]:
         return {"captures": [self._job_payload(job) for job in self._completed.values()]}
 
-    def get_completed(self, capture_id: str) -> Dict[str, object]:
+    def get_completed(self, capture_id: str) -> dict[str, object]:
         job = self._completed.get(capture_id)
         if not job:
             raise KeyError("Completed capture not found")
         return self._job_payload(job)
 
-    def delete_completed(self, capture_id: str) -> Dict[str, object]:
+    def delete_completed(self, capture_id: str) -> dict[str, object]:
         job = self._completed.pop(capture_id, None)
         if not job:
             raise KeyError("Completed capture not found")
@@ -201,7 +225,7 @@ class CaptureManager:
         logger.info("Completed capture deleted: %s (%s)", capture_id[:8], job.name)
         return {"capture_id": capture_id, "deleted": True}
 
-    def get_stats(self, capture_id: str) -> Dict[str, object]:
+    def get_stats(self, capture_id: str) -> dict[str, object]:
         job = self._completed.get(capture_id) or self._active.get(capture_id)
         if not job or not job.file_path or not job.file_path.exists():
             raise KeyError("Capture not found")
@@ -223,25 +247,25 @@ class CaptureManager:
             "end_time": job.stopped_at,
         }
 
-    def get_packets(self, capture_id: str) -> Dict[str, object]:
+    def get_packets(self, capture_id: str) -> dict[str, object]:
         job = self.get_job(capture_id)
         if not job or not job.file_path or not job.file_path.exists():
             raise KeyError("Capture not found")
         return {"packets": _tshark_packets(job.file_path)}
 
-    def get_conversations(self, capture_id: str) -> Dict[str, object]:
+    def get_conversations(self, capture_id: str) -> dict[str, object]:
         job = self._completed.get(capture_id)
         if not job or not job.file_path:
             raise KeyError("Capture not found")
         return {"conversations": _tshark_conversations(job.file_path)}
 
-    def get_protocols(self, capture_id: str) -> Dict[str, object]:
+    def get_protocols(self, capture_id: str) -> dict[str, object]:
         job = self._completed.get(capture_id)
         if not job or not job.file_path:
             raise KeyError("Capture not found")
         return {"protocols": _tshark_protocols(job.file_path)}
 
-    def get_job(self, capture_id: str) -> Optional[CaptureJob]:
+    def get_job(self, capture_id: str) -> CaptureJob | None:
         return self._active.get(capture_id) or self._completed.get(capture_id)
 
     def _load_completed_from_disk(self) -> None:
@@ -288,7 +312,7 @@ class CaptureManager:
         }
         _save_metadata(meta)
 
-    def _job_payload(self, job: CaptureJob) -> Dict[str, object]:
+    def _job_payload(self, job: CaptureJob) -> dict[str, object]:
         payload = {
             "capture_id": job.capture_id,
             "interface": job.interface,
@@ -334,7 +358,7 @@ class CaptureManager:
             time.sleep(1)
 
 
-def _capinfos_stats(path: Path) -> Dict[str, int]:
+def _capinfos_stats(path: Path) -> dict[str, int]:
     """Prefer capinfos for packet/byte counts; more reliable than tshark io,stat."""
     capinfos = _which("capinfos")
     if not capinfos:
@@ -361,11 +385,9 @@ def _capinfos_stats(path: Path) -> Dict[str, int]:
     return {}
 
 
-def _tshark_stats(path: Path) -> Dict[str, int]:
+def _tshark_stats(path: Path) -> dict[str, int]:
     capinfos_result = _capinfos_stats(path)
-    if capinfos_result and (
-        capinfos_result.get("packet_count", 0) > 0 or capinfos_result.get("byte_count", 0) > 0
-    ):
+    if capinfos_result and (capinfos_result.get("packet_count", 0) > 0 or capinfos_result.get("byte_count", 0) > 0):
         return {
             "packet_count": capinfos_result.get("packet_count", 0),
             "byte_count": capinfos_result.get("byte_count", 0),
@@ -388,7 +410,7 @@ def _tshark_stats(path: Path) -> Dict[str, int]:
                 if p.isdigit() and packet_count == 0 and i >= 1:
                     packet_count = int(p)
                     break
-            for i, p in enumerate(parts):
+            for _, p in enumerate(parts):
                 try:
                     v = int(float(p))
                     if v > byte_count and packet_count > 0:
@@ -403,7 +425,7 @@ def _tshark_stats(path: Path) -> Dict[str, int]:
     return {"packet_count": packet_count, "byte_count": byte_count}
 
 
-def _tshark_packets(path: Path) -> List[Dict[str, object]]:
+def _tshark_packets(path: Path) -> list[dict[str, object]]:
     if not _which("tshark"):
         return []
     result = subprocess.run(
@@ -419,7 +441,7 @@ def _tshark_packets(path: Path) -> List[Dict[str, object]]:
         return []
 
 
-def _tshark_conversations(path: Path) -> List[str]:
+def _tshark_conversations(path: Path) -> list[str]:
     if not _which("tshark"):
         return []
     result = subprocess.run(
@@ -432,7 +454,7 @@ def _tshark_conversations(path: Path) -> List[str]:
     return result.stdout.splitlines()
 
 
-def _tshark_protocols(path: Path) -> Dict[str, int]:
+def _tshark_protocols(path: Path) -> dict[str, int]:
     if not _which("tshark"):
         return {}
     result = subprocess.run(
@@ -442,7 +464,7 @@ def _tshark_protocols(path: Path) -> Dict[str, int]:
     )
     if result.returncode != 0:
         return {}
-    protocols: Dict[str, int] = {}
+    protocols: dict[str, int] = {}
     for line in result.stdout.splitlines():
         if ":" in line:
             name, value = line.split(":", 1)
@@ -468,20 +490,20 @@ def _timestamp() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-def split_bpf_filter(filter_expr: str) -> List[str]:
+def split_bpf_filter(filter_expr: str) -> list[str]:
     tokens = shlex.split(filter_expr)
     if any(token.startswith("-") for token in tokens):
         raise ValueError("Invalid filter expression")
     return tokens
 
 
-def _which(binary: str) -> Optional[str]:
+def _which(binary: str) -> str | None:
     return shutil.which(binary)
 
 
-def _fallback_interface_names() -> List[str]:
+def _fallback_interface_names() -> list[str]:
     """Fallback when NetworkManager fails: read /sys/class/net or run ip link."""
-    names: List[str] = []
+    names: list[str] = []
     net_dir = Path("/sys/class/net")
     if net_dir.exists():
         for p in net_dir.iterdir():

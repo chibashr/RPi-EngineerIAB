@@ -15,6 +15,7 @@ const elements = {
 
 let activeCaptures = [];
 const MAX_CAPTURE_LINES = 500;
+let activeDurationInterval = null;
 
 function showToast(message, variant = "info") {
   const toastRegion = document.getElementById("toast-region");
@@ -57,7 +58,59 @@ function createActiveCaptureItem(capture) {
   labelEl.textContent = label;
   const valueEl = document.createElement("span");
   valueEl.className = "status-value";
-  valueEl.textContent = capture.filter ? `active · ${capture.filter}` : "active";
+
+  const packetCount = capture.packet_count ?? null;
+  const linesText = packetCount != null ? String(packetCount) : "--";
+  const startedAt = capture.started_at || "";
+  const durationText = formatDurationSince(startedAt);
+  const startedLocalText = formatLocalDateTime(startedAt);
+
+  const metaWrap = document.createElement("div");
+  metaWrap.className = "capture-active-meta";
+
+  const metaTop = document.createElement("div");
+  metaTop.className = "capture-active-meta-top";
+  const stateEl = document.createElement("span");
+  stateEl.className = "capture-active-state";
+  stateEl.textContent = "Active";
+  metaTop.appendChild(stateEl);
+  if (capture.filter) {
+    const pill = document.createElement("span");
+    pill.className = "capture-active-pill";
+    pill.textContent = capture.filter;
+    metaTop.appendChild(pill);
+  }
+  metaWrap.appendChild(metaTop);
+
+  const metaMetrics = document.createElement("div");
+  metaMetrics.className = "capture-active-metrics";
+  metaMetrics.appendChild(makeMetaLabelValue("Lines", linesText));
+  metaMetrics.appendChild(makeMetaSeparator());
+  const durationLabel = document.createElement("span");
+  durationLabel.className = "capture-active-metric";
+  durationLabel.textContent = "Active for ";
+  const durationEl = document.createElement("span");
+  durationEl.className = "capture-active-duration";
+  durationEl.dataset.startedAt = startedAt;
+  durationEl.textContent = durationText;
+  durationLabel.appendChild(durationEl);
+  metaMetrics.appendChild(durationLabel);
+  metaWrap.appendChild(metaMetrics);
+
+  const startedRow = document.createElement("div");
+  startedRow.className = "capture-active-started";
+  const startedLabel = document.createElement("span");
+  startedLabel.className = "capture-active-started-label";
+  startedLabel.textContent = "Started ";
+  const startedEl = document.createElement("span");
+  startedEl.className = "capture-active-started-time";
+  startedEl.textContent = startedLocalText;
+  startedRow.appendChild(startedLabel);
+  startedRow.appendChild(startedEl);
+  metaWrap.appendChild(startedRow);
+
+  valueEl.appendChild(metaWrap);
+
   const actions = document.createElement("span");
   actions.className = "capture-active-actions";
   const viewBtn = document.createElement("button");
@@ -165,6 +218,7 @@ function renderCaptures(listEl, captures, emptyText) {
   }
   if (listEl === elements.activeList) {
     captures.forEach((c) => listEl.appendChild(createActiveCaptureItem(c)));
+    startActiveDurationTicker();
     return;
   }
   if (listEl === elements.completedList) {
@@ -176,6 +230,75 @@ function renderCaptures(listEl, captures, emptyText) {
     const value = capture.status || capture.state || "active";
     listEl.appendChild(createStatusItem(label, value));
   });
+}
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function formatDuration(seconds) {
+  if (seconds == null || Number.isNaN(seconds)) return "--";
+  const s = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${pad2(h)}:${pad2(m)}:${pad2(sec)}`;
+}
+
+function formatDurationSince(utcIsoString) {
+  if (!utcIsoString) return "--";
+  const t = Date.parse(utcIsoString);
+  if (Number.isNaN(t)) return "--";
+  return formatDuration((Date.now() - t) / 1000);
+}
+
+function formatLocalDateTime(utcIsoString) {
+  if (!utcIsoString) return "--";
+  const t = Date.parse(utcIsoString);
+  if (Number.isNaN(t)) return "--";
+  const d = new Date(t);
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function makeMetaLabelValue(label, valueText) {
+  const wrap = document.createElement("span");
+  wrap.className = "capture-active-metric";
+  const l = document.createElement("span");
+  l.className = "capture-active-metric-label";
+  l.textContent = `${label} `;
+  const v = document.createElement("span");
+  v.className = "capture-active-metric-value";
+  v.textContent = valueText;
+  wrap.appendChild(l);
+  wrap.appendChild(v);
+  return wrap;
+}
+
+function makeMetaSeparator() {
+  const sep = document.createElement("span");
+  sep.className = "capture-active-sep";
+  sep.textContent = "•";
+  return sep;
+}
+
+function updateActiveDurations() {
+  document.querySelectorAll(".capture-active-duration[data-started-at]").forEach((el) => {
+    const startedAt = el.dataset.startedAt || "";
+    el.textContent = formatDurationSince(startedAt);
+  });
+}
+
+function startActiveDurationTicker() {
+  if (activeDurationInterval) return;
+  activeDurationInterval = setInterval(() => {
+    updateActiveDurations();
+  }, 1000);
 }
 
 function updateBanner(message, isVisible = true) {
