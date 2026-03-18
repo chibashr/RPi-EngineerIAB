@@ -42,6 +42,11 @@ HOTSPOT_CONFIGURED="no"
 REMOTE_CONFIGURED="no"
 MODULES_INSTALLED="no"
 
+# Fail-fast with context (line + command) in logs.
+# This is especially important for `curl | sudo bash` runs where a non-obvious command failure
+# can otherwise look like the installer "stopped" with no output.
+trap 'rc=$?; echo "[ERROR] Installer failed (exit=$rc) at line ${BASH_LINENO[0]}: ${BASH_COMMAND}" | tee -a "$INSTALL_LOG" >&2; exit $rc' ERR
+
 # When run via 'curl | bash', BASH_SOURCE[0] is unset; use $0 so dirname yields current directory.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
