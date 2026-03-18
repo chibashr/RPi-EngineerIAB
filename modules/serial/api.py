@@ -60,6 +60,8 @@ async def test_device(device_id: str) -> dict[str, Any]:
 
 @router.post("/sessions")
 async def create_session(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    if not payload.get("device_id"):
+        raise HTTPException(status_code=400, detail="device_id is required")
     manager = get_serial_manager()
     try:
         return manager.create_session(payload)
