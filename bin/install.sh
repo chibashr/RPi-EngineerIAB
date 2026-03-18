@@ -444,9 +444,10 @@ prompt_reconfigure_sections() {
     echo "  2) Firewall"
     echo "  3) Remote Access"
     echo "  4) Modules"
+    echo "  5) Web Admin Password (rpi-engineer)"
     interactive_read -r -p "Enter numbers (comma-separated) or Enter for all: " input
     if [ -z "${input:-}" ]; then
-        RECONF_SECTIONS=(hotspot firewall remote_access modules)
+        RECONF_SECTIONS=(hotspot firewall remote_access modules web_admin_password)
         log_info "Reconfigure sections: all"
     else
         local selections
@@ -459,6 +460,7 @@ prompt_reconfigure_sections() {
                 2) RECONF_SECTIONS+=(firewall) ;;
                 3) RECONF_SECTIONS+=(remote_access) ;;
                 4) RECONF_SECTIONS+=(modules) ;;
+                5) RECONF_SECTIONS+=(web_admin_password) ;;
             esac
         done
         log_info "Reconfigure sections: ${RECONF_SECTIONS[*]:-none}"
@@ -2835,11 +2837,13 @@ main() {
         reconf_includes firewall && total=$((total + 1))
         reconf_includes remote_access && total=$((total + 1))
         reconf_includes modules && total=$((total + 1))
+        reconf_includes web_admin_password && total=$((total + 1))
         total=$((total + 3))
         reconf_includes hotspot && { step_counter_bar $step $total "WiFi hotspot"; configure_hotspot; step=$((step + 1)); }
         reconf_includes firewall && { step_counter_bar $step $total "Firewall"; configure_firewall; step=$((step + 1)); }
         reconf_includes remote_access && { step_counter_bar $step $total "Remote access"; setup_remote_access; step=$((step + 1)); }
         reconf_includes modules && { step_counter_bar $step $total "Modules"; install_modules; step=$((step + 1)); }
+        reconf_includes web_admin_password && { step_counter_bar $step $total "Web admin password"; prompt_admin_password; step=$((step + 1)); }
         step_counter_bar $step $total "Configuration files"
         generate_configs
         step=$((step + 1))

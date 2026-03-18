@@ -169,11 +169,13 @@ main() {
         reconf_includes firewall && total=$((total + 1))
         reconf_includes remote_access && total=$((total + 1))
         reconf_includes modules && total=$((total + 1))
+        reconf_includes web_admin_password && total=$((total + 1))
         total=$((total + 3))
         reconf_includes hotspot && { step_counter_bar $step $total "WiFi hotspot"; configure_hotspot; step=$((step + 1)); }
         reconf_includes firewall && { step_counter_bar $step $total "Firewall"; configure_firewall; step=$((step + 1)); }
         reconf_includes remote_access && { step_counter_bar $step $total "Remote access"; setup_remote_access; step=$((step + 1)); }
         reconf_includes modules && { step_counter_bar $step $total "Modules"; install_modules; step=$((step + 1)); }
+        reconf_includes web_admin_password && { step_counter_bar $step $total "Web admin password"; prompt_admin_password; step=$((step + 1)); }
         step_counter_bar $step $total "Configuration files"
         generate_configs
         step=$((step + 1))

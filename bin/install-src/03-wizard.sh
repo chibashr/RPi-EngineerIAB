@@ -95,9 +95,10 @@ prompt_reconfigure_sections() {
     echo "  2) Firewall"
     echo "  3) Remote Access"
     echo "  4) Modules"
+    echo "  5) Web Admin Password (rpi-engineer)"
     interactive_read -r -p "Enter numbers (comma-separated) or Enter for all: " input
     if [ -z "${input:-}" ]; then
-        RECONF_SECTIONS=(hotspot firewall remote_access modules)
+        RECONF_SECTIONS=(hotspot firewall remote_access modules web_admin_password)
         log_info "Reconfigure sections: all"
     else
         local selections
@@ -110,6 +111,7 @@ prompt_reconfigure_sections() {
                 2) RECONF_SECTIONS+=(firewall) ;;
                 3) RECONF_SECTIONS+=(remote_access) ;;
                 4) RECONF_SECTIONS+=(modules) ;;
+                5) RECONF_SECTIONS+=(web_admin_password) ;;
             esac
         done
         log_info "Reconfigure sections: ${RECONF_SECTIONS[*]:-none}"
