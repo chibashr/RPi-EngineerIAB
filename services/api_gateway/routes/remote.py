@@ -1,7 +1,8 @@
 """Remote access API routes."""
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 
+from services.api_gateway.routes.auth import require_admin
 from services.remote_access_manager import RemoteAccessManager
 from services.remote_access_manager.manager import generate_teamviewer_password
 
@@ -22,7 +23,7 @@ def remote_info():
 
 
 @remote_router.post("/password")
-def remote_set_password(body: dict = Body(default=None)):
+def remote_set_password(body: dict = Body(default=None), _=Depends(require_admin)):
     """Set unattended access password for AnyDesk or TeamViewer. Requires sudo for bin/set-remote-password.sh."""
     body = body or {}
     tool = body.get("tool")
@@ -36,7 +37,7 @@ def remote_set_password(body: dict = Body(default=None)):
 
 
 @remote_router.post("/teamviewer/reset-password")
-def teamviewer_reset_password(body: dict = Body(default=None)):
+def teamviewer_reset_password(body: dict = Body(default=None), _=Depends(require_admin)):
     """Set TeamViewer static password. Password must be 6-8 characters (TeamViewer Linux requirements)."""
     body = body or {}
     password = body.get("password")
@@ -61,7 +62,7 @@ def teamviewer_reset_password(body: dict = Body(default=None)):
 
 
 @remote_router.post("/teamviewer/generate-password")
-def teamviewer_generate_password():
+def teamviewer_generate_password(_=Depends(require_admin)):
     """Generate and set a random TeamViewer-compliant password."""
     password = generate_teamviewer_password()
     err = _remote_manager.set_teamviewer_password(password)
@@ -71,7 +72,7 @@ def teamviewer_generate_password():
 
 
 @remote_router.post("/teamviewer/setup-account")
-def teamviewer_setup_account(body: dict = Body(default=None)):
+def teamviewer_setup_account(body: dict = Body(default=None), _=Depends(require_admin)):
     """Connect device to TeamViewer account for unattended access."""
     body = body or {}
     email = body.get("email", "").strip()
@@ -82,3 +83,16 @@ def teamviewer_setup_account(body: dict = Body(default=None)):
     if err:
         return error_response("SETUP_FAILED", err, status_code=500)
     return success_response({"message": "Device connected to account"})
+
+
+@remote_router.post("/anydesk/reset-password")
+def anydesk_reset_password(body: dict = Body(default=None), _=Depends(require_admin)):
+    """Set AnyDesk unattended access password."""
+    body = body or {}
+    password = body.get("password")
+    if not isinstance(password, str) or not password:
+        return error_response("INVALID_INPUT", "password is required", status_code=400)
+    err = _remote_manager.set_password("anydesk", password)
+    if err:
+        return error_response("SET_PASSWORD_FAILED", err, status_code=500)
+    return success_response({"password": password})

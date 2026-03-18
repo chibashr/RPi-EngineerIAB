@@ -12,19 +12,15 @@ import string
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from lib.module_logger import get_service_logger
 from services.network_manager import NetworkManager
 
 logger = get_service_logger(__name__)
 
-REMOTE_ACCESS_CONFIG_DIR = Path(
-    os.getenv("RPI_ENGINEER_CONFIG_DIR", "/etc/rpi-engineer")
-)
-REMOTE_ACCESS_DATA_DIR = Path(
-    os.getenv("RPI_ENGINEER_DATA_DIR", "/var/lib/rpi-engineer")
-)
+REMOTE_ACCESS_CONFIG_DIR = Path(os.getenv("RPI_ENGINEER_CONFIG_DIR", "/etc/rpi-engineer"))
+REMOTE_ACCESS_DATA_DIR = Path(os.getenv("RPI_ENGINEER_DATA_DIR", "/var/lib/rpi-engineer"))
 REMOTE_ACCESS_CONFIG_FILE = REMOTE_ACCESS_CONFIG_DIR / "remote_access.conf"
 # Store password in data dir (writable by rpi-engineer user) not config dir (root-owned)
 TEAMVIEWER_PASSWORD_FILE = REMOTE_ACCESS_DATA_DIR / "teamviewer_password"
@@ -54,13 +50,13 @@ class RemoteAccessManager:
     def __init__(self) -> None:
         self._network_manager = NetworkManager()
 
-    def get_status(self) -> Dict[str, List[Dict[str, object]]]:
+    def get_status(self) -> dict[str, list[dict[str, object]]]:
         tools = []
         for tool in ("anydesk", "teamviewer", "vnc", "rpi_connect"):
             tools.append(self._tool_status(tool))
         return {"tools": tools}
 
-    def get_info(self) -> Dict[str, Dict[str, str]]:
+    def get_info(self) -> dict[str, dict[str, str]]:
         ids = {
             "anydesk": self._anydesk_id() or "",
             "teamviewer": self._teamviewer_id() or "",
@@ -73,9 +69,13 @@ class RemoteAccessManager:
             "vnc": "running" if self._process_running("x11vnc") else "stopped",
             "rpi_connect": "running" if self._rpi_connect_running() else "stopped",
         }
-        return {"connection_ids": ids, "status": status}
+        passwords = {
+            "anydesk": (self._tool_status("anydesk").get("password") or ""),
+            "teamviewer": (self._tool_status("teamviewer").get("password") or ""),
+        }
+        return {"connection_ids": ids, "status": status, "passwords": passwords}
 
-    def _tool_status(self, tool: str) -> Dict[str, object]:
+    def _tool_status(self, tool: str) -> dict[str, object]:
         connection_id = ""
         ready = False
         status = "stopped"
@@ -99,7 +99,7 @@ class RemoteAccessManager:
             connection_id = self._rpi_connect_id() or ""
             status = "running" if self._rpi_connect_running() else "stopped"
             ready = bool(connection_id)
-        out: Dict[str, object] = {
+        out: dict[str, object] = {
             "name": tool,
             "status": status,
             "connection_id": connection_id,
@@ -109,7 +109,7 @@ class RemoteAccessManager:
             out["password"] = password
         return out
 
-    def _get_teamviewer_password(self) -> Optional[str]:
+    def _get_teamviewer_password(self) -> str | None:
         """Read TeamViewer password from dedicated file. Falls back to remote_access.conf."""
         if TEAMVIEWER_PASSWORD_FILE.is_file():
             try:
@@ -119,9 +119,9 @@ class RemoteAccessManager:
         config = self._get_remote_access_config()
         return (config.get("teamviewer") or {}).get("password") or None
 
-    def set_teamviewer_password(self, new_password: str) -> Optional[str]:
+    def set_teamviewer_password(self, new_password: str) -> str | None:
         """Set TeamViewer static password. Returns None on success, error message on failure.
-        
+
         Password must be 6-8 characters (TeamViewer Linux static password requirements).
         """
         if not new_password:
@@ -174,7 +174,7 @@ class RemoteAccessManager:
             logger.warning("set_teamviewer_password failed: %s", e)
             return str(e)
 
-    def setup_teamviewer_account(self, email: str, password: str) -> Optional[str]:
+    def setup_teamviewer_account(self, email: str, password: str) -> str | None:
         """Connect device to TeamViewer account. Returns None on success, error on failure."""
         if not shutil.which("teamviewer"):
             return "TeamViewer is not installed"
@@ -207,7 +207,7 @@ class RemoteAccessManager:
             logger.warning("setup_teamviewer_account failed: %s", e)
             return str(e)
 
-    def _get_remote_access_config(self) -> Dict[str, Any]:
+    def _get_remote_access_config(self) -> dict[str, Any]:
         """Read remote_access.conf; return parsed JSON or empty dict.
         Tries direct read first; on permission error, tries sudo read-remote-config.sh.
         """
@@ -228,7 +228,7 @@ class RemoteAccessManager:
             logger.debug("Could not parse remote_access config: %s", e)
         return {}
 
-    def _read_remote_config_via_sudo(self) -> Optional[Dict[str, Any]]:
+    def _read_remote_config_via_sudo(self) -> dict[str, Any] | None:
         """Read remote_access.conf via sudo read-remote-config.sh. Returns None on failure."""
         root = Path(os.getenv("RPI_ENGINEER_ROOT", "/opt/rpi-engineer"))
         script = root / "bin" / "read-remote-config.sh"
@@ -249,7 +249,7 @@ class RemoteAccessManager:
         except (OSError, json.JSONDecodeError, subprocess.TimeoutExpired):
             return None
 
-    def _anydesk_id_from_native_config(self) -> Optional[str]:
+    def _anydesk_id_from_native_config(self) -> str | None:
         """Read AnyDesk ID from /etc/anydesk/service.conf when app config is unavailable."""
         if not ANYDESK_SERVICE_CONF.is_file():
             return None
@@ -269,7 +269,7 @@ class RemoteAccessManager:
             logger.debug("Could not read AnyDesk service.conf: %s", e)
         return None
 
-    def _teamviewer_id_from_native_config(self) -> Optional[str]:
+    def _teamviewer_id_from_native_config(self) -> str | None:
         """Read TeamViewer ID from config or logs when app config is unavailable.
         Linux: /etc/teamviewer/global.conf or /opt/teamviewer/config/global.conf
         use '[int32]' section with 'ClientID = <digits>'; logs under /var/log/teamviewer/
@@ -278,9 +278,7 @@ class RemoteAccessManager:
         for conf_path in (TEAMVIEWER_GLOBAL_CONF, TEAMVIEWER_ETC_CONF):
             if conf_path.is_file():
                 try:
-                    text = conf_path.read_text(
-                        encoding="utf-8", errors="replace"
-                    )
+                    text = conf_path.read_text(encoding="utf-8", errors="replace")
                     # ClientID = 123... (with optional [int32] prefix on same line)
                     match = re.search(r"ClientID\s*=\s*(\d+)", text, re.IGNORECASE)
                     if match:
@@ -306,7 +304,7 @@ class RemoteAccessManager:
                 logger.debug("Could not read TeamViewer log dir: %s", e)
         return None
 
-    def _anydesk_id(self) -> Optional[str]:
+    def _anydesk_id(self) -> str | None:
         # 1) Live CLI 2) App config (remote_access.conf) 3) AnyDesk native config
         if shutil.which("anydesk"):
             result = subprocess.run(
@@ -325,7 +323,7 @@ class RemoteAccessManager:
             return _format_id(str(raw).strip()) or None
         return self._anydesk_id_from_native_config()
 
-    def _teamviewer_id(self) -> Optional[str]:
+    def _teamviewer_id(self) -> str | None:
         # 1) Live CLI (teamviewer info) - try with and without sudo
         # 2) App config 3) Native config/logs
         if shutil.which("teamviewer"):
@@ -368,13 +366,13 @@ class RemoteAccessManager:
             return _format_id(str(raw).strip()) or None
         return self._teamviewer_id_from_native_config()
 
-    def _vnc_connection_id(self) -> Optional[str]:
+    def _vnc_connection_id(self) -> str | None:
         ip = self._primary_ip()
         if not ip:
             return None
         return f"{ip}:5901"
 
-    def _rpi_connect_id(self) -> Optional[str]:
+    def _rpi_connect_id(self) -> str | None:
         """Raspberry Pi Connect: no numeric ID; return access URL."""
         if not self._rpi_connect_running():
             return None
@@ -400,7 +398,7 @@ class RemoteAccessManager:
                 return True
         return False
 
-    def _primary_ip(self) -> Optional[str]:
+    def _primary_ip(self) -> str | None:
         default_iface = self._network_manager._default_route_interface()
         if default_iface:
             try:
@@ -409,9 +407,7 @@ class RemoteAccessManager:
                 if isinstance(ip_address, str) and ip_address:
                     return ip_address
             except Exception as exc:
-                logger.debug(
-                    "Failed to load interface data for %s: %s", default_iface, exc
-                )
+                logger.debug("Failed to load interface data for %s: %s", default_iface, exc)
         try:
             hostname = socket.gethostname()
             return socket.gethostbyname(hostname)
@@ -437,7 +433,7 @@ class RemoteAccessManager:
             return result.returncode == 0
         return False
 
-    def set_password(self, tool: str, password: str) -> Optional[str]:
+    def set_password(self, tool: str, password: str) -> str | None:
         """Set unattended password for anydesk or teamviewer. Returns None on success, error message on failure."""
         if tool not in ("anydesk", "teamviewer"):
             return f"Unsupported tool: {tool}"
@@ -454,9 +450,7 @@ class RemoteAccessManager:
         data_dir.mkdir(parents=True, exist_ok=True)
         pw_file = None
         try:
-            fd, pw_file = tempfile.mkstemp(
-                prefix=".remote-pw-", suffix=".tmp", dir=str(data_dir)
-            )
+            fd, pw_file = tempfile.mkstemp(prefix=".remote-pw-", suffix=".tmp", dir=str(data_dir))
             try:
                 os.write(fd, password.encode("utf-8"))
             finally:
