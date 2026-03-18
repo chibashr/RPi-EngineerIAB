@@ -107,29 +107,36 @@ def create_token() -> str:
 
 
 def validate_admin_password(password: str) -> bool:
-    """Validate against Pi OS user 'pi' (PAM). Bcrypt fallback only when PAM unavailable (e.g. dev)."""
+    """
+    Validate the admin password.
+
+    Priority:
+    1. If `password_hash` exists in auth config, try bcrypt first.
+    2. If bcrypt fails (or no hash exists), fall back to PAM authentication for the `rpi-engineer` system user.
+    """
+
     if not password:
         return False
+
+    cfg = _read_config()
+    stored = cfg.get("auth", "password_hash", fallback=None) or ""
+    if stored.strip():
+        try:
+            if bcrypt.checkpw(password.encode(), stored.strip().encode()):
+                return True
+        except Exception:
+            # Ignore bcrypt errors and fall back to PAM.
+            pass
+
+    # No bcrypt hash configured; fall back to PAM (keeps older deployments working).
+    admin_user = os.environ.get("RPI_ENGINEER_SERVICE_USER", "rpi-engineer")
     try:
         import pam
 
         p = pam.pam()
-        if p.authenticate("pi", password):
-            return True
-        # PAM available and auth failed: only the Pi password is valid; do not fall back to bcrypt
-        return False
+        return bool(p.authenticate(admin_user, password))
     except ImportError:
-        # No PAM (e.g. Windows dev): use bcrypt from config for testing
-        pass
-    except Exception:
-        # PAM misconfigured or runtime error: allow bcrypt fallback so admin can still log in
-        pass
-    cfg = _read_config()
-    stored = cfg.get("auth", "password_hash", fallback=None) or ""
-    if not stored or not stored.strip():
         return False
-    try:
-        return bcrypt.checkpw(password.encode(), stored.strip().encode())
     except Exception:
         return False
 

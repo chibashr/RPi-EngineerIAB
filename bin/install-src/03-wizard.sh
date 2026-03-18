@@ -267,6 +267,34 @@ prompt_remote_access() {
     fi
 }
 
+prompt_admin_password() {
+    log_step "Admin authentication configuration"
+
+    if [ "${NONINTERACTIVE:-0}" = "1" ]; then
+        ADMIN_PASSWORD="${RPI_ENGINEER_ADMIN_PASSWORD:-rpi-engineer-default-password}"
+        log_info "Non-interactive: using admin password from env (or default)."
+        return 0
+    fi
+
+    local password_confirm=""
+    while true; do
+        interactive_read -r -s -p "Enter admin password for user '${SERVICE_USER}': " ADMIN_PASSWORD
+        echo
+        interactive_read -r -s -p "Confirm password: " password_confirm
+        echo
+
+        if [ "$ADMIN_PASSWORD" != "$password_confirm" ]; then
+            log_warn "Passwords do not match."
+            continue
+        fi
+
+        if [ "${#ADMIN_PASSWORD}" -ge 8 ]; then
+            break
+        fi
+        log_warn "Admin password must be at least 8 characters."
+    done
+}
+
 prompt_hotspot_config() {
     log_step "WiFi hotspot configuration"
     local default_ssid
@@ -397,6 +425,7 @@ confirm_summary() {
     fi
     echo "  WiFi SSID: $HOTSPOT_SSID"
     echo "  WiFi Password: ********"
+    echo "  Admin Password: set"
     echo "  Hostname: $TARGET_HOSTNAME"
     if [ "${#MODULE_SELECTIONS[@]}" -eq 0 ]; then
         echo "  Modules: none"

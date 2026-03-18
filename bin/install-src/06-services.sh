@@ -189,7 +189,8 @@ configure_services() {
     log_step "Configuring systemd services"
     create_master_service
     local api_env="Environment=RPI_ENGINEER_ROOT=${INSTALL_DIR}
-Environment=RPI_ENGINEER_DRY_RUN=0"
+Environment=RPI_ENGINEER_DRY_RUN=0
+Environment=RPI_ENGINEER_AUTH_CONF=${CONFIG_DIR}/auth.conf"
     # Only create systemd units for actual daemon services (services with main loops).
     # system_manager, serial_manager, capture_manager, update_manager, and monitor_service
     # are libraries used by the API gateway, not standalone daemons.

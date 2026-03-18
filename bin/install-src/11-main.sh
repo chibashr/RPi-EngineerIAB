@@ -42,6 +42,7 @@ run_wizard() {
     fi
     prompt_welcome
     prompt_remote_access
+    prompt_admin_password
     prompt_hotspot_config
     prompt_hostname
     prompt_modules

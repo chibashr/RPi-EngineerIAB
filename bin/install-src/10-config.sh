@@ -29,6 +29,54 @@ mode=simple
 level=INFO
 retention_days=7
 EOF
+
+    # Admin authentication config: bcrypt-hash the admin password during install.
+    # The API gateway reads it via RPI_ENGINEER_AUTH_CONF.
+    local auth_conf_path="$CONFIG_DIR/auth.conf"
+    local existing_password_hash=""
+    if [ -f "$auth_conf_path" ]; then
+        existing_password_hash="$(awk -F= '/^password_hash[[:space:]]*=/ {print $2; exit}' "$auth_conf_path" 2>/dev/null | tr -d '[:space:]' || true)"
+    fi
+
+    # If this is a fresh run (wizard set ADMIN_PASSWORD), use it.
+    # If we don't have ADMIN_PASSWORD (e.g. continue/reconfigure), only write a hash if missing.
+    local admin_pw="${ADMIN_PASSWORD:-}"
+    if [ -z "$admin_pw" ] && [ -z "$existing_password_hash" ]; then
+        admin_pw="${RPI_ENGINEER_ADMIN_PASSWORD:-rpi-engineer-default-password}"
+    fi
+
+    if [ -n "$admin_pw" ] && ( [ -z "$existing_password_hash" ] || [ "${ADMIN_PASSWORD:-}" != "" ] ); then
+        log_info "Writing bcrypt admin password hash to $auth_conf_path"
+        local admin_pw_hash
+        admin_pw_hash="$("$INSTALL_DIR/venv/bin/python" -c "import bcrypt,sys; pw=sys.argv[1].encode('utf-8'); print(bcrypt.hashpw(pw, bcrypt.gensalt()).decode('utf-8'))" "$admin_pw")"
+
+        # Best-effort: align the device account password with the same credential.
+        # This keeps PAM-based fallback behavior consistent with the configured admin login.
+        if [ -n "${ADMIN_PASSWORD:-}" ]; then
+            if command -v chpasswd >/dev/null 2>&1; then
+                echo "${SERVICE_USER}:${ADMIN_PASSWORD}" | chpasswd >/dev/null 2>&1 || log_warn "Failed to set system password for ${SERVICE_USER} (continuing)."
+            else
+                log_warn "chpasswd not available; skipping system password update."
+            fi
+        fi
+
+        local existing_token_secret=""
+        if [ -f "$auth_conf_path" ]; then
+            existing_token_secret="$(awk -F= '/^token_secret[[:space:]]*=/ {print $2; exit}' "$auth_conf_path" 2>/dev/null | tr -d '[:space:]' || true)"
+        fi
+
+        mkdir -p "$(dirname "$auth_conf_path")"
+        {
+            echo "[auth]"
+            [ -n "$existing_token_secret" ] && echo "token_secret=$existing_token_secret"
+            echo "password_hash=$admin_pw_hash"
+        } > "$auth_conf_path"
+
+        # Keep read access for API (service user) but restrict other users.
+        chown "root:$SERVICE_GROUP" "$auth_conf_path" 2>/dev/null || true
+        chmod 640 "$auth_conf_path" 2>/dev/null || true
+    fi
+
     mark_step_done "configs"
 }
 

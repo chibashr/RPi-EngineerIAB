@@ -72,7 +72,7 @@ The web interface is served over HTTPS using a **self-signed certificate** gener
 
 ### Authentication
 
-Access is protected by a **single admin password**. The password is validated against the system user `pi` (PAM) or, if PAM is unavailable, against a bcrypt hash stored in `config/auth.conf`. Successful login returns a signed token valid for **4 hours**; the frontend stores it in **sessionStorage only** (no cookies). After **20 failed login attempts** from the same IP within a 10-minute window, that IP receives HTTP 429 until the window expires.
+Access is protected by a **single admin password**. The password is validated against an installer-provisioned bcrypt hash stored in `auth.conf`, and falls back to PAM for the `rpi-engineer` system user when the bcrypt hash is missing or bcrypt validation fails. Successful login returns a signed token valid for **4 hours**; the frontend stores it in **sessionStorage only** (no cookies). After **20 failed login attempts** from the same IP within a 10-minute window, that IP receives HTTP 429 until the window expires.
 
 ### Admin password reset
 
