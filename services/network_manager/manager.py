@@ -18,7 +18,6 @@ import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
 
 try:
     import psutil  # type: ignore
@@ -38,28 +37,25 @@ HOTSPOT_SHARE_CONFIG = CONFIG_DIR / "hotspot_share.json"
 class NetworkRoute:
     destination: str
     gateway: str
-    interface: Optional[str] = None
+    interface: str | None = None
 
 
 class NetworkManager:
     """Manage network interfaces, routing, and profiles."""
 
-    def list_interfaces(self) -> Dict[str, List[Dict[str, object]]]:
+    def list_interfaces(self) -> dict[str, list[dict[str, object]]]:
         names = self._interface_names()
         connectivity = self._check_all_interface_connectivity(names)
         dns_ok = self._check_dns()  # Check DNS once, not per-interface
-        interfaces = [
-            self._build_interface(iface, connectivity=connectivity, dns_ok=dns_ok)
-            for iface in names
-        ]
+        interfaces = [self._build_interface(iface, connectivity=connectivity, dns_ok=dns_ok) for iface in names]
         return {"interfaces": interfaces}
 
-    def get_interface(self, interface_id: str) -> Dict[str, object]:
+    def get_interface(self, interface_id: str) -> dict[str, object]:
         if interface_id not in self._interface_names():
             raise KeyError("Interface not found")
         return self._build_interface(interface_id)
 
-    def update_interface(self, interface_id: str, config: Dict[str, object]) -> Dict[str, object]:
+    def update_interface(self, interface_id: str, config: dict[str, object]) -> dict[str, object]:
         if interface_id not in self._interface_names():
             raise KeyError("Interface not found")
         mode = config.get("mode")
@@ -80,13 +76,13 @@ class NetworkManager:
             raise
         return {"interface": interface_id, "mode": mode, "applied": True}
 
-    def list_routes(self) -> Dict[str, List[Dict[str, str]]]:
+    def list_routes(self) -> dict[str, list[dict[str, str]]]:
         return {"routes": [route.__dict__ for route in self._routes()]}
 
-    def list_current_routes(self) -> Dict[str, List[Dict[str, object]]]:
+    def list_current_routes(self) -> dict[str, list[dict[str, object]]]:
         return {"routes": self._current_routes()}
 
-    def add_route(self, payload: Dict[str, object]) -> Dict[str, object]:
+    def add_route(self, payload: dict[str, object]) -> dict[str, object]:
         destination = payload.get("destination")
         gateway = payload.get("gateway")
         interface = payload.get("interface")
@@ -101,7 +97,7 @@ class NetworkManager:
         subprocess.run(cmd, check=True)
         return {"destination": destination, "gateway": gateway, "interface": interface}
 
-    def list_profiles(self) -> Dict[str, List[Dict[str, object]]]:
+    def list_profiles(self) -> dict[str, list[dict[str, object]]]:
         profiles = []
         for path in sorted(PROFILE_DIR.glob("*.json")):
             try:
@@ -119,7 +115,7 @@ class NetworkManager:
                 continue
         return {"profiles": profiles}
 
-    def save_profile(self, payload: Dict[str, object]) -> Dict[str, object]:
+    def save_profile(self, payload: dict[str, object]) -> dict[str, object]:
         name = payload.get("name")
         if not name:
             raise ValueError("Profile name is required")
@@ -137,7 +133,7 @@ class NetworkManager:
         logger.info("Network profile saved: %s", name)
         return {"name": name, "description": description}
 
-    def load_profile(self, name: str) -> Dict[str, object]:
+    def load_profile(self, name: str) -> dict[str, object]:
         path = self._find_profile_by_name(name)
         if not path or not path.exists():
             raise KeyError("Profile not found")
@@ -152,7 +148,7 @@ class NetworkManager:
         logger.info("Profile loaded name=%s", name)
         return {"name": name, "applied": True}
 
-    def _find_profile_by_name(self, name: str) -> Optional[Path]:
+    def _find_profile_by_name(self, name: str) -> Path | None:
         """Find profile file by name (matches payload name or path stem)."""
         for path in PROFILE_DIR.glob("*.json"):
             try:
@@ -165,7 +161,7 @@ class NetworkManager:
                 continue
         return None
 
-    def delete_profile(self, name: str) -> Dict[str, object]:
+    def delete_profile(self, name: str) -> dict[str, object]:
         path = self._find_profile_by_name(name)
         if not path:
             raise KeyError("Profile not found")
@@ -173,7 +169,7 @@ class NetworkManager:
         logger.info("Network profile deleted: %s", name)
         return {"name": name, "deleted": True}
 
-    def update_profile(self, name: str, payload: Dict[str, object]) -> Dict[str, object]:
+    def update_profile(self, name: str, payload: dict[str, object]) -> dict[str, object]:
         path = self._find_profile_by_name(name)
         if not path:
             raise KeyError("Profile not found")
@@ -194,7 +190,7 @@ class NetworkManager:
             path.write_text(json.dumps(data, indent=2))
         return {"name": final_name, "description": data.get("description", "")}
 
-    def get_status(self) -> Dict[str, object]:
+    def get_status(self) -> dict[str, object]:
         wan_interface = self._default_route_interface()
         wan_status = "connected" if self._check_connectivity() else "disconnected"
         hotspot_status = "active" if self._hotspot_active() else "inactive"
@@ -209,7 +205,7 @@ class NetworkManager:
             "clients": self._hotspot_clients(),
         }
 
-    def reset_network(self, preserve_hotspot: bool = False) -> Dict[str, object]:
+    def reset_network(self, preserve_hotspot: bool = False) -> dict[str, object]:
         dry_run = os.getenv("RPI_ENGINEER_DRY_RUN", "1") == "1"
         if dry_run:
             return {"reset": True, "preserve_hotspot": preserve_hotspot, "applied": False}
@@ -230,7 +226,7 @@ class NetworkManager:
             self._restore_hotspot_config(hotspot_config)
         return {"reset": True, "preserve_hotspot": preserve_hotspot, "applied": True}
 
-    def create_vlan(self, payload: Dict[str, object]) -> Dict[str, object]:
+    def create_vlan(self, payload: dict[str, object]) -> dict[str, object]:
         parent = payload.get("parent")
         vlan_id = payload.get("vlan_id")
         name = payload.get("name")
@@ -256,12 +252,16 @@ class NetworkManager:
         logger.info("VLAN created: %s on %s (id=%s)", vlan_name, parent, vlan_id)
         return {"parent": parent, "vlan_id": vlan_id, "name": vlan_name, "applied": True}
 
-    def configure_hotspot(self, payload: Dict[str, object]) -> Dict[str, object]:
+    def configure_hotspot(self, payload: dict[str, object]) -> dict[str, object]:
         ssid = payload.get("ssid")
         password = payload.get("password")
         channel = payload.get("channel", 6)
         if not ssid:
             raise ValueError("SSID is required")
+        if not password or len(str(password)) < 8:
+            raise ValueError("Password is required and must be at least 8 characters (WPA-PSK requirement)")
+        if len(str(password)) > 63:
+            raise ValueError("Password must be at most 63 characters (WPA-PSK requirement)")
         dry_run = os.getenv("RPI_ENGINEER_DRY_RUN", "1") == "1"
         if dry_run:
             return {"ssid": ssid, "channel": channel, "applied": False}
@@ -292,7 +292,7 @@ wpa_key_mgmt=WPA-PSK
         logger.info("Hotspot started interface=wlan0 ssid=%s", ssid)
         return {"ssid": ssid, "channel": channel, "applied": True}
 
-    def _interface_names(self) -> List[str]:
+    def _interface_names(self) -> list[str]:
         if psutil:
             return list(psutil.net_if_addrs().keys())
         if _which("ip"):
@@ -304,10 +304,11 @@ wpa_key_mgmt=WPA-PSK
         return []
 
     def _build_interface(
-        self, name: str,
-        connectivity: Optional[Dict[str, bool]] = None,
-        dns_ok: Optional[bool] = None,
-    ) -> Dict[str, object]:
+        self,
+        name: str,
+        connectivity: dict[str, bool] | None = None,
+        dns_ok: bool | None = None,
+    ) -> dict[str, object]:
         addrs = self._interface_addrs(name)
         stats = self._interface_stats(name)
         ip_address = addrs.get("ip_address")
@@ -337,7 +338,7 @@ wpa_key_mgmt=WPA-PSK
         out["share_with_hotspot"] = name in self._share_interfaces_runtime()
         return out
 
-    def _interface_addrs(self, name: str) -> Dict[str, Optional[str]]:
+    def _interface_addrs(self, name: str) -> dict[str, str | None]:
         if psutil:
             ip_address = None
             mac_address = None
@@ -369,14 +370,14 @@ wpa_key_mgmt=WPA-PSK
                 pass
         return {"ip_address": None, "mac_address": None, "netmask": None}
 
-    def _interface_stats(self, name: str) -> Dict[str, Optional[object]]:
+    def _interface_stats(self, name: str) -> dict[str, object | None]:
         if psutil:
             stats = psutil.net_if_stats().get(name)
             if stats:
                 return {"isup": stats.isup, "mtu": stats.mtu, "speed": stats.speed}
         return {"isup": False, "mtu": None, "speed": None}
 
-    def _gateway_for(self, name: str) -> Tuple[Optional[str], Optional[int]]:
+    def _gateway_for(self, name: str) -> tuple[str | None, int | None]:
         if not _which("ip"):
             return None, None
         result = subprocess.run(
@@ -401,7 +402,7 @@ wpa_key_mgmt=WPA-PSK
             metric = 100 if name.startswith("usb") else 200 if name.startswith("eth") else None
         return gateway, metric
 
-    def _routes(self) -> List[NetworkRoute]:
+    def _routes(self) -> list[NetworkRoute]:
         routes = []
         if not _which("ip"):
             return routes
@@ -422,7 +423,7 @@ wpa_key_mgmt=WPA-PSK
             routes.append(NetworkRoute(destination, gateway, interface))
         return routes
 
-    def _current_routes(self) -> List[Dict[str, object]]:
+    def _current_routes(self) -> list[dict[str, object]]:
         if not _which("ip"):
             return []
         try:
@@ -445,12 +446,10 @@ wpa_key_mgmt=WPA-PSK
         except (OSError, json.JSONDecodeError):
             return [route.__dict__ for route in self._routes()]
 
-    def _default_route_interface(self) -> Optional[str]:
+    def _default_route_interface(self) -> str | None:
         if not _which("ip"):
             return None
-        output = subprocess.run(
-            ["ip", "route", "show", "default"], capture_output=True, text=True
-        )
+        output = subprocess.run(["ip", "route", "show", "default"], capture_output=True, text=True)
         if output.returncode != 0:
             return None
         for line in output.stdout.splitlines():
@@ -497,7 +496,7 @@ wpa_key_mgmt=WPA-PSK
         )
         return ping.returncode == 0
 
-    def _check_all_interface_connectivity(self, names: List[str]) -> Dict[str, bool]:
+    def _check_all_interface_connectivity(self, names: list[str]) -> dict[str, bool]:
         """Check connectivity for all interfaces in parallel using ThreadPoolExecutor."""
         if platform.system().lower() == "windows":
             return {name: False for name in names}
@@ -506,7 +505,7 @@ wpa_key_mgmt=WPA-PSK
         if not candidates:
             return {name: False for name in names}
 
-        def check_single(iface: str) -> Tuple[str, bool]:
+        def check_single(iface: str) -> tuple[str, bool]:
             try:
                 ping = subprocess.run(
                     ["ping", "-c", "1", "-W", "1", "-I", iface, self._CONNECTIVITY_IP],
@@ -517,20 +516,20 @@ wpa_key_mgmt=WPA-PSK
             except OSError:
                 return (iface, False)
 
-        results: Dict[str, bool] = {name: False for name in names}
+        results: dict[str, bool] = {name: False for name in names}
         with ThreadPoolExecutor(max_workers=min(len(candidates), 8)) as executor:
             for iface, connected in executor.map(check_single, candidates):
                 results[iface] = connected
         return results
 
-    def _ordered_wan_candidates(self) -> List[str]:
+    def _ordered_wan_candidates(self) -> list[str]:
         """Return interface names in WAN preference order: USB first, then ethernet. Excludes wlan (hotspot)."""
         names = self._interface_names()
         usb = sorted(n for n in names if n.startswith("usb"))
         eth = sorted(n for n in names if n.startswith("eth"))
         return usb + eth
 
-    def ensure_wan_priority(self) -> Dict[str, object]:
+    def ensure_wan_priority(self) -> dict[str, object]:
         """
         Prefer USB for WAN; if unavailable or no internet, fail over to ethernet.
         Sets default route to the first internet-capable interface in preference order.
@@ -581,12 +580,12 @@ wpa_key_mgmt=WPA-PSK
                 return True
         return False
 
-    def _hotspot_clients(self) -> List[Dict[str, object]]:
+    def _hotspot_clients(self) -> list[dict[str, object]]:
         if platform.system().lower() == "windows":
             return []
-        clients: Dict[str, Dict[str, object]] = {}
+        clients: dict[str, dict[str, object]] = {}
 
-        def ensure(mac: str) -> Dict[str, object]:
+        def ensure(mac: str) -> dict[str, object]:
             if mac not in clients:
                 clients[mac] = {"mac": mac}
             return clients[mac]
@@ -612,7 +611,7 @@ wpa_key_mgmt=WPA-PSK
 
         return list(clients.values())
 
-    def _hostapd_stations(self) -> Dict[str, Dict[str, object]]:
+    def _hostapd_stations(self) -> dict[str, dict[str, object]]:
         if not _which("hostapd_cli"):
             return {}
         result = subprocess.run(
@@ -624,7 +623,7 @@ wpa_key_mgmt=WPA-PSK
             return {}
         return _parse_hostapd_all_sta(result.stdout)
 
-    def _dnsmasq_leases(self) -> List[Dict[str, object]]:
+    def _dnsmasq_leases(self) -> list[dict[str, object]]:
         lease_paths = [
             Path("/var/lib/misc/dnsmasq.leases"),
             Path("/var/lib/dnsmasq/dnsmasq.leases"),
@@ -651,7 +650,7 @@ wpa_key_mgmt=WPA-PSK
                 return leases
         return []
 
-    def _arp_neighbors(self) -> List[Dict[str, object]]:
+    def _arp_neighbors(self) -> list[dict[str, object]]:
         if not _which("ip"):
             return []
         result = subprocess.run(["ip", "neigh", "show"], capture_output=True, text=True)
@@ -681,8 +680,8 @@ wpa_key_mgmt=WPA-PSK
         self,
         name: str,
         iface_type: str,
-        connectivity: Optional[Dict[str, bool]] = None,
-        dns_ok: Optional[bool] = None,
+        connectivity: dict[str, bool] | None = None,
+        dns_ok: bool | None = None,
     ) -> str:
         """WAN = interface can reach internet (9.9.9.9 + quad9.net DNS). LAN = hotspot or no internet."""
         if iface_type == "wifi" and name.startswith("wlan"):
@@ -719,12 +718,10 @@ wpa_key_mgmt=WPA-PSK
             return "WiFi Hotspot"
         return name
 
-    def _driver_for(self, name: str) -> Optional[str]:
+    def _driver_for(self, name: str) -> str | None:
         if not _which("ethtool"):
             return None
-        result = subprocess.run(
-            ["ethtool", "-i", name], capture_output=True, text=True
-        )
+        result = subprocess.run(["ethtool", "-i", name], capture_output=True, text=True)
         if result.returncode != 0:
             return None
         for line in result.stdout.splitlines():
@@ -738,7 +735,7 @@ wpa_key_mgmt=WPA-PSK
         subprocess.run(["dhclient", "-r", interface_id], check=False)
         subprocess.run(["dhclient", interface_id], check=True)
 
-    def _apply_static(self, interface_id: str, config: Dict[str, object]) -> None:
+    def _apply_static(self, interface_id: str, config: dict[str, object]) -> None:
         ip_address = config.get("ip_address")
         netmask = config.get("netmask")
         gateway = config.get("gateway")
@@ -758,7 +755,7 @@ wpa_key_mgmt=WPA-PSK
                 check=True,
             )
 
-    def _save_interface_config(self, interface_id: str, config: Dict[str, object]) -> None:
+    def _save_interface_config(self, interface_id: str, config: dict[str, object]) -> None:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         path = CONFIG_DIR / f"{interface_id}.json"
         payload = {"interface": interface_id, "config": config, "saved_at": _timestamp()}
@@ -776,7 +773,7 @@ wpa_key_mgmt=WPA-PSK
         payload.append(route.__dict__)
         path.write_text(json.dumps(payload, indent=2))
 
-    def _get_hotspot_credentials(self) -> Tuple[str, str]:
+    def _get_hotspot_credentials(self) -> tuple[str, str]:
         """Return (ssid, password) for the WiFi hotspot from hostapd config or hotspot.secret."""
         if platform.system().lower() == "windows":
             return ("", "")
@@ -794,7 +791,7 @@ wpa_key_mgmt=WPA-PSK
                 pass
         return (ssid, password)
 
-    def _get_hotspot_config(self) -> Optional[Dict[str, object]]:
+    def _get_hotspot_config(self) -> dict[str, object] | None:
         hostapd_config = Path("/etc/hostapd/hostapd.conf")
         if not hostapd_config.exists():
             return None
@@ -809,7 +806,7 @@ wpa_key_mgmt=WPA-PSK
         except OSError:
             return None
 
-    def _get_share_interfaces(self) -> List[str]:
+    def _get_share_interfaces(self) -> list[str]:
         """Return list of interface names configured to share with hotspot."""
         if not HOTSPOT_SHARE_CONFIG.exists():
             return []
@@ -820,7 +817,7 @@ wpa_key_mgmt=WPA-PSK
         except (OSError, json.JSONDecodeError):
             return []
 
-    def _share_interfaces_runtime(self) -> List[str]:
+    def _share_interfaces_runtime(self) -> list[str]:
         """
         Return list of interfaces that are *actually* sharing with the hotspot right now.
         Uses iptables rules with rpi-engineer-share:* comments as source of truth, falling
@@ -830,13 +827,13 @@ wpa_key_mgmt=WPA-PSK
         """
         return self._get_share_interfaces_runtime()
 
-    def _get_share_interfaces_runtime(self) -> List[str]:
+    def _get_share_interfaces_runtime(self) -> list[str]:
         if not _which("iptables"):
             return self._get_share_interfaces()
         ipt = _which("iptables") or "/usr/sbin/iptables"
         if not ipt:
             return self._get_share_interfaces()
-        found: Dict[str, bool] = {}
+        found: dict[str, bool] = {}
         for table, chain in [(None, "FORWARD"), ("nat", "POSTROUTING")]:
             base = [ipt] + (["-t", table] if table else [])
             try:
@@ -866,13 +863,13 @@ wpa_key_mgmt=WPA-PSK
         # No runtime rules detected; fall back to config file.
         return self._get_share_interfaces()
 
-    def _set_share_interfaces(self, interfaces: List[str]) -> None:
+    def _set_share_interfaces(self, interfaces: list[str]) -> None:
         """Persist interfaces that share with hotspot."""
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         data = {"interfaces": list(interfaces), "updated_at": _timestamp()}
         HOTSPOT_SHARE_CONFIG.write_text(json.dumps(data, indent=2))
 
-    def set_interface_share_hotspot(self, interface_id: str, enabled: bool) -> Dict[str, object]:
+    def set_interface_share_hotspot(self, interface_id: str, enabled: bool) -> dict[str, object]:
         """
         Enable or disable sharing this interface's connection with the wireless hotspot.
         When enabled, enables IPv4 forwarding and adds iptables FORWARD/MASQUERADE
@@ -922,7 +919,7 @@ wpa_key_mgmt=WPA-PSK
             _iptables_append(None, "FORWARD", ["-i", "wlan0", "-o", iface, "-j", "ACCEPT"], comment)
             _iptables_append("nat", "POSTROUTING", ["-o", iface, "-j", "MASQUERADE"], comment)
 
-    def _restore_hotspot_config(self, config: Dict[str, object]) -> None:
+    def _restore_hotspot_config(self, config: dict[str, object]) -> None:
         hostapd_config = Path("/etc/hostapd/hostapd.conf")
         hostapd_config.parent.mkdir(parents=True, exist_ok=True)
         content = "\n".join(f"{k}={v}" for k, v in config.items())
@@ -931,7 +928,7 @@ wpa_key_mgmt=WPA-PSK
             subprocess.run(["systemctl", "restart", "hostapd"], check=False)
 
 
-def _run_ip_json(args: List[str]) -> List[Dict[str, object]]:
+def _run_ip_json(args: list[str]) -> list[dict[str, object]]:
     output = subprocess.check_output(["ip", "-j"] + args, text=True)
     return json.loads(output)
 
@@ -951,11 +948,11 @@ def _timestamp() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-def _which(binary: str) -> Optional[str]:
+def _which(binary: str) -> str | None:
     return shutil.which(binary)
 
 
-def _run_priv(cmd: List[str]) -> subprocess.CompletedProcess:
+def _run_priv(cmd: list[str]) -> subprocess.CompletedProcess:
     """Run command; use sudo when not root (API runs as service user)."""
     try:
         if hasattr(os, "geteuid") and os.geteuid() == 0:
@@ -968,8 +965,8 @@ def _run_priv(cmd: List[str]) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
-def _parse_hostapd_all_sta(output: str) -> Dict[str, Dict[str, object]]:
-    stations: Dict[str, Dict[str, object]] = {}
+def _parse_hostapd_all_sta(output: str) -> dict[str, dict[str, object]]:
+    stations: dict[str, dict[str, object]] = {}
     current = None
     for line in output.splitlines():
         line = line.strip()
@@ -1008,7 +1005,7 @@ def _iptables_ensure_established_related() -> None:
         _run_priv(append)
 
 
-def _iptables_append(table: Optional[str], chain: str, rule_args: List[str], comment: str) -> None:
+def _iptables_append(table: str | None, chain: str, rule_args: list[str], comment: str) -> None:
     """Append iptables rule if not already present."""
     ipt = _which("iptables") or "/usr/sbin/iptables"
     base = [ipt] + (["-t", table] if table else [])
@@ -1019,7 +1016,7 @@ def _iptables_append(table: Optional[str], chain: str, rule_args: List[str], com
         _run_priv(append)
 
 
-def _iptables_delete(table: Optional[str], chain: str, rule_args: List[str], comment: str) -> None:
+def _iptables_delete(table: str | None, chain: str, rule_args: list[str], comment: str) -> None:
     """Delete iptables rule if present."""
     ipt = _which("iptables") or "/usr/sbin/iptables"
     base = [ipt] + (["-t", table] if table else [])
@@ -1027,7 +1024,7 @@ def _iptables_delete(table: Optional[str], chain: str, rule_args: List[str], com
     _run_priv(cmd)
 
 
-def _iptables_unquote_rule_parts(parts: List[str]) -> List[str]:
+def _iptables_unquote_rule_parts(parts: list[str]) -> list[str]:
     """Strip surrounding double-quotes from each part. iptables -S outputs comment values quoted; -D expects unquoted."""
     out = []
     for p in parts:
@@ -1077,6 +1074,7 @@ def _looks_like_mac(value: str) -> bool:
 def _main() -> None:
     """Run periodic WAN priority check for failover when USB is lost (used by rpi-engineer-network service)."""
     import signal
+
     manager = NetworkManager()
     interval = int(os.getenv("RPI_ENGINEER_WAN_CHECK_INTERVAL", "60"))
     logger.info("Network manager daemon starting (WAN check interval=%ss)", interval)

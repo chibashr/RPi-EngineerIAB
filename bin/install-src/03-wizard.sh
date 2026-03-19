@@ -453,6 +453,7 @@ write_install_conf() {
     else
         password_hash="$(openssl passwd -6 "$HOTSPOT_PASSWORD")"
     fi
+    mkdir -p "$CONFIG_DIR"
     cat > "$CONFIG_DIR/install.conf" <<EOF
 [general]
 version=$VERSION

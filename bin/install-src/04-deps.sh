@@ -15,7 +15,7 @@ apt_install_interactive() {
 }
 
 install_system_dependencies() {
-    if [ "$INSTALL_MODE" = "upgrade" ]; then
+    if [[ "$INSTALL_MODE" == "upgrade" && "$RECONF_SECTIONS" != *"remote"* ]]; then
         log_info "Upgrade: skipping system package upgrade (only updating rpi-engineer)."
         return 0
     fi
@@ -80,7 +80,7 @@ validate_dependencies() {
 }
 
 install_required_packages() {
-    if [ "$INSTALL_MODE" = "upgrade" ]; then
+    if [[ "$INSTALL_MODE" == "upgrade" && "$RECONF_SECTIONS" != *"remote"* ]]; then
         log_info "Upgrade: skipping package install (only updating rpi-engineer)."
         DEPS_INSTALLED="yes"
         return 0

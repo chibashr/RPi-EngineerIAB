@@ -55,7 +55,7 @@ install_module() {
 }
 
 install_modules() {
-    if [ "$INSTALL_MODE" = "upgrade" ]; then
+    if [[ "$INSTALL_MODE" == "upgrade" && "$RECONF_SECTIONS" != *"modules"* ]]; then
         log_info "Upgrade: skipping module install (only updating rpi-engineer)."
         MODULES_INSTALLED="yes"
         return 0

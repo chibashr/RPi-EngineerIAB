@@ -43,11 +43,6 @@ HOTSPOT_CONFIGURED="no"
 REMOTE_CONFIGURED="no"
 MODULES_INSTALLED="no"
 
-# Fail-fast with context (line + command) in logs.
-# This is especially important for `curl | sudo bash` runs where a non-obvious command failure
-# can otherwise look like the installer "stopped" with no output.
-trap 'rc=$?; echo "[ERROR] Installer failed (exit=$rc) at line ${BASH_LINENO[0]}: ${BASH_COMMAND}" | tee -a "$INSTALL_LOG" >&2; exit $rc' ERR
-
 # When run via 'curl | bash', BASH_SOURCE[0] is unset; use $0 so dirname yields current directory.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -802,6 +797,7 @@ write_install_conf() {
     else
         password_hash="$(openssl passwd -6 "$HOTSPOT_PASSWORD")"
     fi
+    mkdir -p "$CONFIG_DIR"
     cat > "$CONFIG_DIR/install.conf" <<EOF
 [general]
 version=$VERSION
@@ -1083,7 +1079,7 @@ apt_install_interactive() {
 }
 
 install_system_dependencies() {
-    if [ "$INSTALL_MODE" = "upgrade" ]; then
+    if [[ "$INSTALL_MODE" == "upgrade" && "$RECONF_SECTIONS" != *"remote"* ]]; then
         log_info "Upgrade: skipping system package upgrade (only updating rpi-engineer)."
         return 0
     fi
@@ -1148,7 +1144,7 @@ validate_dependencies() {
 }
 
 install_required_packages() {
-    if [ "$INSTALL_MODE" = "upgrade" ]; then
+    if [[ "$INSTALL_MODE" == "upgrade" && "$RECONF_SECTIONS" != *"remote"* ]]; then
         log_info "Upgrade: skipping package install (only updating rpi-engineer)."
         DEPS_INSTALLED="yes"
         return 0
@@ -2119,7 +2115,7 @@ install_module() {
 }
 
 install_modules() {
-    if [ "$INSTALL_MODE" = "upgrade" ]; then
+    if [[ "$INSTALL_MODE" == "upgrade" && "$RECONF_SECTIONS" != *"modules"* ]]; then
         log_info "Upgrade: skipping module install (only updating rpi-engineer)."
         MODULES_INSTALLED="yes"
         return 0
@@ -2588,6 +2584,7 @@ EOF
             existing_token_secret="$("$INSTALL_DIR/venv/bin/python" -c "import secrets; print(secrets.token_hex(32))")"
         fi
 
+        mkdir -p "$(dirname "$auth_conf_path")"
         {
             echo "[auth]"
             echo "token_secret=$existing_token_secret"
