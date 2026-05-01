@@ -2,22 +2,17 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
 import json
 import os
 import platform
 import shutil
 import socket
 import subprocess
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from pathlib import Path
 
 try:
     import psutil  # type: ignore
@@ -25,6 +20,10 @@ except ImportError:  # pragma: no cover - optional dependency
     psutil = None
 
 from lib.module_logger import get_service_logger
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 logger = get_service_logger(__name__)
 PROFILE_DIR = Path("/etc/rpi-engineer/network_profiles")
@@ -499,11 +498,11 @@ wpa_key_mgmt=WPA-PSK
     def _check_all_interface_connectivity(self, names: list[str]) -> dict[str, bool]:
         """Check connectivity for all interfaces in parallel using ThreadPoolExecutor."""
         if platform.system().lower() == "windows":
-            return {name: False for name in names}
+            return dict.fromkeys(names, False)
         # Filter to only check non-wlan interfaces (wlan is always lan/hotspot)
         candidates = [n for n in names if not n.startswith("wlan")]
         if not candidates:
-            return {name: False for name in names}
+            return dict.fromkeys(names, False)
 
         def check_single(iface: str) -> tuple[str, bool]:
             try:
@@ -516,7 +515,7 @@ wpa_key_mgmt=WPA-PSK
             except OSError:
                 return (iface, False)
 
-        results: dict[str, bool] = {name: False for name in names}
+        results: dict[str, bool] = dict.fromkeys(names, False)
         with ThreadPoolExecutor(max_workers=min(len(candidates), 8)) as executor:
             for iface, connected in executor.map(check_single, candidates):
                 results[iface] = connected
