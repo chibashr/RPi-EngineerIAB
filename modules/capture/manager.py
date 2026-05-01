@@ -1,10 +1,8 @@
 """Compatibility shim for legacy `modules.capture.manager` imports."""
 
+import sys
+
 from services.capture_manager import manager as _manager
 
-CaptureManager = _manager.CaptureManager
-split_bpf_filter = _manager.split_bpf_filter
-_capture_dir = _manager._capture_dir
-_which = _manager._which
-
-__all__ = ["CaptureManager", "split_bpf_filter", "_capture_dir", "_which"]
+# Expose the real manager module so monkeypatching works as expected in tests.
+sys.modules[__name__] = _manager
