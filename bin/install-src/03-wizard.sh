@@ -190,6 +190,7 @@ prompt_remote_access() {
     log_step "Remote access configuration"
     REMOTE_ACCESS_PASSWORD=""
     REMOTE_ACCESS_PASSWORD_SOURCE=""
+    local has_teamviewer=0
     if [ "${NONINTERACTIVE:-0}" != "1" ]; then
         echo "Select the remote access tool you want to install:"
         echo "  1) AnyDesk (Recommended)"
@@ -234,6 +235,13 @@ prompt_remote_access() {
     else
         log_info "Selected remote access tools: ${REMOTE_ACCESS_TOOLS[*]}"
     fi
+    local selected_tool
+    for selected_tool in "${REMOTE_ACCESS_TOOLS[@]}"; do
+        if [ "$selected_tool" = "teamviewer" ]; then
+            has_teamviewer=1
+            break
+        fi
+    done
     local need_password=0
     if [ "${#REMOTE_ACCESS_TOOLS[@]}" -gt 0 ]; then
         local t
@@ -255,10 +263,15 @@ prompt_remote_access() {
                     echo
                     interactive_read -r -s -p "Confirm password: " password_confirm
                     echo
-                    if [ "$REMOTE_ACCESS_PASSWORD" = "$password_confirm" ]; then
-                        break
+                    if [ "$REMOTE_ACCESS_PASSWORD" != "$password_confirm" ]; then
+                        log_warn "Passwords do not match."
+                        continue
                     fi
-                    log_warn "Passwords do not match."
+                    if [ "$has_teamviewer" -eq 1 ] && { [ "${#REMOTE_ACCESS_PASSWORD}" -lt 6 ] || [ "${#REMOTE_ACCESS_PASSWORD}" -gt 8 ]; }; then
+                        log_warn "TeamViewer requires a password length of 6-8 characters."
+                        continue
+                    fi
+                    break
                 done
                 ;;
             *) REMOTE_ACCESS_PASSWORD_SOURCE="auto"; REMOTE_ACCESS_PASSWORD="" ;;

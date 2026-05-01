@@ -534,6 +534,7 @@ prompt_remote_access() {
     log_step "Remote access configuration"
     REMOTE_ACCESS_PASSWORD=""
     REMOTE_ACCESS_PASSWORD_SOURCE=""
+    local has_teamviewer=0
     if [ "${NONINTERACTIVE:-0}" != "1" ]; then
         echo "Select the remote access tool you want to install:"
         echo "  1) AnyDesk (Recommended)"
@@ -578,6 +579,13 @@ prompt_remote_access() {
     else
         log_info "Selected remote access tools: ${REMOTE_ACCESS_TOOLS[*]}"
     fi
+    local selected_tool
+    for selected_tool in "${REMOTE_ACCESS_TOOLS[@]}"; do
+        if [ "$selected_tool" = "teamviewer" ]; then
+            has_teamviewer=1
+            break
+        fi
+    done
     local need_password=0
     if [ "${#REMOTE_ACCESS_TOOLS[@]}" -gt 0 ]; then
         local t
@@ -599,10 +607,15 @@ prompt_remote_access() {
                     echo
                     interactive_read -r -s -p "Confirm password: " password_confirm
                     echo
-                    if [ "$REMOTE_ACCESS_PASSWORD" = "$password_confirm" ]; then
-                        break
+                    if [ "$REMOTE_ACCESS_PASSWORD" != "$password_confirm" ]; then
+                        log_warn "Passwords do not match."
+                        continue
                     fi
-                    log_warn "Passwords do not match."
+                    if [ "$has_teamviewer" -eq 1 ] && { [ "${#REMOTE_ACCESS_PASSWORD}" -lt 6 ] || [ "${#REMOTE_ACCESS_PASSWORD}" -gt 8 ]; }; then
+                        log_warn "TeamViewer requires a password length of 6-8 characters."
+                        continue
+                    fi
+                    break
                 done
                 ;;
             *) REMOTE_ACCESS_PASSWORD_SOURCE="auto"; REMOTE_ACCESS_PASSWORD="" ;;
@@ -2143,6 +2156,11 @@ get_arch() {
     fi
 }
 
+generate_teamviewer_password() {
+    # TeamViewer Linux static password must be 6-8 chars; use 8 alnum chars.
+    openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 8
+}
+
 # Install Xvfb + minimal WM and configure systemd so AnyDesk/TeamViewer have an X11 session when headless.
 install_virtual_display() {
     log_step "Setting up virtual display for headless remote access"
@@ -2297,9 +2315,17 @@ install_teamviewer() {
         DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/teamviewer.deb >> "$INSTALL_LOG" 2>&1
     fi
     if [ -n "$REMOTE_ACCESS_PASSWORD" ]; then
-        teamviewer passwd "$REMOTE_ACCESS_PASSWORD" >> "$INSTALL_LOG" 2>&1 || true
+        if [ "${#REMOTE_ACCESS_PASSWORD}" -lt 6 ] || [ "${#REMOTE_ACCESS_PASSWORD}" -gt 8 ]; then
+            log_warn "Skipping TeamViewer password set: password must be 6-8 characters."
+        else
+            teamviewer passwd "$REMOTE_ACCESS_PASSWORD" >> "$INSTALL_LOG" 2>&1 || true
+        fi
     fi
-    teamviewer setup >> "$INSTALL_LOG" 2>&1 || true
+    if [ -n "${TEAMVIEWER_SETUP_EMAIL:-}" ] && [ -n "${TEAMVIEWER_SETUP_PASSWORD:-}" ]; then
+        printf '%s\n%s\n' "$TEAMVIEWER_SETUP_EMAIL" "$TEAMVIEWER_SETUP_PASSWORD" | teamviewer setup >> "$INSTALL_LOG" 2>&1 || true
+    else
+        log_info "Skipping TeamViewer account assignment (no TEAMVIEWER_SETUP_EMAIL/TEAMVIEWER_SETUP_PASSWORD provided)."
+    fi
     systemctl enable teamviewerd >> "$INSTALL_LOG" 2>&1 || true
     systemctl start teamviewerd >> "$INSTALL_LOG" 2>&1 || true
     # Capture TeamViewer ID in a way that matches headless Linux output ("TeamViewer ID: 123456789")
@@ -2480,11 +2506,29 @@ setup_remote_access() {
         return 0
     fi
     if [ -z "$REMOTE_ACCESS_PASSWORD" ] && [ "$REMOTE_ACCESS_PASSWORD_SOURCE" != "custom" ]; then
-        REMOTE_ACCESS_PASSWORD="$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9!@#$%^&*' | head -c 20)"
+        if printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -q '^teamviewer$'; then
+            REMOTE_ACCESS_PASSWORD="$(generate_teamviewer_password)"
+        else
+            REMOTE_ACCESS_PASSWORD="$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9!@#$%^&*' | head -c 20)"
+        fi
         log_info "Auto-generated remote access password."
     fi
+    if printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -q '^teamviewer$'; then
+        if [ "${#REMOTE_ACCESS_PASSWORD}" -lt 6 ] || [ "${#REMOTE_ACCESS_PASSWORD}" -gt 8 ]; then
+            log_warn "TeamViewer selected: replacing password with TeamViewer-compatible 8-character password."
+            REMOTE_ACCESS_PASSWORD="$(generate_teamviewer_password)"
+            REMOTE_ACCESS_PASSWORD_SOURCE="auto"
+        fi
+    fi
     # AnyDesk requires Xvfb on headless; TeamViewer can use framebuffer console (no Xorg) per headless docs.
-    need_xvfb=$(printf '%s\n' "${REMOTE_ACCESS_TOOLS[@]}" | grep -q '^anydesk$' && echo 1)
+    need_xvfb=""
+    local selected_tool
+    for selected_tool in "${REMOTE_ACCESS_TOOLS[@]}"; do
+        if [ "$selected_tool" = "anydesk" ]; then
+            need_xvfb=1
+            break
+        fi
+    done
     if [ -n "$need_xvfb" ]; then
         install_virtual_display
         configure_lightdm_for_x11
@@ -2493,8 +2537,8 @@ setup_remote_access() {
             log_info "TeamViewer without AnyDesk: using framebuffer console per TeamViewer headless install docs (no Xvfb)."
             # Remove Xvfb override so teamviewerd uses framebuffer (/dev/fb0)
             rm -f /etc/systemd/system/teamviewerd.service.d/display.conf 2>/dev/null
-            rmdir /etc/systemd/system/teamviewerd.service.d 2>/dev/null
-            systemctl daemon-reload
+            rmdir /etc/systemd/system/teamviewerd.service.d 2>/dev/null || true
+            systemctl daemon-reload >> "$INSTALL_LOG" 2>&1 || true
         fi
     fi
     for tool in "${REMOTE_ACCESS_TOOLS[@]}"; do
