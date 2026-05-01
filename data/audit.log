@@ -146,3 +146,7 @@
 {"event": "remote_console_session_created", "session_id": "16e63b80", "host": "192.168.1.101", "timestamp": "2026-03-16T00:19:28.906Z"}
 {"event": "login_success", "source_ip": "testclient", "timestamp": "2026-03-16T00:22:02.527Z"}
 {"event": "login_failure", "source_ip": "testclient", "locked_out": false, "timestamp": "2026-03-16T00:22:02.583Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/install-from-repo", "timestamp": "2026-05-01T20:26:55.273Z"}
+{"event": "module_repo_blocked", "url": "https://github.com/chibashr/RPi-EngineerIAB.git", "reason": "repo not in allowlist", "timestamp": "2026-05-01T20:26:55.275Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/enable/nonexistent_module", "timestamp": "2026-05-01T20:26:55.336Z"}
+{"event": "admin_action", "source_ip": "testclient", "path": "/api/v1/modules/disable/nonexistent_module", "timestamp": "2026-05-01T20:26:55.393Z"}
